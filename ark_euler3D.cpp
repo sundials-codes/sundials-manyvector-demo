@@ -13,21 +13,21 @@
  for t in [t0, tf], X = (x,y,z) in [xl,xr] x [yl,yr] x [zl,zr],
  with initial condition
     w(t0,X) = w0(X).
- Here, the state w = [rho, rho*ux, rho*uy, rho*uz, E]^T
+ Here, the state w = [rho, rho*vx, rho*vy, rho*vz, E]^T
                    = [rho, mx, my, mz, E]^T,
  corresponding to the density, x,y,z-momentum, and the total
  energy per unit volume.  The fluxes are given by
-    Fx(w) = [rho*ux, rho*ux^2+p, rho*ux*uy, rho*ux*uz, ux*(E+p)]^T
-    Fy(w) = [rho*uy, rho*ux*uy, rho*uy^2+p, rho*uy*uz, uy*(E+p)]^T
-    Fz(w) = [rho*uz, rho*ux*uz, rho*uy*uz, rho*uz^2+p, uz*(E+p)]^T
+    Fx(w) = [rho*vx, rho*vx^2+p, rho*vx*vy, rho*vx*vz, vx*(E+p)]^T
+    Fy(w) = [rho*vy, rho*vx*vy, rho*vy^2+p, rho*vy*vz, vy*(E+p)]^T
+    Fz(w) = [rho*vz, rho*vx*vz, rho*vy*vz, rho*vz^2+p, vz*(E+p)]^T
  the external force is given by
     G(X) = [0, gx(X), gy(X), gz(X), 0]^T
  and the ideal gas equation of state gives
-    p = R/cv*(E - rho/2*(ux^2+uy^2+uz^2), and
-    E = p*cv/R + rho/2*(ux^2+uy^2+uz^2),
+    p = R/cv*(E - rho/2*(vx^2+vy^2+vz^2), and
+    E = p*cv/R + rho/2*(vx^2+vy^2+vz^2),
  or equivalently,
-    p = (gamma-1)*(E - rho/2*(ux^2+uy^2+uz^2), and
-    E = p/(gamma-1) + rho/2*(ux^2+uy^2+uz^2),
+    p = (gamma-1)*(E - rho/2*(vx^2+vy^2+vz^2), and
+    E = p/(gamma-1) + rho/2*(vx^2+vy^2+vz^2),
  We have the parameters
     R is the specific ideal gas constant (287.14 J/kg/K).
     cv is the specific heat capacity at constant volume (717.5 J/kg/K),
@@ -39,7 +39,7 @@
  The fluid variables above are non-dimensionalized; in standard SI
  units these would be:
     [rho] = kg / m^3
-    [ux] = [uy] = [uz] = m/s  =>  [rho*ux] = kg / m^2 / s
+    [vx] = [vy] = [vz] = m/s  =>  [rho*vx] = kg / m^2 / s
     [E] = kg / m / s^2
 
  Note: the above follows the description in section 7.3.1-7.3.3 of
@@ -214,12 +214,9 @@ inline int legal_state(realtype& rho, realtype& mx, realtype& my,
 int initial_conditions(realtype t, N_Vector w, UserData& udata);
 //    Forcing terms
 int external_forces(realtype t, N_Vector wdot, UserData& udata);
-//    Direction-independent physics routines (all assume a valid state)
-//        Flux function
-inline void flux(realtype* w, realtype* f, UserData& udata);
-//        Projected flux stencils and maximum wave speeds
-void prepare_cell(realtype* w, realtype* fs, realtype* ws,
-                  realtype* alpha, UserData& udata);
+//    Signed fluxes over patch
+void signed_fluxes(realtype (&w1d)[7][5], realtype (&fms)[7][5],
+                   realtype (&fps)[7][5], UserData& udata);
 //    Print solution statistics
 int print_stats(realtype t, N_Vector w, int firstlast, UserData& udata);
 //    Output current solution
@@ -1122,7 +1119,7 @@ int UserData::ExchangeEnd()
 
 
 // Equation of state -- compute and return pressure,
-//    p = (gamma-1)*(E - rho/2*(ux^2+uy^2+uz^2), or equivalently
+//    p = (gamma-1)*(E - rho/2*(vx^2+vy^2+vz^2), or equivalently
 //    p = (gamma-1)*(E - (mx^2+my^2+mz^2)/(2*rho)
 inline realtype eos(realtype& rho, realtype& mx, realtype& my,
                     realtype& mz, realtype& E, UserData& udata)
@@ -1310,23 +1307,117 @@ int external_forces(realtype t, N_Vector wdot, UserData& udata)
   return 0;
 }
 
-// Direction-independent flux function (assumes valid state)
-inline void flux(realtype* w, realtype* f, UserData& udata)
-{
-  realtype p = eos(w[0], w[1], w[2], w[3], w[4], udata);
-  f[0] = w[1];
-  f[1] = w[1]*w[1]/w[0] + p;
-  f[2] = w[1]*w[2]/w[0];
-  f[3] = w[1]*w[3]/w[0];
-  f[4] = w[1]/w[0]*(w[4] + p);
-}
-
-// Projected flux stencils and maximum wave speeds
-void prepare_cell(realtype* w, realtype* fs, realtype* ws,
-                  realtype* alpha, UserData& udata)
+// Signed fluxes over patch
+void signed_fluxes(realtype (&w1d)[7][5], realtype (&fms)[7][5],
+                   realtype (&fps)[7][5], UserData& udata)
 {
   // local variables
-  realtype f[5], vr[5], lc[5][5], rc[5][5], lambda[5];
+  realtype rho, mx, my, mz, vx, vy, vz, E, p, csnd, cisq, qsq, h, gamm;
+  realtype vr[5], lv[5][5], rv[5][5], lambda[7][5], alpha[5], fx[5], fs[7][5], ws[7][5];
+  int i, j, k;
+
+  for (i=0; i<5; i++)
+    for (j=0; j<5; j++) {
+      rv[i][j] = ZERO;
+      lv[i][j] = ZERO;
+    }
+
+  // loop over patch, computing relevant quantities at each location
+  for (j=0; j<7; j++) {
+
+    // unpack state, and compute corresponding primitive variables
+    rho = w1d[j][0];  mx = w1d[j][1];  my = w1d[j][2];  mz = w1d[j][3];  E = w1d[j][4];
+    vx = mx/rho;  vy = my/rho;  vz = mz/rho;  p = eos(rho, mx, my, mz, E, udata);
+
+    // compute eigensystem
+    csnd = SUNRsqrt(udata.gamma*p/rho);
+    cisq = ONE/csnd/csnd;
+    qsq = vx*vx + vy*vy + vz*vz;
+    gamm = udata.gamma-ONE;
+    h = udata.gamma/gamm*p/rho + HALF*qsq;
+
+    lambda[j][0] = abs(vx);
+    lambda[j][1] = abs(vx);
+    lambda[j][2] = abs(vx);
+    lambda[j][3] = abs(vx+csnd);
+    lambda[j][4] = abs(vx-csnd);
+
+    rv[0][2] = ONE;
+    rv[0][3] = ONE;
+    rv[0][4] = ONE;
+
+    rv[1][2] = vx;
+    rv[1][3] = vx + csnd;
+    rv[1][4] = vx - csnd;
+
+    rv[2][1] = ONE;
+    rv[2][2] = vy;
+    rv[2][3] = vy;
+    rv[2][4] = vy;
+
+    rv[3][0] = ONE;
+    rv[3][2] = vz;
+    rv[3][3] = vz;
+    rv[3][4] = vz;
+
+    rv[4][0] = vz;
+    rv[4][1] = vy;
+    rv[4][2] = HALF*qsq;
+    rv[4][3] = h + vx*csnd;
+    rv[4][4] = h - vx*csnd;
+
+    lv[0][0] = -vz;
+    lv[0][3] = ONE;
+
+    lv[1][0] = -vy;
+    lv[1][2] = ONE;
+
+    lv[2][0] = ONE - HALF*gamm*qsq*cisq;
+    lv[2][1] = gamm*vx*cisq;
+    lv[2][2] = gamm*vy*cisq;
+    lv[2][3] = gamm*vz*cisq;
+    lv[2][4] = -gamm*cisq;
+
+    lv[3][0] = FOURTH*gamm*qsq*cisq - HALF*vx/csnd;
+    lv[3][1] = HALF/csnd - HALF*gamm*vx*cisq;
+    lv[3][2] = -HALF*gamm*vy*cisq;
+    lv[3][3] = -HALF*gamm*vz*cisq;
+    lv[3][4] = HALF*gamm*cisq;
+
+    lv[4][0] = FOURTH*gamm*qsq*cisq + HALF*vx/csnd;
+    lv[4][1] = -HALF/csnd - HALF*gamm*vx*cisq;
+    lv[4][2] = -HALF*gamm*vy*cisq;
+    lv[4][3] = -HALF*gamm*vz*cisq;
+    lv[4][4] = HALF*gamm*cisq;
+
+    // compute basic flux
+    fx[0] = mx;
+    fx[1] = rho*vx*vx + p;
+    fx[2] = rho*vx*vy;
+    fx[3] = rho*vx*vz;
+    fx[4] = vx*(E + p);
+
+    // compute projected flux stencils
+    for (i=0; i<5; i++)
+      fs[j][i] = lv[j][0]*fx[0] + lv[j][1]*fx[1] + lv[j][2]*fx[2] + lv[j][3]*fx[3] + lv[j][4]*fx[4];
+    for (i=0; i<5; i++)
+      ws[j][i] = lv[j][0]*rho + lv[j][1]*mx + lv[j][2]*my + lv[j][3]*mz + lv[j][4]*E;
+
+  }
+
+  // accumulate "alpha" values for patch
+  for (j=0; j<5; j++) {
+    alpha[j] = lambda[0][j];
+    for (i=1; i<7; i++)
+      alpha[j] = max(alpha[j], lambda[i][j]);
+  }
+
+  // compute signed fluxes over patch: fms is left-shifted, fps is right-shifted
+  for (j=0; j<7; j++)
+    for (i=0; i<5; i++) {
+      fms[j][i] = HALF*(fs[j][i] - alpha[i]*ws[j][i]);
+      fps[j][i] = HALF*(fs[j][i] + alpha[i]*ws[j][i]);
+    }
 
 }
 
@@ -1535,7 +1626,7 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
 {
   // local data
   int i, j;
-  realtype fs[5], ws[5], alpha[5], fps[7][5], fms[7][5], eta,
+  realtype fs[7][5], ws[7][5], alpha[7][5], fps[7][5], fms[7][5], eta,
     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11,
     b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11,
     a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11;
@@ -1553,20 +1644,8 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
   if (idir > 0)
     for (i=0; i<7; i++) swap(w1d[i][1], w1d[i][1+idir]);
 
-  // compute relevant items over patch
-  for (i=0; i<7; i++) {
-
-    // compute projected flux stencils and maximum wave speeds at nodes
-    prepare_cell(w1d[i], fs, ws, alpha, udata);
-
-    // compute fms as left-shifted flux over patch,
-    //         fps as right-shifted flux over patch
-    for (j=0; j<5; j++) {
-      fms[i][j] = HALF*(fs[j] - alpha[j]*ws[j]);
-      fps[i][j] = HALF*(fs[j] + alpha[j]*ws[j]);
-    }
-
-  }
+  // compute signed fluxes over patch
+  signed_fluxes(w1d, fms, fps, udata);
 
   // perform WENO flux calculation based on shifted fluxes
   for (j=0; j<5; j++) {
@@ -1626,7 +1705,6 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
               (a6*p6 + a7*p7 + a8*p8)/(a6 + a7 + a8) -
               (a9*p9 + a10*p10 + a11*p11)/(a9 + a10 + a11) ) / dx;
   }
-
 
   // convert flux to direction-independent version
   if (idir > 0) swap(dw[1], dw[1+idir]);
