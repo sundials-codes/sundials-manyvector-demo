@@ -16,7 +16,6 @@
 #include <math.h>
 #include <arkode/arkode.h>
 #include <arkode/arkode_arkstep.h>
-#include <arkode/arkode_erkstep.h>
 #include <sundials/sundials_types.h>
 
 #define MAX_LINE_LENGTH 512
@@ -299,7 +298,7 @@ void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
       return NULL;
     }
   }
-  
+
   /* set nonlinear method convergence rate constant */
   if (imex != 1) {
     ret = ARKStepSetNonlinCRDown(ark_mem, crdown);
@@ -308,7 +307,7 @@ void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
       return NULL;
     }
   }
-  
+
   /* set nonlinear method divergence constant */
   if (imex != 1) {
     ret = ARKStepSetNonlinRDiv(ark_mem, rdiv);
@@ -411,253 +410,6 @@ void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
   ret = ARKStepSetMaxNumSteps(ark_mem, mxsteps);
   if (ret != 0) {
     fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxNumSteps = %i\n",ret);
-    return NULL;
-  }
-
-  return ark_mem;
-}
-
-
-/* ERKStep version */
-void *erkstep_init_from_file(char *fname, ARKRhsFn f, realtype T0,
-                             N_Vector y0, int *dorder,
-                             realtype *RTol, realtype *ATol) {
-
-  /* declare output */
-  void *ark_mem;
-
-  /* declare available solver parameters (with default values) */
-  int order = 0;
-  int adapt_method = 0;
-  int small_nef = 0;
-  int msbp = 0;
-  int maxnef = 0;
-  int mxhnil = 0;
-  int mxsteps = 0;
-  int dense_order = -1;
-  int btable = -1;
-  int pq = 0;
-  double cflfac = 0.0;
-  double safety = 0.0;
-  double bias = 0.0;
-  double growth = 0.0;
-  double hfixed_lb = 0.0;
-  double hfixed_ub = 0.0;
-  double k1 = 0.0;
-  double k2 = 0.0;
-  double k3 = 0.0;
-  double etamx1 = 0.0;
-  double etamxf = 0.0;
-  double h0 = 0.0;
-  double hmin = 0.0;
-  double hmax = 0.0;
-  double rtol = 0.0;
-  double atol = 0.0;
-
-  /* open parameter file */
-  FILE *fptr = NULL;
-  fptr = fopen(fname,"r");
-  if (fptr == NULL) {
-    fprintf(stderr, "erkstep_init_from_file error: cannot open parameter file %s\n", fname);
-    return NULL;
-  }
-
-  /* read solver parameters from file */
-  int ret;
-  char line[MAX_LINE_LENGTH];
-  while (fgets(line, MAX_LINE_LENGTH, fptr) != NULL) {
-
-    /* initialize return flag for line */
-    ret = 0;
-
-    /* read parameter */
-    ret += sscanf(line,"order = %i", &order);
-    ret += sscanf(line,"dense_order = %i", &dense_order);
-    ret += sscanf(line,"btable = %i",  &btable);
-    ret += sscanf(line,"adapt_method = %i", &adapt_method);
-    ret += sscanf(line,"maxnef = %i", &maxnef);
-    ret += sscanf(line,"mxhnil = %i", &mxhnil);
-    ret += sscanf(line,"mxsteps = %i", &mxsteps);
-    ret += sscanf(line,"cflfac = %lf", &cflfac);
-    ret += sscanf(line,"safety = %lf", &safety);
-    ret += sscanf(line,"bias = %lf", &bias);
-    ret += sscanf(line,"growth = %lf", &growth);
-    ret += sscanf(line,"hfixed_lb = %lf", &hfixed_lb);
-    ret += sscanf(line,"hfixed_ub = %lf", &hfixed_ub);
-    ret += sscanf(line,"pq = %i", &pq);
-    ret += sscanf(line,"k1 = %lf", &k1);
-    ret += sscanf(line,"k2 = %lf", &k2);
-    ret += sscanf(line,"k3 = %lf", &k3);
-    ret += sscanf(line,"etamx1 = %lf", &etamx1);
-    ret += sscanf(line,"etamxf = %lf", &etamxf);
-    ret += sscanf(line,"small_nef = %i", &small_nef);
-    ret += sscanf(line,"h0 = %lf", &h0);
-    ret += sscanf(line,"hmin = %lf", &hmin);
-    ret += sscanf(line,"hmax = %lf", &hmax);
-    ret += sscanf(line,"rtol = %lf", &rtol);
-    ret += sscanf(line,"atol = %lf", &atol);
-
-  }
-  fclose(fptr);
-
-
-  /*** check for allowable inputs ***/
-
-  /* check that y0 is not NULL */
-  if (y0 == NULL) {
-    fprintf(stderr, "erkstep_init_from_file error: cannot initialize problem with y0 == NULL!\n");
-    return NULL;
-  }
-
-  /* ensure that RHS function is supplied */
-  if (f == NULL) {
-    fprintf(stderr, "erkstep_init_from_file error: f is NULL!\n");
-    return NULL;
-  }
-
-
-  /*** set outputs to be used by problem ***/
-  *dorder = dense_order;
-  *RTol = rtol;
-  *ATol = atol;
-
-
-  /*** Call ARKode routines to initialize integrator and set options ***/
-
-  /* initialize the integrator memory  */
-  ark_mem = ERKStepCreate(f, T0, y0);
-  if (ark_mem == NULL) {
-    fprintf(stderr, "arkstep_init_from_file error in ERKStepCreate\n");
-    return NULL;
-  }
-
-  /* set RK order, or specify individual Butcher table -- "order" overrides "btable" */
-  if (order != 0) {     /*  */
-    ret = ERKStepSetOrder(ark_mem, order);
-    if (ret != 0) {
-      fprintf(stderr,"erkstep_init_from_file error in ERKStepSetOrder = %i\n",ret);
-      return NULL;
-    }
-  } else if (btable != -1) {
-    ret = ERKStepSetTableNum(ark_mem, btable);
-    if (ret != 0) {
-      fprintf(stderr,"erkstep_init_from_file error in ERKStepSetTableNum = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set dense output order */
-  ret = ERKStepSetDenseOrder(ark_mem, dense_order);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetDenseOrder = %i\n",ret);
-    return NULL;
-  }
-
-  /* set cfl stability fraction */
-  ret = ERKStepSetCFLFraction(ark_mem, cflfac);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetCFLFraction = %i\n",ret);
-    return NULL;
-  }
-
-  /* set safety factor */
-  ret = ERKStepSetSafetyFactor(ark_mem, safety);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetSafetyFactor = %i\n",ret);
-    return NULL;
-  }
-
-  /* set error bias */
-  ret = ERKStepSetErrorBias(ark_mem, bias);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetErrorBias = %i\n",ret);
-    return NULL;
-  }
-
-  /* set step growth factor */
-  ret = ERKStepSetMaxGrowth(ark_mem, growth);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxGrowth = %i\n",ret);
-    return NULL;
-  }
-
-  /* set fixed step size bounds */
-  ret = ERKStepSetFixedStepBounds(ark_mem, hfixed_lb, hfixed_ub);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetFixedStepBounds = %i\n",ret);
-    return NULL;
-  }
-
-  /* set time step adaptivity method */
-  realtype adapt_params[] = {k1, k2, k3};
-  int idefault = 1;
-  if (fabs(k1)+fabs(k2)+fabs(k3) > 0.0)  idefault=0;
-  ret = ERKStepSetAdaptivityMethod(ark_mem, adapt_method, idefault, pq, adapt_params);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetAdaptivityMethod = %i\n",ret);
-    return NULL;
-  }
-
-  /* set first step growth factor */
-  ret = ERKStepSetMaxFirstGrowth(ark_mem, etamx1);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxFirstGrowth = %i\n",ret);
-    return NULL;
-  }
-
-  /* set error failure growth factor */
-  ret = ERKStepSetMaxEFailGrowth(ark_mem, etamxf);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxEFailGrowth = %i\n",ret);
-    return NULL;
-  }
-
-  /* set number of fails before using above threshold */
-  ret = ERKStepSetSmallNumEFails(ark_mem, small_nef);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetSmallNumEFails = %i\n",ret);
-    return NULL;
-  }
-
-  /* set initial time step size */
-  ret = ERKStepSetInitStep(ark_mem, h0);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetInitStep = %i\n",ret);
-    return NULL;
-  }
-
-  /* set minimum time step size */
-  ret = ERKStepSetMinStep(ark_mem, hmin);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMinStep = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum time step size */
-  ret = ERKStepSetMaxStep(ark_mem, hmax);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxStep = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum allowed error test failures */
-  ret = ERKStepSetMaxErrTestFails(ark_mem, maxnef);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxErrTestFails = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum allowed hnil warnings */
-  ret = ERKStepSetMaxHnilWarns(ark_mem, mxhnil);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxHnilWarns = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum allowed steps */
-  ret = ERKStepSetMaxNumSteps(ark_mem, mxsteps);
-  if (ret != 0) {
-    fprintf(stderr,"erkstep_init_from_file error in ERKStepSetMaxNumSteps = %i\n",ret);
     return NULL;
   }
 
