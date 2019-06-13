@@ -22,7 +22,7 @@ Steps showing the process to download this demo code, install the
 relevant dependencies, and build the demo in a Linux or OS X
 environment are as follows:
 
-    $ git clone git@bitbucket.org:drreynolds/sundials-manyvector-demo.git
+    $ git clone https://github.com/drreynolds/sundials-manyvector-demo.git
     $ cd sundials-manyvector-demo
     $ .spack/bin/spack install sundials +suite-sparse +mpi
     $ .spack/bin/spack view symlink libs sundials
