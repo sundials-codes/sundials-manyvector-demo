@@ -12,12 +12,9 @@
 #LIBTYPE = DBG
 LIBTYPE = OPT
 
-# flag to decide between INTEL and GNU compilers
-COMPILER = gnu
-
 # flag to enable/disable OpenMP (1=enable, 0=disable)
-USEOMP = 1
-OMPFLAGS = 
+USEOMP = 0
+OMPFLAGS =
 
 # compilation flags, compiler/optimization string
 ifeq ($(LIBTYPE),OPT)
@@ -44,13 +41,14 @@ ifeq ($(HOST),longclaw)
   endif
   KLUDIR = /usr/local/suitesparse-5.2.0
   KLULIBS = -L$(INSTDIR)/lib/ -lsundials_sunlinsolklu \
-           -L$(KLUDIR)/$(COMPDIR)/lib -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig \
+           -L$(KLUDIR)/gnu/lib -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig \
            -lm
-  KLUINCS = -I$(KLUDIR)/$(COMPDIR)/include/ -Wl,--as-needed
+  KLUINCS = -I$(KLUDIR)/gnu/include/ -Wl,--as-needed
   CXX = /usr/local/mpich-3.2.1/gnu/bin/mpicxx --std=c++11
   ifeq ($(USEOMP),1)
     OMPFLAGS = -fopenmp
   endif
+  LDFLAGS = -Wl,-rpath=${INSTDIR}/lib
 
 #    cauchy
 else ifeq ($(HOST),cauchy)
@@ -65,7 +63,10 @@ else ifeq ($(HOST),cauchy)
            -lm
   KLUINCS = -I$(KLUDIR)/include/ -Wl,--as-needed
   CXX = /usr/local/mpich-3.2.1/gnu/bin/mpicxx --std=c++11
-  OMPFLAGS = -fopenmp
+  ifeq ($(USEOMP),1)
+    OMPFLAGS = -fopenmp
+  endif
+  LDFLAGS = -Wl,-rpath=${INSTDIR}/lib
 
 #    descartes
 else ifeq ($(HOST),descartes.local)
@@ -76,11 +77,14 @@ else ifeq ($(HOST),descartes.local)
   endif
   KLUDIR = /usr/local/suite-sparse-5.3.0
   KLULIBS = -L$(INSTDIR)/lib/ -lsundials_sunlinsolklu \
-           -L$(KLUDIR)/$(COMPILER)/lib -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig \
+           -L$(KLUDIR)/clang/lib -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig \
            -lm
-  KLUINCS = -I$(KLUDIR)/$(COMPILER)/include/
-  CXX = /usr/local/mpich-3.3/gnu/bin/mpicxx --std=c++11
-  OMPFLAGS = -fopenmp
+  KLUINCS = -I$(KLUDIR)/clang/include/
+  CXX = /usr/local/mpich-3.3/clang/bin/mpicxx --std=c++11
+  ifeq ($(USEOMP),1)
+    OMPFLAGS = -Xpreprocessor -fopenmp -lomp
+  endif
+  LDFLAGS = -rpath ${INSTDIR}/lib
 
 #    default
 else
@@ -91,11 +95,15 @@ else
   endif
   KLUDIR = /usr/local/suitesparse-4.5.3
   KLULIBS = -L$(INSTDIR)/lib/ -lsundials_sunlinsolklu \
-           -L$(KLUDIR)/$(COMPDIR)/lib -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig \
+           -L$(KLUDIR)/gnu/lib -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig \
            -lm
-  KLUINCS = -I$(KLUDIR)/$(COMPDIR)/include/ -Wl,--as-needed
+  KLUINCS = -I$(KLUDIR)/gnu/include/ -Wl,--as-needed
   CXX = /usr/bin/mpicxx --std=c++11
-  OMPFLAGS = -fopenmp
+  ifeq ($(USEOMP),1)
+    OMPFLAGS = -fopenmp
+  endif
+  LDFLAGS = -Wl,-rpath=${INSTDIR}/lib
+
 endif
 
 
@@ -107,7 +115,6 @@ LIBS = -L$(INSTDIR)/lib \
        -lsundials_nvecparallel \
        -lsundials_nvecserial \
        ${KLULIBS} -lm
-LDFLAGS = -Wl,-rpath=${INSTDIR}/lib
 
 
 # listing of all test routines

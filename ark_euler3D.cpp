@@ -7,16 +7,16 @@
  ----------------------------------------------------------------
  Example problem:
 
- The following test simulates a 3D nonlinear inviscid 
+ The following test simulates a 3D nonlinear inviscid
  compressible Euler equation,
     w_t = - Div(F(w)) + G,
- for t in [t0, tf], X = (x,y,z) in [xl,xr] x [yl,yr] x [zl,zr], 
+ for t in [t0, tf], X = (x,y,z) in [xl,xr] x [yl,yr] x [zl,zr],
  with initial condition
     w(t0,X) = w0(X).
  Here, the state w = [rho, rho*ux, rho*uy, rho*uz, E]^T
-                   = [rho, mx, my, mz, E]^T, 
- corresponding to the density, x,y,z-momentum, and the total 
- energy per unit volume.  The fluxes are given by 
+                   = [rho, mx, my, mz, E]^T,
+ corresponding to the density, x,y,z-momentum, and the total
+ energy per unit volume.  The fluxes are given by
     Fx(w) = [rho*ux, rho*ux^2+p, rho*ux*uy, rho*ux*uz, ux*(E+p)]^T
     Fy(w) = [rho*uy, rho*ux*uy, rho*uy^2+p, rho*uy*uz, uy*(E+p)]^T
     Fz(w) = [rho*uz, rho*ux*uz, rho*uy*uz, rho*uz^2+p, uz*(E+p)]^T
@@ -36,17 +36,17 @@
  The speed of sound in the gas is then given by
     c = sqrt(gamma*p/rho).
 
- The fluid variables above are non-dimensionalized; in standard SI 
+ The fluid variables above are non-dimensionalized; in standard SI
  units these would be:
     [rho] = kg / m^3
     [ux] = [uy] = [uz] = m/s  =>  [rho*ux] = kg / m^2 / s
     [E] = kg / m / s^2
- 
- Note: the above follows the description in section 7.3.1-7.3.3 of 
+
+ Note: the above follows the description in section 7.3.1-7.3.3 of
    https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
- 
- This program solves the problem using an ERK method.  100 outputs 
- are printed at equal intervals, and run statistics are printed 
+
+ This program solves the problem using an ERK method.  100 outputs
+ are printed at equal intervals, and run statistics are printed
  at the end.
 ---------------------------------------------------------------*/
 
@@ -128,7 +128,7 @@ public:
   int      zlbc;
   int      zrbc;
   realtype gamma;       // ratio of specific heat capacities, cp/cv
-  
+
   ///// MPI-specific data /////
   MPI_Comm comm;        // communicator object
   int myid;             // MPI process ID
@@ -198,8 +198,8 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 
 // Private functions
 //    Load inputs from file
-int load_inputs(int myid, double& xl, double& xr, double& yl, 
-                double& yr, double& zl, double& zr, double& t0, 
+int load_inputs(int myid, double& xl, double& xr, double& yl,
+                double& yr, double& zl, double& zr, double& t0,
                 double& tf, double& gamma, long int& nx, long int& ny,
                 long int& nz, long int& xlbc, long int& xrbc,
                 long int& ylbc, long int& yrbc, long int& zlbc,
@@ -276,14 +276,14 @@ int main(int argc, char* argv[]) {
 
   // start run timer
   double tstart = MPI_Wtime();
-  
+
   /* read problem parameters from input file */
   double xl, xr, yl, yr, zl, zr, t0, tf, gamma;
   long int nx, ny, nz, xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, showstats;
   retval = load_inputs(myid, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, nz,
                        xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, showstats);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-  
+
   // allocate and fill udata structure (overwriting betax for this test)
   UserData udata(nx,ny,nz,xl,xr,yl,yr,zl,zr,xlbc,xrbc,ylbc,yrbc,zlbc,zrbc,gamma);
   retval = udata.SetupDecomp();
@@ -377,7 +377,7 @@ int main(int argc, char* argv[]) {
   // compute setup time
   double tsetup = MPI_Wtime() - tstart;
   tstart = MPI_Wtime();
-  
+
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
   realtype t = t0;
@@ -406,7 +406,7 @@ int main(int argc, char* argv[]) {
       retval = print_stats(t, w, 1, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     }
-    
+
     // output results to disk
     retval = output_solution(w, 0, udata);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -419,7 +419,7 @@ int main(int argc, char* argv[]) {
 
   // compute simulation time
   double tsimul = MPI_Wtime() - tstart;
-  
+
   // Print some final statistics
   long int nst, nst_a, nfe, nfi, netf;
   nst = nst_a = nfe = nfi = netf = 0;
@@ -458,7 +458,7 @@ int main(int argc, char* argv[]) {
 static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
   // access problem data
-  UserData *udata = (UserData *) user_data;      
+  UserData *udata = (UserData *) user_data;
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
@@ -494,7 +494,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   long int nxl = udata->nxl;
   long int nyl = udata->nyl;
   long int nzl = udata->nzl;
-  
+
   // iterate over subdomain interior, computing approximation to RHS
   realtype w1d[7][5], dw[5];
   long int v, i, j, k;
@@ -543,7 +543,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
         Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
-        
+
       }
 
   // wait for boundary data to arrive from neighbors
@@ -601,7 +601,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
         Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
-        
+
       }
 
 
@@ -682,7 +682,7 @@ int UserData::SetupDecomp()
   // local variables
   int retval, periods[3], coords[3], nbcoords[3];
   int dims[] = {0, 0, 0};
-  
+
   // check that this has not been called before
   if (Erecv != NULL || Wrecv != NULL || Srecv != NULL ||
       Nrecv != NULL || Brecv != NULL || Frecv != NULL) {
@@ -821,14 +821,14 @@ int UserData::ExchangeStart(N_Vector w)
 
   // initialize all requests in array
   for (i=0; i<12; i++)  req[i] = MPI_REQUEST_NULL;
-  
+
   // open an Irecv buffer for each neighbor
   if (ipW != MPI_PROC_NULL) {
     retval = MPI_Irecv(Wrecv, 5*3*nyl*nzl, MPI_SUNREALTYPE, ipW,
                        MPI_ANY_TAG, comm, req);
     if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipE != MPI_PROC_NULL) {
     retval = MPI_Irecv(Erecv, 5*3*nyl*nzl, MPI_SUNREALTYPE, ipE,
                        MPI_ANY_TAG, comm, req+1);
@@ -840,7 +840,7 @@ int UserData::ExchangeStart(N_Vector w)
                        MPI_ANY_TAG, comm, req+2);
   if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipN != MPI_PROC_NULL) {
     retval = MPI_Irecv(Nrecv, 5*nxl*3*nzl, MPI_SUNREALTYPE, ipN,
                        MPI_ANY_TAG, comm, req+3);
@@ -852,13 +852,13 @@ int UserData::ExchangeStart(N_Vector w)
                        MPI_ANY_TAG, comm, req+4);
   if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipF != MPI_PROC_NULL) {
     retval = MPI_Irecv(Frecv, 5*nxl*nyl*3, MPI_SUNREALTYPE, ipF,
                        MPI_ANY_TAG, comm, req+5);
     if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   // send data to neighbors
   if (ipW != MPI_PROC_NULL) {
     for (k=0; k<nzl; k++)
@@ -874,10 +874,10 @@ int UserData::ExchangeStart(N_Vector w)
                        comm, req+6);
     if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipE != MPI_PROC_NULL) {
-    for (k=0; k<nzl; k++) 
-      for (j=0; j<nyl; j++) 
+    for (k=0; k<nzl; k++)
+      for (j=0; j<nyl; j++)
         for (i=0; i<3; i++) {
           Esend[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(nxl-3+i,j,k,nxl,nyl)];
           Esend[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[IDX(nxl-3+i,j,k,nxl,nyl)];
@@ -889,7 +889,7 @@ int UserData::ExchangeStart(N_Vector w)
                        comm, req+7);
     if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipS != MPI_PROC_NULL) {
     for (k=0; k<nzl; k++)
       for (j=0; j<3; j++)
@@ -904,10 +904,10 @@ int UserData::ExchangeStart(N_Vector w)
                        comm, req+8);
     if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipN != MPI_PROC_NULL) {
     for (k=0; k<nzl; k++)
-      for (j=0; j<3; j++) 
+      for (j=0; j<3; j++)
         for (i=0; i<nxl; i++) {
           Nsend[BUFIDX(0,i,j,k,nxl,3,nzl)] = rho[IDX(i,nyl-3+j,k,nxl,nyl)];
           Nsend[BUFIDX(1,i,j,k,nxl,3,nzl)] = mx[IDX(i,nyl-3+j,k,nxl,nyl)];
@@ -919,7 +919,7 @@ int UserData::ExchangeStart(N_Vector w)
                        comm, req+9);
     if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipB != MPI_PROC_NULL) {
     for (k=0; k<3; k++)
       for (j=0; j<nyl; j++)
@@ -934,10 +934,10 @@ int UserData::ExchangeStart(N_Vector w)
                        comm, req+10);
     if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
   }
-  
+
   if (ipF != MPI_PROC_NULL) {
     for (k=0; k<3; k++)
-      for (j=0; j<nyl; j++) 
+      for (j=0; j<nyl; j++)
         for (i=0; i<nxl; i++) {
           Fsend[BUFIDX(0,i,j,k,nxl,nyl,3)] = rho[IDX(i,j,nzl-3+k,nxl,nyl)];
           Fsend[BUFIDX(1,i,j,k,nxl,nyl,3)] = mx[IDX(i,j,nzl-3+k,nxl,nyl)];
@@ -954,7 +954,7 @@ int UserData::ExchangeStart(N_Vector w)
   // to satisfy homogeneous Neumann boundary conditions
 
   //     West face
-  if (ipW == MPI_PROC_NULL)
+  if (ipW == MPI_PROC_NULL) {
     if (xlbc == 1) {  // homogeneous Neumann
       for (k=0; k<nzl; k++)
         for (j=0; j<nyl; j++)
@@ -976,9 +976,10 @@ int UserData::ExchangeStart(N_Vector w)
             Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -E[IDX(2-i,j,k,nxl,nyl)];
           }
     }
+  }
 
   //     East face
-  if (ipE == MPI_PROC_NULL)
+  if (ipE == MPI_PROC_NULL) {
     if (xrbc == 1) {  // homogeneous Neumann
       for (k=0; k<nzl; k++)
         for (j=0; j<nyl; j++)
@@ -1000,9 +1001,10 @@ int UserData::ExchangeStart(N_Vector w)
             Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -E[IDX(nxl-3+i,j,k,nxl,nyl)];
           }
     }
-  
+  }
+
   //     South face
-  if (ipS == MPI_PROC_NULL)
+  if (ipS == MPI_PROC_NULL) {
     if (ylbc == 1) {  // homogeneous Neumann
       for (k=0; k<nzl; k++)
         for (j=0; j<3; j++)
@@ -1024,9 +1026,10 @@ int UserData::ExchangeStart(N_Vector w)
             Srecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = -E[IDX(i,2-j,k,nxl,nyl)];
           }
     }
-  
+  }
+
   //     North face
-  if (ipN == MPI_PROC_NULL)
+  if (ipN == MPI_PROC_NULL) {
     if (yrbc == 1) {  // homogeneous Neumann
       for (k=0; k<nzl; k++)
         for (j=0; j<3; j++)
@@ -1048,10 +1051,10 @@ int UserData::ExchangeStart(N_Vector w)
             Nrecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = -E[IDX(i,nyl-3+j,k,nxl,nyl)];
           }
     }
-  
-  
+  }
+
   //     Back face
-  if (ipB == MPI_PROC_NULL)
+  if (ipB == MPI_PROC_NULL) {
     if (zlbc == 1) {  // homogeneous Neumann
       for (k=0; k<3; k++)
         for (j=0; j<nyl; j++)
@@ -1073,9 +1076,10 @@ int UserData::ExchangeStart(N_Vector w)
             Brecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = -E[IDX(i,j,2-k,nxl,nyl)];
           }
     }
-  
+  }
+
   //     Front face
-  if (ipF == MPI_PROC_NULL)
+  if (ipF == MPI_PROC_NULL) {
     if (zrbc == 1) {  // homogeneous Neumann
       for (k=0; k<3; k++)
         for (j=0; j<nyl; j++)
@@ -1097,7 +1101,8 @@ int UserData::ExchangeStart(N_Vector w)
             Frecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = -E[IDX(i,j,nzl-3+k,nxl,nyl)];
           }
     }
-  
+  }
+
   return 0;     // return with success flag
 }
 
@@ -1139,13 +1144,13 @@ inline int legal_state(realtype& rho, realtype& mx, realtype& my,
   pfail = (eos(rho, mx, my, mz, E, udata) > ZERO) ? 0 : 4;
   return(dfail+efail+pfail);
 }
-  
+
 // Load inputs from file: root process reads parameters and broadcasts results to remaining processes
 int load_inputs(int myid, double& xl, double& xr, double& yl,
                 double& yr, double& zl, double& zr, double& t0,
                 double& tf, double& gamma, long int& nx,
-                long int& ny, long int& nz, long int& xlbc, 
-                long int& xrbc, long int& ylbc, long int& yrbc, 
+                long int& ny, long int& nz, long int& xlbc,
+                long int& xrbc, long int& ylbc, long int& yrbc,
                 long int& zlbc, long int& zrbc, long int& showstats)
 {
   int retval;
@@ -1322,7 +1327,7 @@ void prepare_cell(realtype* w, realtype* fs, realtype* ws,
 {
   // local variables
   realtype f[5], vr[5], lc[5][5], rc[5][5], lambda[5];
-  
+
 }
 
 // Utility routine to print solution statistics
@@ -1382,7 +1387,7 @@ int output_solution(N_Vector w, int newappend, UserData& udata)
   realtype *W;
   long int i;
   long int N = udata.nzl * udata.nyl * udata.nxl;
-  
+
   // Set string for output type
   if (newappend == 1) {
     sprintf(outtype, "w");
@@ -1530,7 +1535,7 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
 {
   // local data
   int i, j;
-  realtype fs[5], ws[5], alpha[5], fps[7][5], fms[7][5], eta, 
+  realtype fs[5], ws[5], alpha[5], fps[7][5], fms[7][5], eta,
     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11,
     b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11,
     a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11;
@@ -1545,7 +1550,7 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
   const realtype epsilon = 1e-6;
 
   // convert state to direction-independent version
-  if (idir > 0) 
+  if (idir > 0)
     for (i=0; i<7; i++) swap(w1d[i][1], w1d[i][1+idir]);
 
   // compute relevant items over patch
@@ -1553,7 +1558,7 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
 
     // compute projected flux stencils and maximum wave speeds at nodes
     prepare_cell(w1d[i], fs, ws, alpha, udata);
- 
+
     // compute fms as left-shifted flux over patch,
     //         fps as right-shifted flux over patch
     for (j=0; j<5; j++) {
@@ -1562,7 +1567,7 @@ void div_flux(realtype (&w1d)[7][5], int idir, realtype& dx, realtype* dw, UserD
     }
 
   }
-  
+
   // perform WENO flux calculation based on shifted fluxes
   for (j=0; j<5; j++) {
     p0  = (      -fms[2][j] +  FIVE*fms[3][j] +    TWO*fms[4][j])*sixth;
