@@ -5,7 +5,7 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Header file for shared main routine, utility routines and 
+ Header file for shared main routine, utility routines and
  UserData class.
 ---------------------------------------------------------------*/
 
@@ -117,9 +117,9 @@ public:
            realtype xr_, realtype yl_, realtype yr_,
            realtype zl_, realtype zr_, int xlbc_, int xrbc_,
            int ylbc_, int yrbc_, int zlbc_, int zrbc_, realtype gamma_) :
-      nx(nx_), ny(ny_), nz(nz_), xl(xl_), xr(xr_), yl(yl_), yr(yr_), zl(zl_), 
-      zr(zr_), xlbc(xlbc_), xrbc(xrbc_), ylbc(ylbc_), yrbc(yrbc_), zlbc(zlbc_), 
-      zrbc(zrbc_), is(0), ie(0), js(0), je(0), ks(0), ke(0), nxl(0), nyl(0),  
+      nx(nx_), ny(ny_), nz(nz_), xl(xl_), xr(xr_), yl(yl_), yr(yr_), zl(zl_),
+      zr(zr_), xlbc(xlbc_), xrbc(xrbc_), ylbc(ylbc_), yrbc(yrbc_), zlbc(zlbc_),
+      zrbc(zrbc_), is(0), ie(0), js(0), je(0), ks(0), ke(0), nxl(0), nyl(0),
       nzl(0), comm(MPI_COMM_WORLD), myid(0), nprocs(0), npx(0), npy(0), npz(0),
       Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
       Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
@@ -202,7 +202,7 @@ public:
     npx = dims[0];
     npy = dims[1];
     npz = dims[2];
-  
+
     // for all faces where neighbors exist: determine neighbor process indices;
     // for all faces: allocate exchange buffers (external boundaries fill with ghost values)
     Wrecv = new realtype[5*3*nyl*nzl];
@@ -289,8 +289,8 @@ public:
     if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
     realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
     if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
-    realtype *E = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-    if (check_flag((void *) E, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+    realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+    if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
 
     // initialize all requests in array
     for (i=0; i<12; i++)  req[i] = MPI_REQUEST_NULL;
@@ -341,7 +341,7 @@ public:
             Wsend[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[IDX(i,j,k,nxl,nyl)];
             Wsend[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[IDX(i,j,k,nxl,nyl)];
             Wsend[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[IDX(i,j,k,nxl,nyl)];
-            Wsend[BUFIDX(4,i,j,k,3,nyl,nzl)] = E[IDX(i,j,k,nxl,nyl)];
+            Wsend[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[IDX(i,j,k,nxl,nyl)];
           }
       retval = MPI_Isend(Wsend, 5*3*nyl*nzl, MPI_SUNREALTYPE, ipW, 0,
                          comm, req+6);
@@ -356,7 +356,7 @@ public:
             Esend[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[IDX(nxl-3+i,j,k,nxl,nyl)];
             Esend[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[IDX(nxl-3+i,j,k,nxl,nyl)];
             Esend[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[IDX(nxl-3+i,j,k,nxl,nyl)];
-            Esend[BUFIDX(4,i,j,k,3,nyl,nzl)] = E[IDX(nxl-3+i,j,k,nxl,nyl)];
+            Esend[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[IDX(nxl-3+i,j,k,nxl,nyl)];
           }
       retval = MPI_Isend(Esend, 5*3*nyl*nzl, MPI_SUNREALTYPE, ipE, 1,
                          comm, req+7);
@@ -371,7 +371,7 @@ public:
             Ssend[BUFIDX(1,i,j,k,nxl,3,nzl)] = mx[IDX(i,j,k,nxl,nyl)];
             Ssend[BUFIDX(2,i,j,k,nxl,3,nzl)] = my[IDX(i,j,k,nxl,nyl)];
             Ssend[BUFIDX(3,i,j,k,nxl,3,nzl)] = mz[IDX(i,j,k,nxl,nyl)];
-            Ssend[BUFIDX(4,i,j,k,nxl,3,nzl)] = E[IDX(i,j,k,nxl,nyl)];
+            Ssend[BUFIDX(4,i,j,k,nxl,3,nzl)] = et[IDX(i,j,k,nxl,nyl)];
           }
       retval = MPI_Isend(Ssend, 5*nxl*3*nzl, MPI_SUNREALTYPE, ipS, 2,
                          comm, req+8);
@@ -386,7 +386,7 @@ public:
             Nsend[BUFIDX(1,i,j,k,nxl,3,nzl)] = mx[IDX(i,nyl-3+j,k,nxl,nyl)];
             Nsend[BUFIDX(2,i,j,k,nxl,3,nzl)] = my[IDX(i,nyl-3+j,k,nxl,nyl)];
             Nsend[BUFIDX(3,i,j,k,nxl,3,nzl)] = mz[IDX(i,nyl-3+j,k,nxl,nyl)];
-            Nsend[BUFIDX(4,i,j,k,nxl,3,nzl)] = E[IDX(i,nyl-3+j,k,nxl,nyl)];
+            Nsend[BUFIDX(4,i,j,k,nxl,3,nzl)] = et[IDX(i,nyl-3+j,k,nxl,nyl)];
           }
       retval = MPI_Isend(Nsend, 5*nxl*3*nzl, MPI_SUNREALTYPE, ipN, 3,
                          comm, req+9);
@@ -401,7 +401,7 @@ public:
             Bsend[BUFIDX(1,i,j,k,nxl,nyl,3)] = mx[IDX(i,j,k,nxl,nyl)];
             Bsend[BUFIDX(2,i,j,k,nxl,nyl,3)] = my[IDX(i,j,k,nxl,nyl)];
             Bsend[BUFIDX(3,i,j,k,nxl,nyl,3)] = mz[IDX(i,j,k,nxl,nyl)];
-            Bsend[BUFIDX(4,i,j,k,nxl,nyl,3)] = E[IDX(i,j,k,nxl,nyl)];
+            Bsend[BUFIDX(4,i,j,k,nxl,nyl,3)] = et[IDX(i,j,k,nxl,nyl)];
           }
       retval = MPI_Isend(Bsend, 5*nxl*nyl*3, MPI_SUNREALTYPE, ipB, 4,
                          comm, req+10);
@@ -416,7 +416,7 @@ public:
             Fsend[BUFIDX(1,i,j,k,nxl,nyl,3)] = mx[IDX(i,j,nzl-3+k,nxl,nyl)];
             Fsend[BUFIDX(2,i,j,k,nxl,nyl,3)] = my[IDX(i,j,nzl-3+k,nxl,nyl)];
             Fsend[BUFIDX(3,i,j,k,nxl,nyl,3)] = mz[IDX(i,j,nzl-3+k,nxl,nyl)];
-            Fsend[BUFIDX(4,i,j,k,nxl,nyl,3)] = E[IDX(i,j,nzl-3+k,nxl,nyl)];
+            Fsend[BUFIDX(4,i,j,k,nxl,nyl,3)] = et[IDX(i,j,nzl-3+k,nxl,nyl)];
           }
       retval = MPI_Isend(Fsend, 5*nxl*nyl*3, MPI_SUNREALTYPE, ipF, 5,
                          comm, req+11);
@@ -436,7 +436,7 @@ public:
               Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[IDX(2-i,j,k,nxl,nyl)];
               Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[IDX(2-i,j,k,nxl,nyl)];
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[IDX(2-i,j,k,nxl,nyl)];
-              Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = E[IDX(2-i,j,k,nxl,nyl)];
+              Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[IDX(2-i,j,k,nxl,nyl)];
             }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -446,7 +446,7 @@ public:
               Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[IDX(2-i,j,k,nxl,nyl)];
               Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = -my[IDX(2-i,j,k,nxl,nyl)];
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = -mz[IDX(2-i,j,k,nxl,nyl)];
-              Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -E[IDX(2-i,j,k,nxl,nyl)];
+              Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -et[IDX(2-i,j,k,nxl,nyl)];
             }
       }
     }
@@ -461,7 +461,7 @@ public:
               Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[IDX(nxl-3+i,j,k,nxl,nyl)];
               Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[IDX(nxl-3+i,j,k,nxl,nyl)];
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[IDX(nxl-3+i,j,k,nxl,nyl)];
-              Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = E[IDX(nxl-3+i,j,k,nxl,nyl)];
+              Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[IDX(nxl-3+i,j,k,nxl,nyl)];
             }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -471,7 +471,7 @@ public:
               Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[IDX(nxl-3+i,j,k,nxl,nyl)];
               Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = -my[IDX(nxl-3+i,j,k,nxl,nyl)];
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = -mz[IDX(nxl-3+i,j,k,nxl,nyl)];
-              Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -E[IDX(nxl-3+i,j,k,nxl,nyl)];
+              Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -et[IDX(nxl-3+i,j,k,nxl,nyl)];
             }
       }
     }
@@ -486,7 +486,7 @@ public:
               Srecv[BUFIDX(1,i,j,k,nxl,3,nzl)] = mx[IDX(i,2-j,k,nxl,nyl)];
               Srecv[BUFIDX(2,i,j,k,nxl,3,nzl)] = my[IDX(i,2-j,k,nxl,nyl)];
               Srecv[BUFIDX(3,i,j,k,nxl,3,nzl)] = mz[IDX(i,2-j,k,nxl,nyl)];
-              Srecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = E[IDX(i,2-j,k,nxl,nyl)];
+              Srecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = et[IDX(i,2-j,k,nxl,nyl)];
             }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -496,7 +496,7 @@ public:
               Srecv[BUFIDX(1,i,j,k,nxl,3,nzl)] = -mx[IDX(i,2-j,k,nxl,nyl)];
               Srecv[BUFIDX(2,i,j,k,nxl,3,nzl)] = -my[IDX(i,2-j,k,nxl,nyl)];
               Srecv[BUFIDX(3,i,j,k,nxl,3,nzl)] = -mz[IDX(i,2-j,k,nxl,nyl)];
-              Srecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = -E[IDX(i,2-j,k,nxl,nyl)];
+              Srecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = -et[IDX(i,2-j,k,nxl,nyl)];
             }
       }
     }
@@ -511,7 +511,7 @@ public:
               Nrecv[BUFIDX(1,i,j,k,nxl,3,nzl)] = mx[IDX(i,nyl-3+j,k,nxl,nyl)];
               Nrecv[BUFIDX(2,i,j,k,nxl,3,nzl)] = my[IDX(i,nyl-3+j,k,nxl,nyl)];
               Nrecv[BUFIDX(3,i,j,k,nxl,3,nzl)] = mz[IDX(i,nyl-3+j,k,nxl,nyl)];
-              Nrecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = E[IDX(i,nyl-3+j,k,nxl,nyl)];
+              Nrecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = et[IDX(i,nyl-3+j,k,nxl,nyl)];
             }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -521,7 +521,7 @@ public:
               Nrecv[BUFIDX(1,i,j,k,nxl,3,nzl)] = -mx[IDX(i,nyl-3+j,k,nxl,nyl)];
               Nrecv[BUFIDX(2,i,j,k,nxl,3,nzl)] = -my[IDX(i,nyl-3+j,k,nxl,nyl)];
               Nrecv[BUFIDX(3,i,j,k,nxl,3,nzl)] = -mz[IDX(i,nyl-3+j,k,nxl,nyl)];
-              Nrecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = -E[IDX(i,nyl-3+j,k,nxl,nyl)];
+              Nrecv[BUFIDX(4,i,j,k,nxl,3,nzl)] = -et[IDX(i,nyl-3+j,k,nxl,nyl)];
             }
       }
     }
@@ -536,7 +536,7 @@ public:
               Brecv[BUFIDX(1,i,j,k,nxl,nyl,3)] = mx[IDX(i,j,2-k,nxl,nyl)];
               Brecv[BUFIDX(2,i,j,k,nxl,nyl,3)] = my[IDX(i,j,2-k,nxl,nyl)];
               Brecv[BUFIDX(3,i,j,k,nxl,nyl,3)] = mz[IDX(i,j,2-k,nxl,nyl)];
-              Brecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = E[IDX(i,j,2-k,nxl,nyl)];
+              Brecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = et[IDX(i,j,2-k,nxl,nyl)];
             }
       } else {          // homogeneous Dirichlet
         for (k=0; k<3; k++)
@@ -546,7 +546,7 @@ public:
               Brecv[BUFIDX(1,i,j,k,nxl,nyl,3)] = -mx[IDX(i,j,2-k,nxl,nyl)];
               Brecv[BUFIDX(2,i,j,k,nxl,nyl,3)] = -my[IDX(i,j,2-k,nxl,nyl)];
               Brecv[BUFIDX(3,i,j,k,nxl,nyl,3)] = -mz[IDX(i,j,2-k,nxl,nyl)];
-              Brecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = -E[IDX(i,j,2-k,nxl,nyl)];
+              Brecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = -et[IDX(i,j,2-k,nxl,nyl)];
             }
       }
     }
@@ -561,7 +561,7 @@ public:
               Frecv[BUFIDX(1,i,j,k,nxl,nyl,3)] = mx[IDX(i,j,nzl-3+k,nxl,nyl)];
               Frecv[BUFIDX(2,i,j,k,nxl,nyl,3)] = my[IDX(i,j,nzl-3+k,nxl,nyl)];
               Frecv[BUFIDX(3,i,j,k,nxl,nyl,3)] = mz[IDX(i,j,nzl-3+k,nxl,nyl)];
-              Frecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = E[IDX(i,j,nzl-3+k,nxl,nyl)];
+              Frecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = et[IDX(i,j,nzl-3+k,nxl,nyl)];
             }
       } else {          // homogeneous Dirichlet
         for (k=0; k<3; k++)
@@ -571,14 +571,14 @@ public:
               Frecv[BUFIDX(1,i,j,k,nxl,nyl,3)] = -mx[IDX(i,j,nzl-3+k,nxl,nyl)];
               Frecv[BUFIDX(2,i,j,k,nxl,nyl,3)] = -my[IDX(i,j,nzl-3+k,nxl,nyl)];
               Frecv[BUFIDX(3,i,j,k,nxl,nyl,3)] = -mz[IDX(i,j,nzl-3+k,nxl,nyl)];
-              Frecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = -E[IDX(i,j,nzl-3+k,nxl,nyl)];
+              Frecv[BUFIDX(4,i,j,k,nxl,nyl,3)] = -et[IDX(i,j,nzl-3+k,nxl,nyl)];
             }
       }
     }
 
     return 0;     // return with success flag
   }
- 
+
   // Finish neighbor exchange
   int ExchangeEnd()
   {
@@ -612,12 +612,12 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
 //    Equation of state
 inline realtype eos(const realtype& rho, const realtype& mx,
                     const realtype& my, const realtype& mz,
-                    const realtype& E, const UserData& udata);
+                    const realtype& et, const UserData& udata);
 
 //    Check for legal state
 inline int legal_state(const realtype& rho, const realtype& mx,
                        const realtype& my, const realtype& mz,
-                       const realtype& E, const UserData& udata);
+                       const realtype& et, const UserData& udata);
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
@@ -640,21 +640,21 @@ int output_solution(const N_Vector w, const int& newappend,
 //    1D packing routines
 inline void pack1D_x(realtype (&w1d)[7][5], const realtype* rho,
                      const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* E,
+                     const realtype* mz, const realtype* et,
                      const realtype* Wrecv, const realtype* Erecv,
                      const long int& i, const long int& j,
                      const long int& k, const long int& nxl,
                      const long int& nyl, const long int& nzl);
 inline void pack1D_y(realtype (&w1d)[7][5], const realtype* rho,
                      const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* E,
+                     const realtype* mz, const realtype* et,
                      const realtype* Srecv, const realtype* Nrecv,
                      const long int& i, const long int& j,
                      const long int& k, const long int& nxl,
                      const long int& nyl, const long int& nzl);
 inline void pack1D_z(realtype (&w1d)[7][5], const realtype* rho,
                      const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* E,
+                     const realtype* mz, const realtype* et,
                      const realtype* Brecv, const realtype* Frecv,
                      const long int& i, const long int& j,
                      const long int& k, const long int& nxl,

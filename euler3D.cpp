@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
     printf("      proc %4i: %li x %li x %li\n", udata.myid, udata.nxl, udata.nyl, udata.nzl);
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-  
+
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
   if (outproc)
@@ -240,8 +240,8 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
-  realtype *E = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) E, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
   realtype *rhodot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,0);
   if (check_flag((void *) rhodot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
   realtype *mxdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,1);
@@ -250,8 +250,8 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   if (check_flag((void *) mydot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
   realtype *mzdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,3);
   if (check_flag((void *) mzdot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
-  realtype *Edot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
-  if (check_flag((void *) Edot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
+  realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
+  if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
 
   // Exchange boundary data with neighbors
   int retval = udata->ExchangeStart(w);
@@ -276,12 +276,12 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         // return with failure on non-positive density, energy or pressure
         retval = legal_state(rho[IDX(i,j,k,nxl,nyl)], mx[IDX(i,j,k,nxl,nyl)],
                              my[IDX(i,j,k,nxl,nyl)], mz[IDX(i,j,k,nxl,nyl)],
-                             E[IDX(i,j,k,nxl,nyl)], *udata);
+                             et[IDX(i,j,k,nxl,nyl)], *udata);
         if (check_flag(&retval, "legal_state (f)", 1)) return -1;
 
         // x-directional advection
         //    pack 1D array of variable shortcuts
-        pack1D_x(w1d, rho, mx, my, mz, E, udata->Wrecv, udata->Erecv, i, j, k, nxl, nyl, nzl);
+        pack1D_x(w1d, rho, mx, my, mz, et, udata->Wrecv, udata->Erecv, i, j, k, nxl, nyl, nzl);
         //    compute update
         div_flux(w1d, 0, udata->dx, dw, *udata);
         //    apply update
@@ -289,11 +289,11 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
+        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
 
         // y-directional advection
         //    pack 1D array of variable shortcuts
-        pack1D_y(w1d, rho, mx, my, mz, E, udata->Srecv, udata->Nrecv, i, j, k, nxl, nyl, nzl);
+        pack1D_y(w1d, rho, mx, my, mz, et, udata->Srecv, udata->Nrecv, i, j, k, nxl, nyl, nzl);
         //    compute update
         div_flux(w1d, 1, udata->dy, dw, *udata);
         //    apply update
@@ -301,11 +301,11 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
+        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
 
         // z-directional advection
         //    pack 1D array of variable shortcuts
-        pack1D_z(w1d, rho, mx, my, mz, E, udata->Brecv, udata->Frecv, i, j, k, nxl, nyl, nzl);
+        pack1D_z(w1d, rho, mx, my, mz, et, udata->Brecv, udata->Frecv, i, j, k, nxl, nyl, nzl);
         //    compute update
         div_flux(w1d, 2, udata->dz, dw, *udata);
         //    apply update
@@ -313,7 +313,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
+        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
 
       }
 
@@ -334,12 +334,12 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         // return with failure on non-positive density, energy or pressure
         retval = legal_state(rho[IDX(i,j,k,nxl,nyl)], mx[IDX(i,j,k,nxl,nyl)],
                              my[IDX(i,j,k,nxl,nyl)], mz[IDX(i,j,k,nxl,nyl)],
-                             E[IDX(i,j,k,nxl,nyl)], *udata);
+                             et[IDX(i,j,k,nxl,nyl)], *udata);
         if (check_flag(&retval, "legal_state (f)", 1)) return -1;
 
         // x-directional advection
         //    pack 1D array of variable shortcuts
-        pack1D_x(w1d, rho, mx, my, mz, E, udata->Wrecv, udata->Erecv, i, j, k, nxl, nyl, nzl);
+        pack1D_x(w1d, rho, mx, my, mz, et, udata->Wrecv, udata->Erecv, i, j, k, nxl, nyl, nzl);
         //    compute update
         div_flux(w1d, 0, udata->dx, dw, *udata);
         //    apply update
@@ -347,11 +347,11 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
+        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
 
         // y-directional advection
         //    pack 1D array of variable shortcuts
-        pack1D_y(w1d, rho, mx, my, mz, E, udata->Srecv, udata->Nrecv, i, j, k, nxl, nyl, nzl);
+        pack1D_y(w1d, rho, mx, my, mz, et, udata->Srecv, udata->Nrecv, i, j, k, nxl, nyl, nzl);
         //    compute update
         div_flux(w1d, 1, udata->dy, dw, *udata);
         //    apply update
@@ -359,11 +359,11 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
+        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
 
         // z-directional advection
         //    pack 1D array of variable shortcuts
-        pack1D_z(w1d, rho, mx, my, mz, E, udata->Brecv, udata->Frecv, i, j, k, nxl, nyl, nzl);
+        pack1D_z(w1d, rho, mx, my, mz, et, udata->Brecv, udata->Frecv, i, j, k, nxl, nyl, nzl);
         //    compute update
         div_flux(w1d, 2, udata->dz, dw, *udata);
         //    apply update
@@ -371,7 +371,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
         mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
         mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        Edot[  IDX(i,j,k,nxl,nyl)] -= dw[4];
+        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
 
       }
 
@@ -560,13 +560,13 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
 
 
 // Equation of state -- compute and return pressure,
-//    p = (gamma-1)*(E - rho/2*(vx^2+vy^2+vz^2), or equivalently
-//    p = (gamma-1)*(E - (mx^2+my^2+mz^2)/(2*rho)
+//    p = (gamma-1)*(e - rho/2*(vx^2+vy^2+vz^2), or equivalently
+//    p = (gamma-1)*(e - (mx^2+my^2+mz^2)/(2*rho)
 inline realtype eos(const realtype& rho, const realtype& mx,
                     const realtype& my, const realtype& mz,
-                    const realtype& E, const UserData& udata)
+                    const realtype& et, const UserData& udata)
 {
-  return((udata.gamma-ONE)*(E - (mx*mx+my*my+mz*mz)*HALF/rho));
+  return((udata.gamma-ONE)*(et - (mx*mx+my*my+mz*mz)*HALF/rho));
 }
 
 
@@ -577,12 +577,12 @@ inline realtype eos(const realtype& rho, const realtype& mx,
 // non-positive, but energy was fine
 inline int legal_state(const realtype& rho, const realtype& mx,
                        const realtype& my, const realtype& mz,
-                       const realtype& E, const UserData& udata)
+                       const realtype& et, const UserData& udata)
 {
   int dfail, efail, pfail;
   dfail = (rho > ZERO) ? 0 : 1;
-  efail = (E > ZERO) ? 0 : 2;
-  pfail = (eos(rho, mx, my, mz, E, udata) > ZERO) ? 0 : 4;
+  efail = (et > ZERO) ? 0 : 2;
+  pfail = (eos(rho, mx, my, mz, et, udata) > ZERO) ? 0 : 4;
   return(dfail+efail+pfail);
 }
 
@@ -592,7 +592,7 @@ void signed_fluxes(const realtype (&w1d)[7][5], realtype (&fms)[7][5],
                    realtype (&fps)[7][5], const UserData& udata)
 {
   // local variables
-  realtype rho, mx, my, mz, vx, vy, vz, E, p, csnd, cisq, qsq, h, gamm;
+  realtype rho, mx, my, mz, vx, vy, vz, et, p, csnd, cisq, qsq, h, gamm;
   realtype vr[5], lv[5][5], rv[5][5], lambda[7][5], alpha[5], fx[5], fs[7][5], ws[7][5];
   int i, j, k;
 
@@ -606,8 +606,8 @@ void signed_fluxes(const realtype (&w1d)[7][5], realtype (&fms)[7][5],
   for (j=0; j<7; j++) {
 
     // unpack state, and compute corresponding primitive variables
-    rho = w1d[j][0];  mx = w1d[j][1];  my = w1d[j][2];  mz = w1d[j][3];  E = w1d[j][4];
-    vx = mx/rho;  vy = my/rho;  vz = mz/rho;  p = eos(rho, mx, my, mz, E, udata);
+    rho = w1d[j][0];  mx = w1d[j][1];  my = w1d[j][2];  mz = w1d[j][3];  et = w1d[j][4];
+    vx = mx/rho;  vy = my/rho;  vz = mz/rho;  p = eos(rho, mx, my, mz, et, udata);
 
     // compute eigensystem
     csnd = SUNRsqrt(udata.gamma*p/rho);
@@ -675,13 +675,13 @@ void signed_fluxes(const realtype (&w1d)[7][5], realtype (&fms)[7][5],
     fx[1] = rho*vx*vx + p;
     fx[2] = rho*vx*vy;
     fx[3] = rho*vx*vz;
-    fx[4] = vx*(E + p);
+    fx[4] = vx*(et + p);
 
     // compute projected flux stencils
     for (i=0; i<5; i++)
       fs[j][i] = lv[i][0]*fx[0] + lv[i][1]*fx[1] + lv[i][2]*fx[2] + lv[i][3]*fx[3] + lv[i][4]*fx[4];
     for (i=0; i<5; i++)
-      ws[j][i] = lv[i][0]*rho + lv[i][1]*mx + lv[i][2]*my + lv[i][3]*mz + lv[i][4]*E;
+      ws[j][i] = lv[i][0]*rho + lv[i][1]*mx + lv[i][2]*my + lv[i][3]*mz + lv[i][4]*et;
 
   }
 
@@ -721,8 +721,8 @@ int print_stats(const realtype& t, const N_Vector w,
   if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-  realtype *E = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) E, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   if (firstlast < 2) {
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
@@ -731,7 +731,7 @@ int print_stats(const realtype& t, const N_Vector w,
           rmsvals[1] += SUNRpowerI( mx[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
           rmsvals[2] += SUNRpowerI( my[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
           rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
-          rmsvals[4] += SUNRpowerI(  E[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
+          rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
         }
     retval = MPI_Reduce(MPI_IN_PLACE, &rmsvals, 5, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
@@ -739,7 +739,7 @@ int print_stats(const realtype& t, const N_Vector w,
   }
   if (!outproc)  return(0);
   if (firstlast == 0)
-    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||E||_rms\n";
+    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms\n";
   if (firstlast != 1)
     cout << "   -----------------------------------------------------------------------\n";
   if (firstlast<2)
@@ -806,7 +806,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   fclose(FID);
 
   // Output energy
-  sprintf(outname, "euler3d_e.%03i.txt", udata.myid);
+  sprintf(outname, "euler3d_et.%03i.txt", udata.myid);
   FID = fopen(outname,outtype);
   W = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
@@ -823,7 +823,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
 // solution vs receive buffers
 inline void pack1D_x(realtype (&w1d)[7][5], const realtype* rho,
                      const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* E,
+                     const realtype* mz, const realtype* et,
                      const realtype* Wrecv, const realtype* Erecv,
                      const long int& i, const long int& j,
                      const long int& k, const long int& nxl,
@@ -834,25 +834,25 @@ inline void pack1D_x(realtype (&w1d)[7][5], const realtype* rho,
     w1d[l][1] = (i<(3-l)) ? Wrecv[BUFIDX(1,i+l,j,k,3,nyl,nzl)] : mx[IDX(i-3+l,j,k,nxl,nyl)];
     w1d[l][2] = (i<(3-l)) ? Wrecv[BUFIDX(2,i+l,j,k,3,nyl,nzl)] : my[IDX(i-3+l,j,k,nxl,nyl)];
     w1d[l][3] = (i<(3-l)) ? Wrecv[BUFIDX(3,i+l,j,k,3,nyl,nzl)] : mz[IDX(i-3+l,j,k,nxl,nyl)];
-    w1d[l][4] = (i<(3-l)) ? Wrecv[BUFIDX(4,i+l,j,k,3,nyl,nzl)] : E[IDX(i-3+l,j,k,nxl,nyl)];
+    w1d[l][4] = (i<(3-l)) ? Wrecv[BUFIDX(4,i+l,j,k,3,nyl,nzl)] : et[IDX(i-3+l,j,k,nxl,nyl)];
   }
   w1d[3][0] = rho[IDX(i,j,k,nxl,nyl)];
   w1d[3][1] = mx[IDX(i,j,k,nxl,nyl)];
   w1d[3][2] = my[IDX(i,j,k,nxl,nyl)];
   w1d[3][3] = mz[IDX(i,j,k,nxl,nyl)];
-  w1d[3][4] = E[IDX(i,j,k,nxl,nyl)];
+  w1d[3][4] = et[IDX(i,j,k,nxl,nyl)];
   for (int l=1; l<4; l++) {
     w1d[l+3][0] = (i>(nxl-l-1)) ? Erecv[BUFIDX(0,i-nxl+l,j,k,3,nyl,nzl)] : rho[IDX(i+l,j,k,nxl,nyl)];
     w1d[l+3][1] = (i>(nxl-l-1)) ? Erecv[BUFIDX(1,i-nxl+l,j,k,3,nyl,nzl)] : mx[IDX(i+l,j,k,nxl,nyl)];
     w1d[l+3][2] = (i>(nxl-l-1)) ? Erecv[BUFIDX(2,i-nxl+l,j,k,3,nyl,nzl)] : my[IDX(i+l,j,k,nxl,nyl)];
     w1d[l+3][3] = (i>(nxl-l-1)) ? Erecv[BUFIDX(3,i-nxl+l,j,k,3,nyl,nzl)] : mz[IDX(i+l,j,k,nxl,nyl)];
-    w1d[l+3][4] = (i>(nxl-l-1)) ? Erecv[BUFIDX(4,i-nxl+l,j,k,3,nyl,nzl)] : E[IDX(i+l,j,k,nxl,nyl)];
+    w1d[l+3][4] = (i>(nxl-l-1)) ? Erecv[BUFIDX(4,i-nxl+l,j,k,3,nyl,nzl)] : et[IDX(i+l,j,k,nxl,nyl)];
   }
 }
 
 inline void pack1D_y(realtype (&w1d)[7][5], const realtype* rho,
                      const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* E,
+                     const realtype* mz, const realtype* et,
                      const realtype* Srecv, const realtype* Nrecv,
                      const long int& i, const long int& j,
                      const long int& k, const long int& nxl,
@@ -863,25 +863,25 @@ inline void pack1D_y(realtype (&w1d)[7][5], const realtype* rho,
       w1d[l][1] = (j<(3-l)) ? Srecv[BUFIDX(1,i,j+l,k,nxl,3,nzl)] : mx[IDX(i,j-3+l,k,nxl,nyl)];
       w1d[l][2] = (j<(3-l)) ? Srecv[BUFIDX(2,i,j+l,k,nxl,3,nzl)] : my[IDX(i,j-3+l,k,nxl,nyl)];
       w1d[l][3] = (j<(3-l)) ? Srecv[BUFIDX(3,i,j+l,k,nxl,3,nzl)] : mz[IDX(i,j-3+l,k,nxl,nyl)];
-      w1d[l][4] = (j<(3-l)) ? Srecv[BUFIDX(4,i,j+l,k,nxl,3,nzl)] : E[IDX(i,j-3+l,k,nxl,nyl)];
+      w1d[l][4] = (j<(3-l)) ? Srecv[BUFIDX(4,i,j+l,k,nxl,3,nzl)] : et[IDX(i,j-3+l,k,nxl,nyl)];
   }
   w1d[3][0] = rho[IDX(i,j,k,nxl,nyl)];
   w1d[3][1] = mx[IDX(i,j,k,nxl,nyl)];
   w1d[3][2] = my[IDX(i,j,k,nxl,nyl)];
   w1d[3][3] = mz[IDX(i,j,k,nxl,nyl)];
-  w1d[3][4] = E[IDX(i,j,k,nxl,nyl)];
+  w1d[3][4] = et[IDX(i,j,k,nxl,nyl)];
   for (int l=1; l<4; l++) {
     w1d[l+3][0] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(0,i,j-nyl+l,k,nxl,3,nzl)] : rho[IDX(i,j+l,k,nxl,nyl)];
     w1d[l+3][1] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(1,i,j-nyl+l,k,nxl,3,nzl)] : mx[IDX(i,j+l,k,nxl,nyl)];
     w1d[l+3][2] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(2,i,j-nyl+l,k,nxl,3,nzl)] : my[IDX(i,j+l,k,nxl,nyl)];
     w1d[l+3][3] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(3,i,j-nyl+l,k,nxl,3,nzl)] : mz[IDX(i,j+l,k,nxl,nyl)];
-    w1d[l+3][4] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(4,i,j-nyl+l,k,nxl,3,nzl)] : E[IDX(i,j+l,k,nxl,nyl)];
+    w1d[l+3][4] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(4,i,j-nyl+l,k,nxl,3,nzl)] : et[IDX(i,j+l,k,nxl,nyl)];
   }
 }
 
 inline void pack1D_z(realtype (&w1d)[7][5], const realtype* rho,
                      const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* E,
+                     const realtype* mz, const realtype* et,
                      const realtype* Brecv, const realtype* Frecv,
                      const long int& i, const long int& j,
                      const long int& k, const long int& nxl,
@@ -892,19 +892,19 @@ inline void pack1D_z(realtype (&w1d)[7][5], const realtype* rho,
     w1d[l][1] = (k<(3-l)) ? Brecv[BUFIDX(1,i,j,k+l,nxl,nyl,3)] : mx[IDX(i,j,k-3+l,nxl,nyl)];
     w1d[l][2] = (k<(3-l)) ? Brecv[BUFIDX(2,i,j,k+l,nxl,nyl,3)] : my[IDX(i,j,k-3+l,nxl,nyl)];
     w1d[l][3] = (k<(3-l)) ? Brecv[BUFIDX(3,i,j,k+l,nxl,nyl,3)] : mz[IDX(i,j,k-3+l,nxl,nyl)];
-    w1d[l][4] = (k<(3-l)) ? Brecv[BUFIDX(4,i,j,k+l,nxl,nyl,3)] : E[IDX(i,j,k-3+l,nxl,nyl)];
+    w1d[l][4] = (k<(3-l)) ? Brecv[BUFIDX(4,i,j,k+l,nxl,nyl,3)] : et[IDX(i,j,k-3+l,nxl,nyl)];
   }
   w1d[3][0] = rho[IDX(i,j,k,nxl,nyl)];
   w1d[3][1] = mx[IDX(i,j,k,nxl,nyl)];
   w1d[3][2] = my[IDX(i,j,k,nxl,nyl)];
   w1d[3][3] = mz[IDX(i,j,k,nxl,nyl)];
-  w1d[3][4] = E[IDX(i,j,k,nxl,nyl)];
+  w1d[3][4] = et[IDX(i,j,k,nxl,nyl)];
   for (int l=1; l<4; l++) {
     w1d[l+3][0] = (k>(nzl-l-1)) ? Frecv[BUFIDX(0,i,j,k-nzl+l,nxl,nyl,3)] : rho[IDX(i,j,k+l,nxl,nyl)];
     w1d[l+3][1] = (k>(nzl-l-1)) ? Frecv[BUFIDX(1,i,j,k-nzl+l,nxl,nyl,3)] : mx[IDX(i,j,k+l,nxl,nyl)];
     w1d[l+3][2] = (k>(nzl-l-1)) ? Frecv[BUFIDX(2,i,j,k-nzl+l,nxl,nyl,3)] : my[IDX(i,j,k+l,nxl,nyl)];
     w1d[l+3][3] = (k>(nzl-l-1)) ? Frecv[BUFIDX(3,i,j,k-nzl+l,nxl,nyl,3)] : mz[IDX(i,j,k+l,nxl,nyl)];
-    w1d[l+3][4] = (k>(nzl-l-1)) ? Frecv[BUFIDX(4,i,j,k-nzl+l,nxl,nyl,3)] : E[IDX(i,j,k+l,nxl,nyl)];
+    w1d[l+3][4] = (k>(nzl-l-1)) ? Frecv[BUFIDX(4,i,j,k-nzl+l,nxl,nyl,3)] : et[IDX(i,j,k+l,nxl,nyl)];
   }
 }
 

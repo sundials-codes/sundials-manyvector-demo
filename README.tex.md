@@ -39,23 +39,23 @@ and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc
 
 under the restriction that if any boundary is set to "periodic" then the opposite face must also indicate a periodic condition.
 
-Here, the 'solution' is given by $w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e\end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e\end{bmatrix}^T$, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
+Here, the 'solution' is given by $w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t\end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t\end{bmatrix}^T$, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
 $$
-  F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e+p)\end{bmatrix}^T
-$$
-$$
-  F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e+p)\end{bmatrix}^T
+  F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p)\end{bmatrix}^T
 $$
 $$
-  F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e+p)\end{bmatrix}^T
+  F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p)\end{bmatrix}^T
+$$
+$$
+  F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p)\end{bmatrix}^T
 $$
 
 the external force $G(X,t)$ is test-problem-dependent, and the ideal gas equation of state gives
-$p = \frac{R}{c_v}\left(e - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)$ and
-$e = \frac{p c_v}{R} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$,
+$p = \frac{R}{c_v}\left(e_t - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)$ and
+$e_t = \frac{p c_v}{R} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$,
 or equivalently,
-$p = (\gamma-1) \left(e - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)$ and
-$e = \frac{p}{\gamma-1} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$
+$p = (\gamma-1) \left(e_t - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)$ and
+$e_t = \frac{p}{\gamma-1} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$
 
 We have the parameters
 
@@ -73,7 +73,7 @@ The fluid variables above are non-dimensionalized; in standard SI units these wo
 
 * [vx] = [vy] = [vz] = m/s, which implies that [mx] = [my] = [mz] = kg / m$^2$ / s, and
 
-* [e] = kg / m / s$^2$
+* [et] = kg / m / s$^2$
 
 Note: the above follows the description in section 7.3.1-7.3.3 of https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
