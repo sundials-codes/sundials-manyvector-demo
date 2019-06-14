@@ -25,13 +25,13 @@ Steps showing the process to download this demo code, install the relevant depen
 
 This test simulates a 3D nonlinear inviscid compressible Euler equation,
 <p align="center"><img src="/tex/9507ca7fb40fcf9f401a999539c43b82.svg?invert_in_darkmode&sanitize=true" align=middle width=148.6959507pt height=16.438356pt/></p>
-for
+for independent variables
 <p align="center"><img src="/tex/cb730ebe968bc6766332e6886b7e66ab.svg?invert_in_darkmode&sanitize=true" align=middle width=227.07922545pt height=17.031940199999998pt/></p>
 where the spatial domain is a three-dimensional cube,
-<p align="center"><img src="/tex/bb49c8a6c13ddd5b23534d5eff90dc1b.svg?invert_in_darkmode&sanitize=true" align=middle width=199.76414039999997pt height=16.438356pt/></p>
+<p align="center"><img src="/tex/8feeb58278ab7a349b97f906b71ef3fd.svg?invert_in_darkmode&sanitize=true" align=middle width=210.46034459999998pt height=16.438356pt/></p>
 The differential equation is completed using initial condition
 <p align="center"><img src="/tex/286c8cf3db13c0c402500c4e46ad4ce5.svg?invert_in_darkmode&sanitize=true" align=middle width=129.27608594999998pt height=16.438356pt/></p>
-and face-specific boundary conditions, [ `xlbc`, `xrbc` ] x [ `ylbc` , `yrbc` ] x [ `zlbc` , `zrbc` ], where each may be any one of
+and face-specific boundary conditions, `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc`, and `zrbc`, where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
