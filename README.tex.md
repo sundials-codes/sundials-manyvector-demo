@@ -25,13 +25,13 @@ Steps showing the process to download this demo code, install the relevant depen
 
 This test simulates a 3D nonlinear inviscid compressible Euler equation,
 $$w_t = -\nabla\cdot F(w) + G$$
-for
+for independent variables
 $$(X,t) = (x,y,z,t) \in \Omega \times (t_0, t_f]$$
 where the spatial domain is a three-dimensional cube,
-$$\Omega = [x_l, x_r] \times [y_l, y_r] x [z_l,z_r]$$
+$$\Omega = [x_l, x_r] \times [y_l, y_r] \times [z_l,z_r]$$
 The differential equation is completed using initial condition
 $$w(t_0,X) = w_0(X)$$
-and face-specific boundary conditions, [ `xlbc`, `xrbc` ] x [ `ylbc` , `yrbc` ] x [ `zlbc` , `zrbc` ], where each may be any one of
+and face-specific boundary conditions, `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc`, and `zrbc`, where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
