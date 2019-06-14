@@ -13,16 +13,25 @@ To run this demo you will need modern C and C++ compilers.  All dependencies (SU
 Steps showing the process to download this demo code, install the relevant dependencies, and build the demo in a Linux or OS X environment are as follows:
 
 ```bash
-  <img src="/tex/068c1c7f0e1c5f0f1a684f2354528284.svg?invert_in_darkmode&sanitize=true" align=middle width=554.6880504pt height=24.65753399999998pt/> cd sundials-manyvector-demo
-  <img src="/tex/b2cdfb5d0b534acadb4dfcd1f42a3eec.svg?invert_in_darkmode&sanitize=true" align=middle width=409.3480495499999pt height=24.65753399999998pt/> .spack/bin/spack view symlink libs sundials
-  <img src="/tex/a5b76f1ade6adc44568d772ee3fbc99b.svg?invert_in_darkmode&sanitize=true" align=middle width=276.7397110499999pt height=24.65753399999998pt/> make
+> git clone https://github.com/drreynolds/sundials-manyvector-demo.git
+> cd sundials-manyvector-demo
+> .spack/bin/spack install sundials +suite-sparse +mpi
+> .spack/bin/spack view symlink libs sundials
+> .spack/bin/spack view symlink mpi mpi
+> make
 ```
 
 ## (Current) Documentation
 
 This test simulates a 3D nonlinear inviscid compressible Euler equation,
-<p align="center"><img src="/tex/d9863f826c2348e733804a7429c419ad.svg?invert_in_darkmode&sanitize=true" align=middle width=148.6959507pt height=16.438356pt/></p>
-for <img src="/tex/f6051feab6a8ea76ab2f495fa562eb8d.svg?invert_in_darkmode&sanitize=true" align=middle width=72.06049289999999pt height=24.65753399999998pt/>, <img src="/tex/c0ec5af17b136310b0fd99c5825fcb17.svg?invert_in_darkmode&sanitize=true" align=middle width=310.49058974999997pt height=24.65753399999998pt/>, with initial condition <img src="/tex/4de18f840aaa2a5af62b91e3563954a7.svg?invert_in_darkmode&sanitize=true" align=middle width=129.27608594999998pt height=24.65753399999998pt/>, and boundary conditions [`xlbc`,`xrbc`] x [`ylbc`,`yrbc`] x [`zlbc`,`zrbc`], where each may be any one of
+<p align="center"><img src="/tex/9507ca7fb40fcf9f401a999539c43b82.svg?invert_in_darkmode&sanitize=true" align=middle width=148.6959507pt height=16.438356pt/></p>
+for
+<p align="center"><img src="/tex/cb730ebe968bc6766332e6886b7e66ab.svg?invert_in_darkmode&sanitize=true" align=middle width=227.07922545pt height=17.031940199999998pt/></p>
+where the spatial domain is a three-dimensional cube,
+<p align="center"><img src="/tex/bb49c8a6c13ddd5b23534d5eff90dc1b.svg?invert_in_darkmode&sanitize=true" align=middle width=199.76414039999997pt height=16.438356pt/></p>
+The differential equation is completed using initial condition
+<p align="center"><img src="/tex/286c8cf3db13c0c402500c4e46ad4ce5.svg?invert_in_darkmode&sanitize=true" align=middle width=129.27608594999998pt height=16.438356pt/></p>
+and face-specific boundary conditions, [ `xlbc`, `xrbc` ] x [ `ylbc` , `yrbc` ] x [ `zlbc` , `zrbc` ], where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
@@ -30,33 +39,33 @@ for <img src="/tex/f6051feab6a8ea76ab2f495fa562eb8d.svg?invert_in_darkmode&sanit
 
 under the restriction that if any boundary is set to "periodic" then the opposite face must also indicate a periodic condition.
 
-Here, the 'solution' is given by <img src="/tex/042c5bf126725a346eef6747a67881b2.svg?invert_in_darkmode&sanitize=true" align=middle width=325.15765754999995pt height=27.6567522pt/>, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
-<p align="center"><img src="/tex/948c50d22af94c45cf1404ddd10af659.svg?invert_in_darkmode&sanitize=true" align=middle width=337.44287115pt height=19.3534671pt/></p>
-<p align="center"><img src="/tex/f4cb1d6c35406376ed6ba16a89804198.svg?invert_in_darkmode&sanitize=true" align=middle width=335.63178164999994pt height=20.95157625pt/></p>
-<p align="center"><img src="/tex/981524f5fc16c7d3449223c0ef1195ac.svg?invert_in_darkmode&sanitize=true" align=middle width=334.32285314999996pt height=19.3534671pt/></p>
+Here, the 'solution' is given by <img src="/tex/ede5d044f589b429d500cd79119c4c52.svg?invert_in_darkmode&sanitize=true" align=middle width=407.3498451pt height=35.5436301pt/>, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
+<p align="center"><img src="/tex/607a6f6fd1abe9d8ef1e19c8b8c72aca.svg?invert_in_darkmode&sanitize=true" align=middle width=378.5387958pt height=23.5253469pt/></p>
+<p align="center"><img src="/tex/f519bd9530420ce747f8badb3d6b758b.svg?invert_in_darkmode&sanitize=true" align=middle width=376.72770629999997pt height=23.9085792pt/></p>
+<p align="center"><img src="/tex/1ae361f23350aee758ce257bc684f95c.svg?invert_in_darkmode&sanitize=true" align=middle width=375.4187778pt height=23.5253469pt/></p>
 
 the external force <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal gas equation of state gives
 <img src="/tex/7267f867419ceb03b618445151c90f0e.svg?invert_in_darkmode&sanitize=true" align=middle width=204.4567305pt height=28.670654099999997pt/> and
-<img src="/tex/4d4436280a3ff11311d69455ff6d1e94.svg?invert_in_darkmode&sanitize=true" align=middle width=190.58242334999997pt height=26.76175259999998pt/>,
+<img src="/tex/8d8f63de95e56e014097c6732189a8c8.svg?invert_in_darkmode&sanitize=true" align=middle width=185.15438534999998pt height=26.76175259999998pt/>,
 or equivalently,
 <img src="/tex/7f47b73a97ad6216f234a9d6faeeafb2.svg?invert_in_darkmode&sanitize=true" align=middle width=238.10365755pt height=27.94539330000001pt/> and
-<img src="/tex/8849d54f53b89b09df8c7cc269fb9da2.svg?invert_in_darkmode&sanitize=true" align=middle width=209.13941069999998pt height=28.92634470000001pt/>
+<img src="/tex/d2f00d755ba5cedb2385d653d61f0d78.svg?invert_in_darkmode&sanitize=true" align=middle width=189.88961804999997pt height=26.76175259999998pt/>
 
 We have the parameters
 
 * R is the specific ideal gas constant (287.14 J/kg/K).
 * <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/> is the specific heat capacity at constant volume (717.5 J/kg/K),
-* <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/e2726c495cdd0298d7c5be83af55bac8.svg?invert_in_darkmode&sanitize=true" align=middle width=158.5934658pt height=28.670654099999997pt/> (1.4),
+* <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/de015188ab92fa7280f672e82ba7e75c.svg?invert_in_darkmode&sanitize=true" align=middle width=113.34245999999997pt height=28.670654099999997pt/> (1.4),
 
 corresponding to air (predominantly an ideal diatomic gas). The speed of sound in the gas is then given by
 <p align="center"><img src="/tex/3f5e478e3d3c690cf7f15c2a9ac1fe4d.svg?invert_in_darkmode&sanitize=true" align=middle width=67.10942039999999pt height=39.452455349999994pt/></p>
 The fluid variables above are non-dimensionalized; in standard SI units these would be:
 
-  [rho] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+* [rho] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
-  [vx] = [vy] = [vz] = m/s  =>  [mx] = [my] = [mz] = kg / m<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/> / s
+* [vx] = [vy] = [vz] = m/s  =>  [mx] = [my] = [mz] = kg / m<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/> / s
 
-  [E] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+* [e] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
 Note: the above follows the description in section 7.3.1-7.3.3 of https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
