@@ -31,7 +31,7 @@ where the spatial domain is a three-dimensional cube,
 $$\Omega = [x_l, x_r] \times [y_l, y_r] \times [z_l,z_r]$$
 The differential equation is completed using initial condition
 $$w(t_0,X) = w_0(X)$$
-and face-specific boundary conditions, `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc`, and `zrbc`, where each may be any one of
+and face-specific boundary conditions, `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc` and `zrbc`, where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
@@ -69,9 +69,9 @@ c = \sqrt{\frac{\gamma p}{\rho}}
 $$
 The fluid variables above are non-dimensionalized; in standard SI units these would be:
 
-* [rho] = kg / m$^3$
+* [rho] = kg / m$^3$,
 
-* [vx] = [vy] = [vz] = m/s  =>  [mx] = [my] = [mz] = kg / m$^2$ / s
+* [vx] = [vy] = [vz] = m/s, which implies that [mx] = [my] = [mz] = kg / m$^2$ / s, and
 
 * [e] = kg / m / s$^2$
 
