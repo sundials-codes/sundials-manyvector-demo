@@ -94,12 +94,15 @@ The auxiliary source code file must contain two functions:
 
 * the initial condition function w0(X) must have the signature:
 
+```C++
   int initial_conditions(realtype t, N_Vector w, UserData& udata)
+```
 
 * the forcing function G(X) must have the signature
 
+```C++
   int external_forces(realtype t, N_Vector G, UserData& udata)
-
+```
 
 
 ## Authors
