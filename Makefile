@@ -13,7 +13,7 @@ include Makefile.in
 
 # set C++ compilation flags based on build type
 ifeq ($(LIBTYPE),OPT)
-  CXXFLAGS = -O2 -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
+  CXXFLAGS = -O3 -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
 else
   CXXFLAGS = -O0 -g -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
 endif
