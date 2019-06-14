@@ -39,17 +39,17 @@ and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc
 
 under the restriction that if any boundary is set to "periodic" then the opposite face must also indicate a periodic condition.
 
-Here, the 'solution' is given by <img src="/tex/ede5d044f589b429d500cd79119c4c52.svg?invert_in_darkmode&sanitize=true" align=middle width=407.3498451pt height=35.5436301pt/>, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
-<p align="center"><img src="/tex/607a6f6fd1abe9d8ef1e19c8b8c72aca.svg?invert_in_darkmode&sanitize=true" align=middle width=378.5387958pt height=23.5253469pt/></p>
-<p align="center"><img src="/tex/f519bd9530420ce747f8badb3d6b758b.svg?invert_in_darkmode&sanitize=true" align=middle width=376.72770629999997pt height=23.9085792pt/></p>
-<p align="center"><img src="/tex/1ae361f23350aee758ce257bc684f95c.svg?invert_in_darkmode&sanitize=true" align=middle width=375.4187778pt height=23.5253469pt/></p>
+Here, the 'solution' is given by <img src="/tex/21dcb90c8119f18e732808f7537ca0bf.svg?invert_in_darkmode&sanitize=true" align=middle width=418.92522045pt height=35.5436301pt/>, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
+<p align="center"><img src="/tex/edde56579807923c3cd19bd5843fec36.svg?invert_in_darkmode&sanitize=true" align=middle width=384.32648264999995pt height=23.5253469pt/></p>
+<p align="center"><img src="/tex/b06018efc55bb0d7f41c8280c3044cb7.svg?invert_in_darkmode&sanitize=true" align=middle width=382.5153948pt height=23.9085792pt/></p>
+<p align="center"><img src="/tex/bb51d69cabdadf10a0c7ca34efb9a778.svg?invert_in_darkmode&sanitize=true" align=middle width=381.2064663pt height=23.5253469pt/></p>
 
 the external force <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal gas equation of state gives
-<img src="/tex/7267f867419ceb03b618445151c90f0e.svg?invert_in_darkmode&sanitize=true" align=middle width=204.4567305pt height=28.670654099999997pt/> and
-<img src="/tex/8d8f63de95e56e014097c6732189a8c8.svg?invert_in_darkmode&sanitize=true" align=middle width=185.15438534999998pt height=26.76175259999998pt/>,
+<img src="/tex/4e77e66de46d63bbda82c6eee3bebd62.svg?invert_in_darkmode&sanitize=true" align=middle width=210.24441734999996pt height=28.670654099999997pt/> and
+<img src="/tex/c91df912216678aa99e1b60d4e0e4ad7.svg?invert_in_darkmode&sanitize=true" align=middle width=190.94207219999998pt height=26.76175259999998pt/>,
 or equivalently,
-<img src="/tex/7f47b73a97ad6216f234a9d6faeeafb2.svg?invert_in_darkmode&sanitize=true" align=middle width=238.10365755pt height=27.94539330000001pt/> and
-<img src="/tex/d2f00d755ba5cedb2385d653d61f0d78.svg?invert_in_darkmode&sanitize=true" align=middle width=189.88961804999997pt height=26.76175259999998pt/>
+<img src="/tex/f36b76f5fe4c25019d30f71fa5275425.svg?invert_in_darkmode&sanitize=true" align=middle width=243.89134604999995pt height=27.94539330000001pt/> and
+<img src="/tex/c4ea234157eb6cb45144280748d0ac3e.svg?invert_in_darkmode&sanitize=true" align=middle width=195.67730489999997pt height=26.76175259999998pt/>
 
 We have the parameters
 
@@ -65,7 +65,7 @@ The fluid variables above are non-dimensionalized; in standard SI units these wo
 
 * [vx] = [vy] = [vz] = m/s, which implies that [mx] = [my] = [mz] = kg / m<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/> / s, and
 
-* [e] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+* [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
 Note: the above follows the description in section 7.3.1-7.3.3 of https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
