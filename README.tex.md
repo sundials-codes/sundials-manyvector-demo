@@ -13,21 +13,25 @@ To run this demo you will need modern C and C++ compilers.  All dependencies (SU
 Steps showing the process to download this demo code, install the relevant dependencies, and build the demo in a Linux or OS X environment are as follows:
 
 ```bash
-  $ git clone https://github.com/drreynolds/sundials-manyvector-demo.git
-  $ cd sundials-manyvector-demo
-  $ .spack/bin/spack install sundials +suite-sparse +mpi
-  $ .spack/bin/spack view symlink libs sundials
-  $ .spack/bin/spack view symlink mpi mpi
-  $ make
+> git clone https://github.com/drreynolds/sundials-manyvector-demo.git
+> cd sundials-manyvector-demo
+> .spack/bin/spack install sundials +suite-sparse +mpi
+> .spack/bin/spack view symlink libs sundials
+> .spack/bin/spack view symlink mpi mpi
+> make
 ```
 
 ## (Current) Documentation
 
 This test simulates a 3D nonlinear inviscid compressible Euler equation,
-$$
-  w_t = -\nabla\cdot F(w) + G
-$$
-for $t \in (t_0, t_f]$, $X = (x,y,z) \in \Omega = [x_l, x_r] \times [y_l, y_r] x [z_l,z_r]$, with initial condition $w(t_0,X) = w_0(X)$, and boundary conditions [`xlbc`,`xrbc`] x [`ylbc`,`yrbc`] x [`zlbc`,`zrbc`], where each may be any one of
+$$w_t = -\nabla\cdot F(w) + G$$
+for
+$$(X,t) = (x,y,z,t) \in \Omega \times (t_0, t_f]$$
+where the spatial domain is a three-dimensional cube,
+$$\Omega = [x_l, x_r] \times [y_l, y_r] x [z_l,z_r]$$
+The differential equation is completed using initial condition
+$$w(t_0,X) = w_0(X)$$
+and face-specific boundary conditions, [ `xlbc`, `xrbc` ] x [ `ylbc` , `yrbc` ] x [ `zlbc` , `zrbc` ], where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
@@ -35,29 +39,29 @@ for $t \in (t_0, t_f]$, $X = (x,y,z) \in \Omega = [x_l, x_r] \times [y_l, y_r] x
 
 under the restriction that if any boundary is set to "periodic" then the opposite face must also indicate a periodic condition.
 
-Here, the 'solution' is given by $w = [\rho, \rho v_x, \rho v_y, \rho v_z, e]^T = [\rho, m_x, m_y, m_z, e]^T$, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
+Here, the 'solution' is given by $w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e\end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e\end{bmatrix}^T$, that corresponds to the density, x,y,z-momentum, and the total energy per unit volume.  The fluxes are given by
 $$
-  F_x(w) = [\rho v_x, \rho v_x^2 + p, \rho v_x v_y, \rho v_x v_z, v_x (e+p)]^T
-$$
-$$
-  F_y(w) = [\rho v_y, \rho v_x v_y, \rho v_y^2 + p, \rho v_y v_z, v_y (e+p)]^T
+  F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e+p)\end{bmatrix}^T
 $$
 $$
-  F_z(w) = [\rho v_z, \rho v_x v_z, \rho v_y v_z, \rho v_z^2 + p, v_z (e+p)]^T
+  F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e+p)\end{bmatrix}^T
+$$
+$$
+  F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e+p)\end{bmatrix}^T
 $$
 
 the external force $G(X,t)$ is test-problem-dependent, and the ideal gas equation of state gives
 $p = \frac{R}{c_v}\left(e - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)$ and
-$E = \frac{p c_v}{R} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$,
+$e = \frac{p c_v}{R} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$,
 or equivalently,
 $p = (\gamma-1) \left(e - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)$ and
-$E = \frac{p}{\gamma-1} + \frac{rho}{2}(v_x^2 + v_y^2 + v_z^2)$
+$e = \frac{p}{\gamma-1} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$
 
 We have the parameters
 
 * R is the specific ideal gas constant (287.14 J/kg/K).
 * $c_v$ is the specific heat capacity at constant volume (717.5 J/kg/K),
-* $\gamma$ is the ratio of specific heats, $gamma = \frac{c_p}{c_v} = 1 + \frac{R}{c_v}$ (1.4),
+* $\gamma$ is the ratio of specific heats, $\gamma = \frac{c_p}{c_v} = 1 + \frac{R}{c_v}$ (1.4),
 
 corresponding to air (predominantly an ideal diatomic gas). The speed of sound in the gas is then given by
 $$
@@ -65,11 +69,11 @@ c = \sqrt{\frac{\gamma p}{\rho}}
 $$
 The fluid variables above are non-dimensionalized; in standard SI units these would be:
 
-  [rho] = kg / m$^3$
+* [rho] = kg / m$^3$
 
-  [vx] = [vy] = [vz] = m/s  =>  [mx] = [my] = [mz] = kg / m$^2$ / s
+* [vx] = [vy] = [vz] = m/s  =>  [mx] = [my] = [mz] = kg / m$^2$ / s
 
-  [E] = kg / m / s$^2$
+* [e] = kg / m / s$^2$
 
 Note: the above follows the description in section 7.3.1-7.3.3 of https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
