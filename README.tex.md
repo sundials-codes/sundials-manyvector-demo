@@ -31,7 +31,7 @@ where the spatial domain is a three-dimensional cube,
 $$\Omega = [x_l, x_r] \times [y_l, y_r] \times [z_l,z_r]$$
 The differential equation is completed using initial condition
 $$w(t_0,X) = w_0(X)$$
-and face-specific boundary conditions, `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc` and `zrbc`, where each may be any one of
+and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc], where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
