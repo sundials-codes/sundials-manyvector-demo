@@ -31,7 +31,7 @@ where the spatial domain is a three-dimensional cube,
 <p align="center"><img src="/tex/8feeb58278ab7a349b97f906b71ef3fd.svg?invert_in_darkmode&sanitize=true" align=middle width=210.46034459999998pt height=16.438356pt/></p>
 The differential equation is completed using initial condition
 <p align="center"><img src="/tex/286c8cf3db13c0c402500c4e46ad4ce5.svg?invert_in_darkmode&sanitize=true" align=middle width=129.27608594999998pt height=16.438356pt/></p>
-and face-specific boundary conditions, `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc` and `zrbc`, where each may be any one of
+and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc], where each may be any one of
 
 * periodic (0),
 * homogeneous Neumann (1), or
