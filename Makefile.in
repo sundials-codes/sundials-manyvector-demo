@@ -1,0 +1,85 @@
+###################################################################
+#  Programmer(s):  Daniel R. Reynolds @ SMU
+###################################################################
+#  Copyright (c) 2019, Southern Methodist University.
+#  All rights reserved.
+#  For details, see the LICENSE file.
+###################################################################
+#  Machine-specific Makefile definitions
+###################################################################
+
+# read build options
+include Makefile.opts
+
+# machine-specific compilers and installation locations
+HOST=$(shell hostname)
+
+#    longclaw
+ifeq ($(HOST),longclaw)
+  ifeq ($(LIBTYPE),OPT)
+    SUNDIR = /home/dreynolds/research/Sundials/install_opt
+  else
+    SUNDIR = /home/dreynolds/research/Sundials/install_dbg
+  endif
+  SUNLIBDIR = ${SUNDIR}/lib
+  SUNINCDIRS = -I${SUNDIR}/include
+
+  KLUDIR = /usr/local/suitesparse-5.2.0/gnu
+  KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
+  KLULIBDIR = $(KLUDIR)/lib
+
+  CXX = /usr/local/mpich-3.2.1/gnu/bin/mpicxx --std=c++11
+  OMPFLAGS = -fopenmp
+
+#    cauchy
+else ifeq ($(HOST),cauchy)
+  ifeq ($(LIBTYPE),OPT)
+    SUNDIR = /home/dreynolds/research/Sundials/install_opt
+  else
+    SUNDIR = /home/dreynolds/research/Sundials/install_dbg
+  endif
+  SUNLIBDIR = ${SUNDIR}/lib
+  SUNINCDIRS = -I${SUNDIR}/include
+
+  KLUDIR = /usr/local/suitesparse-5.2.0/gnu
+  KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
+  KLULIBDIR = $(KLUDIR)/lib
+
+  CXX = /usr/local/mpich-3.2.1/gnu/bin/mpicxx --std=c++11
+  OMPFLAGS = -fopenmp
+
+#    descartes
+else ifeq ($(HOST),descartes.local)
+  ifeq ($(LIBTYPE),OPT)
+    SUNDIR = /Users/dreynolds/research/Sundials/install_opt
+  else
+    SUNDIR = /Users/dreynolds/research/Sundials/install_dbg
+  endif
+  SUNLIBDIR = ${SUNDIR}/lib
+  SUNINCDIRS = -I${SUNDIR}/include
+
+  KLUDIR = /usr/local/suite-sparse-5.3.0/clang
+  KLUINCDIRS = -I$(KLUDIR)/include/
+  KLULIBDIR = $(KLUDIR)/lib
+
+  CXX = /usr/local/mpich-3.3/clang/bin/mpicxx --std=c++11
+  OMPFLAGS = #-Xpreprocessor -fopenmp -lomp
+
+#    default -- EDIT THESE IF SPECIFYING COMPILERS/LIBRARIES ON YOUR MACHINE
+else
+
+  SUNDIR = ./libs
+  SUNLIBDIR = ${SUNDIR}/lib
+  SUNINCDIRS = -I${SUNDIR}/include
+
+  KLUDIR = ./libs
+  KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
+  KLULIBDIR = $(KLUDIR)/lib
+
+  CXX = ./mpi/bin/mpicxx --std=c++11
+  OMPFLAGS = -fopenmp
+
+endif
+
+
+####### End of Makefile.in #######

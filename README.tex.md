@@ -21,6 +21,13 @@ Steps showing the process to download this demo code, install the relevant depen
 > make
 ```
 
+The above steps will build all codes in 'production' mode, with optimization and OpenMP enabled and debugging symbols turned off.
+
+Alternately, if you already have MPI, SUNDIALS and Suite-Sparse installed, you can edit the file `Makefile.in` to specify these installations, and skip the Spack-related steps above.
+
+Additionally, you may edit the `Makefile.opts` file to switch between an optimized/debugging build, and to enable/disable OpenMP prior to running `make` above.
+
+
 ## (Current) Documentation
 
 This test simulates a 3D nonlinear inviscid compressible Euler equation,
