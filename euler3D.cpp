@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
   if (outproc)
-    DFID=fopen("diags_ark_euler3D.txt","w");
+    DFID=fopen("diags_euler3D.txt","w");
 
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl)*5;
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]) {
 
   // Each processor outputs subdomain information
   char outname[100];
-  sprintf(outname, "euler3d_subdomain.%03i.txt", udata.myid);
+  sprintf(outname, "euler3D_subdomain.%03i.txt", udata.myid);
   FILE *UFID = fopen(outname,"w");
   fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li\n",
 	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie,
@@ -770,7 +770,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   }
 
   // Output density
-  sprintf(outname, "euler3d_rho.%03i.txt", udata.myid);  // filename
+  sprintf(outname, "euler3D_rho.%03i.txt", udata.myid);  // filename
   FID = fopen(outname,outtype);                          // file ptr
   W = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);    // data array
   if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
@@ -779,7 +779,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   fclose(FID);                                           // close file
 
   // Output x-momentum
-  sprintf(outname, "euler3d_mx.%03i.txt", udata.myid);
+  sprintf(outname, "euler3D_mx.%03i.txt", udata.myid);
   FID = fopen(outname,outtype);
   W = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
   if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
@@ -788,7 +788,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   fclose(FID);
 
   // Output y-momentum
-  sprintf(outname, "euler3d_my.%03i.txt", udata.myid);
+  sprintf(outname, "euler3D_my.%03i.txt", udata.myid);
   FID = fopen(outname,outtype);
   W = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
   if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
@@ -797,7 +797,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   fclose(FID);
 
   // Output z-momentum
-  sprintf(outname, "euler3d_mz.%03i.txt", udata.myid);
+  sprintf(outname, "euler3D_mz.%03i.txt", udata.myid);
   FID = fopen(outname,outtype);
   W = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
   if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
@@ -806,7 +806,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   fclose(FID);
 
   // Output energy
-  sprintf(outname, "euler3d_et.%03i.txt", udata.myid);
+  sprintf(outname, "euler3D_et.%03i.txt", udata.myid);
   FID = fopen(outname,outtype);
   W = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;

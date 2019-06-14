@@ -46,7 +46,7 @@ all : ${TESTS}
 	${CXX} -c ${CXXFLAGS} ${OMPFLAGS} ${INCS} $< -o $@
 
 clean :
-	\rm -rf *.o *.exe diags_*.txt* *.orig
+	\rm -rf *.o *.exe euler3D*.txt diags_euler3D.txt *.orig
 
 realclean : clean
 	\rm -rf *.dSYM *~ *.pyc
