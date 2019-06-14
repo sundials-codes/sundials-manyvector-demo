@@ -1,6 +1,6 @@
 order = 4
 dense_order = -1
-imex = 2
+imex = 1
 btable = -1
 adapt_method = 0
 maxnef = 0

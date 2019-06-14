@@ -108,7 +108,7 @@ endif
 
 
 # shortcuts for include and library paths, etc.
-INCS = -I$(INSTDIR)/include/ ${KLUINCS}
+INCS = -I. -I$(INSTDIR)/include/ ${KLUINCS}
 LIBS = -L$(INSTDIR)/lib \
        -lsundials_arkode \
        -lsundials_nvecmpimanyvector \
@@ -118,14 +118,17 @@ LIBS = -L$(INSTDIR)/lib \
 
 
 # listing of all test routines
-TESTS = ark_euler3D.exe
+TESTS = compile_test.exe
 
 # target to build all test executables
 all : ${TESTS}
 
 # general build rules for C++ programs
-%.exe : %.cpp init_from_file.c
+%.exe : compile_test.o euler3D.o init_from_file.o
 	${CXX} ${CXXFLAGS} ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+.cpp.o : euler3d.hpp
+	${CXX} -c ${CXXFLAGS} ${OMPFLAGS} ${INCS} $< -o $@
 
 clean :
 	\rm -rf *.o *.exe diags_*.txt* *.orig

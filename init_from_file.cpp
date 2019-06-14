@@ -1,7 +1,7 @@
 /*---------------------------------------------------------------
  Programmer(s): Daniel R. Reynolds @ SMU
  ----------------------------------------------------------------
- Copyright (c) 2013, Southern Methodist University.
+ Copyright (c) 2019, Southern Methodist University.
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
@@ -21,17 +21,17 @@
 #define MAX_LINE_LENGTH 512
 
 /* ARKStep version */
-void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
-                             ARKRhsFn fi, realtype T0, N_Vector y0,
-                             int *ImEx, int *dorder, int *fxpt,
-                             realtype *RTol, realtype *ATol) {
+void* arkstep_init_from_file(const char fname[], const ARKRhsFn f,
+                             const ARKRhsFn fe, const ARKRhsFn fi,
+                             const realtype T0, const N_Vector y0,
+                             int& imex, int& dense_order, int& fxpt,
+                             double& rtol, double& atol) {
 
   /* declare output */
   void *ark_mem;
 
   /* declare available solver parameters (with default values) */
   int order = 0;
-  int imex = 0;
   int adapt_method = 0;
   int small_nef = 0;
   int msbp = 0;
@@ -41,7 +41,6 @@ void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
   int maxncf = 0;
   int mxhnil = 0;
   int mxsteps = 0;
-  int dense_order = -1;
   int btable = -1;
   int pq = 0;
   int fixedpt = 0;
@@ -65,8 +64,6 @@ void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
   double h0 = 0.0;
   double hmin = 0.0;
   double hmax = 0.0;
-  double rtol = 0.0;
-  double atol = 0.0;
 
   /* open parameter file */
   FILE *fptr = NULL;
@@ -152,15 +149,10 @@ void* arkstep_init_from_file(char *fname, ARKRhsFn f, ARKRhsFn fe,
 
 
   /*** set outputs to be used by problem ***/
-  *ImEx = imex;
-  *dorder = dense_order;
-  *RTol = rtol;
-  *ATol = atol;
+  fxpt = 0;
   if (fixedpt) {
-       if (m_aa == 0) *fxpt = -1;
-    else           *fxpt = m_aa;
-  } else {
-    *fxpt = 0;
+    if (m_aa == 0) fxpt = -1;
+    else           fxpt = m_aa;
   }
 
 
