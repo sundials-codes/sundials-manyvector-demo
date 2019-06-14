@@ -5,27 +5,136 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Utility routine to read input parameters from a specified
- file, and call associated "set" routines to specify options to
- to ARKode solver.
+ Utility routines to read problem and solver input parameters
+ from specified files.  For solver parameters, this calls
+ associated "set" routines to specify options to ARKode.
 ---------------------------------------------------------------*/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <arkode/arkode.h>
-#include <arkode/arkode_arkstep.h>
-#include <sundials/sundials_types.h>
+#include <euler3D.hpp>
 
 #define MAX_LINE_LENGTH 512
 
-/* ARKStep version */
-void* arkstep_init_from_file(const char fname[], const ARKRhsFn f,
-                             const ARKRhsFn fe, const ARKRhsFn fi,
-                             const realtype T0, const N_Vector y0,
-                             int& imex, int& dense_order, int& fxpt,
-                             double& rtol, double& atol) {
+
+// Load problem-defining parameters from file: root process
+// reads parameters and broadcasts results to remaining
+// processes
+int load_inputs(int myid, double& xl, double& xr, double& yl,
+                double& yr, double& zl, double& zr, double& t0,
+                double& tf, double& gamma, long int& nx,
+                long int& ny, long int& nz, int& xlbc, int& xrbc,
+                int& ylbc, int& yrbc, int& zlbc, int& zrbc,
+                int& nout, int& showstats)
+{
+  int retval;
+  double dbuff[9];
+  long int ibuff[11];
+
+  // root process reads solver parameters from file and packs send buffers
+  if (myid == 0) {
+
+    char line[MAX_LINE_LENGTH];
+    FILE *FID=NULL;
+    FID = fopen("input_euler3D.txt","r");
+    if (check_flag((void *) FID, "fopen (load_inputs)", 0)) return(1);
+    while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
+
+      /* initialize return flag for line */
+      retval = 0;
+
+      /* read parameters */
+      retval += sscanf(line,"xl = %lf", &xl);
+      retval += sscanf(line,"xr = %lf", &xr);
+      retval += sscanf(line,"yl = %lf", &yl);
+      retval += sscanf(line,"yr = %lf", &yr);
+      retval += sscanf(line,"zl = %lf", &zl);
+      retval += sscanf(line,"zr = %lf", &zr);
+      retval += sscanf(line,"t0 = %lf", &t0);
+      retval += sscanf(line,"tf = %lf", &tf);
+      retval += sscanf(line,"gamma = %lf", &gamma);
+      retval += sscanf(line,"nx = %li", &nx);
+      retval += sscanf(line,"ny = %li", &ny);
+      retval += sscanf(line,"nz = %li", &nz);
+      retval += sscanf(line,"xlbc = %i", &xlbc);
+      retval += sscanf(line,"xrbc = %i", &xrbc);
+      retval += sscanf(line,"ylbc = %i", &ylbc);
+      retval += sscanf(line,"yrbc = %i", &yrbc);
+      retval += sscanf(line,"zlbc = %i", &zlbc);
+      retval += sscanf(line,"zrbc = %i", &zrbc);
+      retval += sscanf(line,"nout = %i", &nout);
+      retval += sscanf(line,"showstats = %i", &showstats);
+
+      /* if unable to read the line (and it looks suspicious) issue a warning */
+      if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
+        fprintf(stderr, "load_inputs Warning: parameter line was not interpreted:\n%s", line);
+
+    }
+    fclose(FID);
+
+    // pack buffers
+    ibuff[0]  = nx;
+    ibuff[1]  = ny;
+    ibuff[2]  = nz;
+    ibuff[3]  = xlbc;
+    ibuff[4]  = xrbc;
+    ibuff[5]  = ylbc;
+    ibuff[6]  = yrbc;
+    ibuff[7]  = zlbc;
+    ibuff[8]  = zrbc;
+    ibuff[9]  = nout;
+    ibuff[10] = showstats;
+    dbuff[0]  = xl;
+    dbuff[1]  = xr;
+    dbuff[2]  = yl;
+    dbuff[3]  = yr;
+    dbuff[4]  = zl;
+    dbuff[5]  = zr;
+    dbuff[6]  = t0;
+    dbuff[7]  = tf;
+    dbuff[8]  = gamma;
+  }
+
+  // perform broadcast and unpack results
+  retval = MPI_Bcast(dbuff, 9, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
+  retval = MPI_Bcast(ibuff, 11, MPI_LONG, 0, MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
+
+  // unpack buffers
+  xl    = dbuff[0];
+  xr    = dbuff[1];
+  yl    = dbuff[2];
+  yr    = dbuff[3];
+  zl    = dbuff[4];
+  zr    = dbuff[5];
+  t0    = dbuff[6];
+  tf    = dbuff[7];
+  gamma = dbuff[8];
+  nx    = ibuff[0];
+  ny    = ibuff[1];
+  nz    = ibuff[2];
+  xlbc  = ibuff[3];
+  xrbc  = ibuff[4];
+  ylbc  = ibuff[5];
+  yrbc  = ibuff[6];
+  zlbc  = ibuff[7];
+  zrbc  = ibuff[8];
+  nout  = ibuff[9];
+  showstats = ibuff[10];
+
+  // return with success
+  return(0);
+}
+
+
+// Load ARKode solver parameters from file: root process
+// reads parameters and broadcasts results to remaining
+// processes; all then perform setup
+void* arkstep_init_from_file(int myid, const char fname[],
+                             const ARKRhsFn f, const ARKRhsFn fe,
+                             const ARKRhsFn fi, const realtype t0,
+                             const N_Vector w0, int& imex, int& dense_order,
+                             int& fxpt, double& rtol, double& atol)
+{
 
   /* declare output */
   void *ark_mem;
@@ -65,74 +174,162 @@ void* arkstep_init_from_file(const char fname[], const ARKRhsFn f,
   double hmin = 0.0;
   double hmax = 0.0;
 
-  /* open parameter file */
-  FILE *fptr = NULL;
-  fptr = fopen(fname,"r");
-  if (fptr == NULL) {
-    fprintf(stderr, "arkstep_init_from_file error: cannot open parameter file %s\n", fname);
-    return NULL;
-  }
-
-  /* read solver parameters from file */
+  /* all create send/receive buffers read solver parameters from file */
   int ret;
-  char line[MAX_LINE_LENGTH];
-  while (fgets(line, MAX_LINE_LENGTH, fptr) != NULL) {
+  double dbuff[21];
+  int ibuff[16];
 
-    /* initialize return flag for line */
-    ret = 0;
+  /* root process reads solver parameters from file and packs buffers */
+  if (myid == 0) {
 
-    /* read parameter */
-    ret += sscanf(line,"order = %i", &order);
-    ret += sscanf(line,"dense_order = %i", &dense_order);
-    ret += sscanf(line,"imex = %i", &imex);
-    ret += sscanf(line,"btable = %i",  &btable);
-    ret += sscanf(line,"adapt_method = %i", &adapt_method);
-    ret += sscanf(line,"maxnef = %i", &maxnef);
-    ret += sscanf(line,"maxncf = %i", &maxncf);
-    ret += sscanf(line,"mxhnil = %i", &mxhnil);
-    ret += sscanf(line,"mxsteps = %i", &mxsteps);
-    ret += sscanf(line,"cflfac = %lf", &cflfac);
-    ret += sscanf(line,"safety = %lf", &safety);
-    ret += sscanf(line,"bias = %lf", &bias);
-    ret += sscanf(line,"growth = %lf", &growth);
-    ret += sscanf(line,"hfixed_lb = %lf", &hfixed_lb);
-    ret += sscanf(line,"hfixed_ub = %lf", &hfixed_ub);
-    ret += sscanf(line,"pq = %i", &pq);
-    ret += sscanf(line,"k1 = %lf", &k1);
-    ret += sscanf(line,"k2 = %lf", &k2);
-    ret += sscanf(line,"k3 = %lf", &k3);
-    ret += sscanf(line,"etamx1 = %lf", &etamx1);
-    ret += sscanf(line,"etamxf = %lf", &etamxf);
-    ret += sscanf(line,"etacf = %lf", &etacf);
-    ret += sscanf(line,"small_nef = %i", &small_nef);
-    ret += sscanf(line,"crdown = %lf", &crdown);
-    ret += sscanf(line,"rdiv = %lf", &rdiv);
-    ret += sscanf(line,"dgmax = %lf", &dgmax);
-    ret += sscanf(line,"predictor = %i", &predictor);
-    ret += sscanf(line,"msbp = %i", &msbp);
-    ret += sscanf(line,"fixedpt = %i", &fixedpt);
-    ret += sscanf(line,"m_aa = %i", &m_aa);
-    ret += sscanf(line,"maxcor = %i", &maxcor);
-    ret += sscanf(line,"nlscoef = %lf", &nlscoef);
-    ret += sscanf(line,"h0 = %lf", &h0);
-    ret += sscanf(line,"hmin = %lf", &hmin);
-    ret += sscanf(line,"hmax = %lf", &hmax);
-    ret += sscanf(line,"rtol = %lf", &rtol);
-    ret += sscanf(line,"atol = %lf", &atol);
+    /* open parameter file */
+    char line[MAX_LINE_LENGTH];
+    FILE *fptr = NULL;
+    fptr = fopen(fname,"r");
+    if (check_flag((void *) fptr, "fopen (arkstep_init_from_file)", 0)) return(NULL);
+    while (fgets(line, MAX_LINE_LENGTH, fptr) != NULL) {
 
-    /* if unable to read the line (and it looks suspicious) issue a warning */
-    if (ret == 0 && strstr(line, "=") != NULL && line[0] != '#')
-      fprintf(stderr, "arkstep_init_from_file Warning: parameter line was not interpreted:\n%s", line);
+      /* initialize return flag for line */
+      ret = 0;
+
+      /* read parameter */
+      ret += sscanf(line,"order = %i", &order);
+      ret += sscanf(line,"dense_order = %i", &dense_order);
+      ret += sscanf(line,"imex = %i", &imex);
+      ret += sscanf(line,"btable = %i",  &btable);
+      ret += sscanf(line,"adapt_method = %i", &adapt_method);
+      ret += sscanf(line,"maxnef = %i", &maxnef);
+      ret += sscanf(line,"maxncf = %i", &maxncf);
+      ret += sscanf(line,"mxhnil = %i", &mxhnil);
+      ret += sscanf(line,"mxsteps = %i", &mxsteps);
+      ret += sscanf(line,"cflfac = %lf", &cflfac);
+      ret += sscanf(line,"safety = %lf", &safety);
+      ret += sscanf(line,"bias = %lf", &bias);
+      ret += sscanf(line,"growth = %lf", &growth);
+      ret += sscanf(line,"hfixed_lb = %lf", &hfixed_lb);
+      ret += sscanf(line,"hfixed_ub = %lf", &hfixed_ub);
+      ret += sscanf(line,"pq = %i", &pq);
+      ret += sscanf(line,"k1 = %lf", &k1);
+      ret += sscanf(line,"k2 = %lf", &k2);
+      ret += sscanf(line,"k3 = %lf", &k3);
+      ret += sscanf(line,"etamx1 = %lf", &etamx1);
+      ret += sscanf(line,"etamxf = %lf", &etamxf);
+      ret += sscanf(line,"etacf = %lf", &etacf);
+      ret += sscanf(line,"small_nef = %i", &small_nef);
+      ret += sscanf(line,"crdown = %lf", &crdown);
+      ret += sscanf(line,"rdiv = %lf", &rdiv);
+      ret += sscanf(line,"dgmax = %lf", &dgmax);
+      ret += sscanf(line,"predictor = %i", &predictor);
+      ret += sscanf(line,"msbp = %i", &msbp);
+      ret += sscanf(line,"fixedpt = %i", &fixedpt);
+      ret += sscanf(line,"m_aa = %i", &m_aa);
+      ret += sscanf(line,"maxcor = %i", &maxcor);
+      ret += sscanf(line,"nlscoef = %lf", &nlscoef);
+      ret += sscanf(line,"h0 = %lf", &h0);
+      ret += sscanf(line,"hmin = %lf", &hmin);
+      ret += sscanf(line,"hmax = %lf", &hmax);
+      ret += sscanf(line,"rtol = %lf", &rtol);
+      ret += sscanf(line,"atol = %lf", &atol);
+
+      /* if unable to read the line (and it looks suspicious) issue a warning */
+      if (ret == 0 && strstr(line, "=") != NULL && line[0] != '#')
+        fprintf(stderr, "arkstep_init_from_file Warning: parameter line was not interpreted:\n%s", line);
+
+    }
+    fclose(fptr);
+
+    // pack buffers
+    ibuff[0]  = order;
+    ibuff[1]  = dense_order;
+    ibuff[2]  = imex;
+    ibuff[3]  = btable;
+    ibuff[4]  = adapt_method;
+    ibuff[5]  = maxnef;
+    ibuff[6]  = maxncf;
+    ibuff[7]  = mxhnil;
+    ibuff[8]  = mxsteps;
+    ibuff[9]  = pq;
+    ibuff[10] = small_nef;
+    ibuff[11] = predictor;
+    ibuff[12] = msbp;
+    ibuff[13] = fixedpt;
+    ibuff[14] = m_aa;
+    ibuff[15] = maxcor;
+    dbuff[0]  = cflfac;
+    dbuff[1]  = safety;
+    dbuff[2]  = bias;
+    dbuff[3]  = growth;
+    dbuff[4]  = hfixed_lb;
+    dbuff[5]  = hfixed_ub;
+    dbuff[6]  = k1;
+    dbuff[7]  = k2;
+    dbuff[8]  = k3;
+    dbuff[9]  = etamx1;
+    dbuff[10] = etamxf;
+    dbuff[11] = etacf;
+    dbuff[12] = crdown;
+    dbuff[13] = rdiv;
+    dbuff[14] = dgmax;
+    dbuff[15] = nlscoef;
+    dbuff[16] = h0;
+    dbuff[17] = hmin;
+    dbuff[18] = hmax;
+    dbuff[19] = rtol;
+    dbuff[20] = atol;
 
   }
-  fclose(fptr);
+
+  // perform broadcast and unpack results
+  ret = MPI_Bcast(dbuff, 21, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  if (check_flag(&ret, "MPI_Bcast (arkstep_init_from_file)", 3)) return(NULL);
+  ret = MPI_Bcast(ibuff, 16, MPI_INT, 0, MPI_COMM_WORLD);
+  if (check_flag(&ret, "MPI_Bcast (arkstep_init_from_file)", 3)) return(NULL);
+
+  // unpack buffers
+  order        = ibuff[0];
+  dense_order  = ibuff[1];
+  imex         = ibuff[2];
+  btable       = ibuff[3];
+  adapt_method = ibuff[4];
+  maxnef       = ibuff[5];
+  maxncf       = ibuff[6];
+  mxhnil       = ibuff[7];
+  mxsteps      = ibuff[8];
+  pq           = ibuff[9];
+  small_nef    = ibuff[10];
+  predictor    = ibuff[11];
+  msbp         = ibuff[12];
+  fixedpt      = ibuff[13];
+  m_aa         = ibuff[14];
+  maxcor       = ibuff[15];
+  cflfac       = dbuff[0];
+  safety       = dbuff[1];
+  bias         = dbuff[2];
+  growth       = dbuff[3];
+  hfixed_lb    = dbuff[4];
+  hfixed_ub    = dbuff[5];
+  k1           = dbuff[6];
+  k2           = dbuff[7];
+  k3           = dbuff[8];
+  etamx1       = dbuff[9];
+  etamxf       = dbuff[10];
+  etacf        = dbuff[11];
+  crdown       = dbuff[12];
+  rdiv         = dbuff[13];
+  dgmax        = dbuff[14];
+  nlscoef      = dbuff[15];
+  h0           = dbuff[16];
+  hmin         = dbuff[17];
+  hmax         = dbuff[18];
+  rtol         = dbuff[19];
+  atol         = dbuff[20];
 
 
   /*** check for allowable inputs ***/
 
-  /* check that y0 is not NULL */
-  if (y0 == NULL) {
-    fprintf(stderr, "arkstep_init_from_file error: cannot initialize problem with y0 == NULL!\n");
+  /* check that w0 is not NULL */
+  if (w0 == NULL) {
+    fprintf(stderr, "arkstep_init_from_file error: cannot initialize problem with w0 == NULL!\n");
     return NULL;
   }
 
@@ -161,11 +358,11 @@ void* arkstep_init_from_file(const char fname[], const ARKRhsFn f,
   /* initialize the integrator memory  */
   switch (imex) {
   case 0:         /* purely implicit */
-    ark_mem = ARKStepCreate(NULL, f, T0, y0);  break;
+    ark_mem = ARKStepCreate(NULL, f, t0, w0);  break;
   case 1:         /* purely explicit */
-    ark_mem = ARKStepCreate(f, NULL, T0, y0);  break;
+    ark_mem = ARKStepCreate(f, NULL, t0, w0);  break;
   default:        /* imex */
-    ark_mem = ARKStepCreate(fe, fi, T0, y0);   break;
+    ark_mem = ARKStepCreate(fe, fi, t0, w0);   break;
   }
   if (ark_mem == NULL) {
     fprintf(stderr, "arkstep_init_from_file error in ARKStepCreate\n");

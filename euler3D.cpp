@@ -45,8 +45,8 @@ int main(int argc, char* argv[]) {
 
   /* read problem parameters from input file */
   double xl, xr, yl, yr, zl, zr, t0, tf, gamma;
-  long int nx, ny, nz, xlbc, xrbc, ylbc, yrbc, zlbc, zrbc;
-  int nout, showstats;
+  long int nx, ny, nz;
+  int xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, nout, showstats;
   retval = load_inputs(myid, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, nz,
                        xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, nout, showstats);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
@@ -101,8 +101,8 @@ int main(int argc, char* argv[]) {
   // Call arkstep_init_from_file helper routine to read and set solver parameters;
   // quit if input file disagrees with desired solver options
   double rtol, atol;
-  arkode_mem = arkstep_init_from_file("solve_params.txt", f, NULL, NULL, t0, w,
-                                      imex, dense_order, fixedpt, rtol, atol);
+  arkode_mem = arkstep_init_from_file(udata.myid, "solve_params.txt", f, NULL, NULL,
+                                      t0, w, imex, dense_order, fixedpt, rtol, atol);
   if (check_flag(arkode_mem, "arkstep_init_from_file (main)", 1)) MPI_Abort(udata.comm, 1);
   if (rtol <= 0.0)  rtol = 1.e-6;
   if (atol <= 0.0)  atol = 1.e-10;
@@ -447,115 +447,6 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
   }
 
   return 0;
-}
-
-
-// Load inputs from file: root process reads parameters and
-// broadcasts results to remaining processes
-int load_inputs(int myid, double& xl, double& xr, double& yl,
-                double& yr, double& zl, double& zr, double& t0,
-                double& tf, double& gamma, long int& nx,
-                long int& ny, long int& nz, long int& xlbc,
-                long int& xrbc, long int& ylbc, long int& yrbc,
-                long int& zlbc, long int& zrbc, int& nout, int& showstats)
-{
-  int retval;
-  double dbuff[9];
-  long int ibuff[11];
-  if (myid == 0) {
-    FILE *FID=NULL;
-    FID = fopen("input_euler3D.txt","r");
-    if (check_flag((void *) FID, "fopen (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"xl = %lf\n", &xl);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"xr = %lf\n", &xr);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"yl = %lf\n", &yl);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"yr = %lf\n", &yr);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"zl = %lf\n", &zl);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"zr = %lf\n", &zr);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"t0 = %lf\n", &t0);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"tf = %lf\n", &tf);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"gamma = %lf\n", &gamma);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"nx = %li\n", &nx);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"ny = %li\n", &ny);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"nz = %li\n", &nz);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"xlbc = %li\n", &xlbc);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"xrbc = %li\n", &xrbc);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"ylbc = %li\n", &ylbc);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"yrbc = %li\n", &yrbc);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"zlbc = %li\n", &zlbc);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"zrbc = %li\n", &zrbc);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"nout = %i\n", &nout);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    retval = fscanf(FID,"showstats = %i\n", &showstats);
-    if (check_flag(&retval, "fscanf (load_inputs)", 0)) return(1);
-    fclose(FID);
-    ibuff[0]  = nx;    // pack buffers
-    ibuff[1]  = ny;
-    ibuff[2]  = nz;
-    ibuff[3]  = xlbc;
-    ibuff[4]  = xrbc;
-    ibuff[5]  = ylbc;
-    ibuff[6]  = yrbc;
-    ibuff[7]  = zlbc;
-    ibuff[8]  = zrbc;
-    ibuff[9]  = nout;
-    ibuff[10] = showstats;
-    dbuff[0]  = xl;
-    dbuff[1]  = xr;
-    dbuff[2]  = yl;
-    dbuff[3]  = yr;
-    dbuff[4]  = zl;
-    dbuff[5]  = zr;
-    dbuff[6]  = t0;
-    dbuff[7]  = tf;
-    dbuff[8]  = gamma;
-  }
-  // perform broadcast and unpack results
-  retval = MPI_Bcast(dbuff, 9, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
-  retval = MPI_Bcast(ibuff, 11, MPI_LONG, 0, MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
-  xl    = dbuff[0];       // unpack buffers
-  xr    = dbuff[1];
-  yl    = dbuff[2];
-  yr    = dbuff[3];
-  zl    = dbuff[4];
-  zr    = dbuff[5];
-  t0    = dbuff[6];
-  tf    = dbuff[7];
-  gamma = dbuff[8];
-  nx    = ibuff[0];
-  ny    = ibuff[1];
-  nz    = ibuff[2];
-  xlbc  = ibuff[3];
-  xrbc  = ibuff[4];
-  ylbc  = ibuff[5];
-  yrbc  = ibuff[6];
-  zlbc  = ibuff[7];
-  zrbc  = ibuff[8];
-  nout  = ibuff[9];
-  showstats = ibuff[10];
-
-  // return with success
-  return(0);
 }
 
 

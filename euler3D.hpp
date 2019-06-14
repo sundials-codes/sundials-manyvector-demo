@@ -604,10 +604,10 @@ public:
 //    Load inputs from file
 int load_inputs(int myid, double& xl, double& xr, double& yl,
                 double& yr, double& zl, double& zr, double& t0,
-                double& tf, double& gamma, long int& nx, long int& ny,
-                long int& nz, long int& xlbc, long int& xrbc,
-                long int& ylbc, long int& yrbc, long int& zlbc,
-                long int& zrbc, int& nout, int& showstats);
+                double& tf, double& gamma, long int& nx,
+                long int& ny, long int& nz, int& xlbc, int& xrbc,
+                int& ylbc, int& yrbc, int& zlbc, int& zrbc,
+                int& nout, int& showstats);
 
 //    Equation of state
 inline realtype eos(const realtype& rho, const realtype& mx,
@@ -665,10 +665,10 @@ void div_flux(realtype (&w1d)[7][5], const int& idir,
               const realtype& dx, realtype* dw, const UserData& udata);
 
 //    Parameter input helper function
-void* arkstep_init_from_file(const char fname[], const ARKRhsFn f,
-                             const ARKRhsFn fe, const ARKRhsFn fi,
-                             const realtype t0, const N_Vector w0,
-                             int& imex, int& dense_order, int& fxpt,
-                             double& rtol, double& atol);
+void* arkstep_init_from_file(int myid, const char fname[],
+                             const ARKRhsFn f, const ARKRhsFn fe,
+                             const ARKRhsFn fi, const realtype t0,
+                             const N_Vector w0, int& imex, int& dense_order,
+                             int& fxpt, double& rtol, double& atol);
 
 //---- end of file ----
