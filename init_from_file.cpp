@@ -11,6 +11,7 @@
 ---------------------------------------------------------------*/
 
 #include <euler3D.hpp>
+#include <string.h>
 
 #define MAX_LINE_LENGTH 512
 
