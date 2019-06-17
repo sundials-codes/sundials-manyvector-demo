@@ -31,5 +31,8 @@
 *.out
 *.app
 
+# Spack dependency stack
+.spack
+
 # Temporary files
 *~
