@@ -72,7 +72,7 @@ per unit volume.  The fluxes are given by
 <p align="center"><img src="/tex/edde56579807923c3cd19bd5843fec36.svg?invert_in_darkmode&sanitize=true" align=middle width=384.32648264999995pt height=23.5253469pt/></p>
 <p align="center"><img src="/tex/b06018efc55bb0d7f41c8280c3044cb7.svg?invert_in_darkmode&sanitize=true" align=middle width=382.5153948pt height=23.9085792pt/></p>
 <p align="center"><img src="/tex/f83cbef467a49d5ff0921ac1612ce3ca.svg?invert_in_darkmode&sanitize=true" align=middle width=389.33422275pt height=23.5253469pt/></p>
-The external force <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal
+The external force *G(X,t)* is test-problem-dependent, and the ideal
 gas equation of state gives 
 <p align="center"><img src="/tex/272a02648ae7ce4db259539aa98655dc.svg?invert_in_darkmode&sanitize=true" align=middle width=218.4856146pt height=36.09514755pt/></p>
 and
