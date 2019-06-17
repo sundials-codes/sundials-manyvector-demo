@@ -1,0 +1,41 @@
+Remaining items for "completion" of initial demonstration code:
+
+* Conservation:
+  - add diagnostics output to measure conservation
+  - if fix needed, convert flux calculations to face-centers so that
+    neighbors agree to full double-precision roundoff.
+
+* Fluid tests:
+  a. simple linear advection
+  b. SOD shock tube
+  c. ?
+
+* HDF5 parallel I/O, with restart capabilities.  Store current
+  solutions as well as current time and step size to HDF5 files.  On
+  restarts, create ARKStep solver as usual, but set initial step size
+  to match stored value.
+
+* Chemical species:
+  a. Add support for "nc" chemical species to be advected along with
+     fluid (at fluid time scale); these should be initially stored in
+     N_Vector_Serial on each process, and grouped along with
+     ManyVector.  Include in this serial N_Vector a temperature
+     "correction" field, that begins each slow step with zero-valued
+     initial condition, and that donates all energy back to fluid at
+     each fluid RHS call.
+  b. Add reaction network based on DIRK solver and dense/band direct
+     solver.  Test this on its own by creating/evolving/freeing an
+     ARKStep solver at each fluid time step, in a simple
+     operator-split fashion.
+  c. Couple chemistry to fluid via MRIStep module.
+  d. Convert chemical reaction network and inner DIRK solver to reside
+     on GPU.  This will initially retain control structures on CPU,
+     but do 'number crunching' for RHS, Jacobian and linear solves on
+     GPU.
+
+* Viscosity: add fluid viscosity, treated implicitly with ARK method
+     at slow time scale.  Precondition/solve the corresponding linear
+     systems with HYPRE.  This must wait until MRIStep has
+     capabilities for solving multirate problems with implicitness at
+     the slow time scale.
+     
