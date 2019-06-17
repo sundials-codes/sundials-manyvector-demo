@@ -87,7 +87,7 @@ $$
 $$
   F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p)\end{bmatrix}^T.
 $$
-The external force $G(X,t)$ is test-problem-dependent, and the ideal
+The external force *G(X,t)* is test-problem-dependent, and the ideal
 gas equation of state gives 
 $$
   p = \frac{R}{c_v}\left(e_t - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)
