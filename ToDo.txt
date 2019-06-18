@@ -6,7 +6,7 @@ Remaining items for "completion" of initial demonstration code:
     neighbors agree to full double-precision roundoff.
 
 * Fluid tests:
-  a. simple linear advection
+  a. simple linear advection ("entropy convection" problem)
   b. SOD shock tube
   c. ?
 

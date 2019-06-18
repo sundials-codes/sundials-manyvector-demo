@@ -33,13 +33,14 @@ LIBS = ${SUNDLIBS} ${KLULIBS} -lm
 LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
 
 # listing of all test routines
-TESTS = compile_test.exe
+TESTS = compile_test.exe \
+        linear_advection.exe
 
 # target to build all test executables
 all : ${TESTS}
 
 # general build rules for C++ programs
-%.exe : compile_test.o euler3D.o init_from_file.o
+%.exe : %.o euler3D.o init_from_file.o
 	${CXX} ${CXXFLAGS} ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 .cpp.o : euler3d.hpp
