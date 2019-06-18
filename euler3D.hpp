@@ -609,21 +609,54 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
                 int& ylbc, int& yrbc, int& zlbc, int& zrbc,
                 int& nout, int& showstats);
 
-//    Equation of state
+// Equation of state -- compute and return pressure,
+//    p = (gamma-1)*(e - rho/2*(vx^2+vy^2+vz^2), or equivalently
+//    p = (gamma-1)*(e - (mx^2+my^2+mz^2)/(2*rho)
 inline realtype eos(const realtype& rho, const realtype& mx,
                     const realtype& my, const realtype& mz,
-                    const realtype& et, const UserData& udata);
+                    const realtype& et, const UserData& udata)
+{
+  return((udata.gamma-ONE)*(et - (mx*mx+my*my+mz*mz)*HALF/rho));
+}
 
-//    Check for legal state
+// Equation of state inverse -- compute and return energy,
+//    e_t = p/(gamma-1) + rho/2*(v_x^2 + v_y^2 + v_z^2), or equivalently
+//    e_t = p/(gamma-1) + (m_x^2 + m_y^2 + m_z^2)/(2*rho)
+inline realtype eos_inv(const realtype& rho, const realtype& mx,
+                        const realtype& my, const realtype& mz,
+                        const realtype& pr, const UserData& udata)
+{
+  return(pr/(udata.gamma-ONE) + (mx*mx+my*my+mz*mz)*HALF/rho);
+}
+
+// Check for legal state: returns 0 if density, energy and pressure
+// are all positive;  otherwise the return value encodes all failed
+// variables:  dfail + efail + pfail, with dfail=0/1, efail=0/2, pfail=0/4,
+// i.e., a return of 5 indicates that density and pressure were
+// non-positive, but energy was fine
 inline int legal_state(const realtype& rho, const realtype& mx,
                        const realtype& my, const realtype& mz,
-                       const realtype& et, const UserData& udata);
+                       const realtype& et, const UserData& udata)
+{
+  int dfail, efail, pfail;
+  dfail = (rho > ZERO) ? 0 : 1;
+  efail = (et > ZERO) ? 0 : 2;
+  pfail = (eos(rho, mx, my, mz, et, udata) > ZERO) ? 0 : 4;
+  return(dfail+efail+pfail);
+}
+
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
 
 //    Forcing terms
 int external_forces(const realtype& t, N_Vector G, const UserData& udata);
+
+//    Output solution diagnostics
+int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata);
+
+//    Optional conservation checks
+int check_conservation(const realtype& t, const N_Vector w, const UserData& udata);
 
 //    Signed fluxes over patch
 void signed_fluxes(const realtype (&w1d)[7][5], realtype (&fms)[7][5],

@@ -144,6 +144,10 @@ int main(int argc, char* argv[]) {
   retval = output_solution(w, 1, udata);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  // output diagnostic information (if applicable)
+  retval = output_diagnostics(t0, w, udata);
+  if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+  
   // compute setup time
   double tsetup = MPI_Wtime() - tstart;
   tstart = MPI_Wtime();
@@ -177,6 +181,10 @@ int main(int argc, char* argv[]) {
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     }
 
+    // output diagnostic information (if applicable)
+    retval = output_diagnostics(t, w, udata);
+    if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+    
     // output results to disk
     retval = output_solution(w, 0, udata);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -450,31 +458,31 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
 }
 
 
-// Equation of state -- compute and return pressure,
-//    p = (gamma-1)*(e - rho/2*(vx^2+vy^2+vz^2), or equivalently
-//    p = (gamma-1)*(e - (mx^2+my^2+mz^2)/(2*rho)
-inline realtype eos(const realtype& rho, const realtype& mx,
-                    const realtype& my, const realtype& mz,
-                    const realtype& et, const UserData& udata)
+// Computes the total of each conserved quantity;
+// the root task then outputs these values to screen
+int check_conservation(const realtype& t, const N_Vector w, const UserData& udata)
 {
-  return((udata.gamma-ONE)*(et - (mx*mx+my*my+mz*mz)*HALF/rho));
-}
-
-
-// Check for legal state: returns 0 if density, energy and pressure
-// are all positive;  otherwise the return value encodes all failed
-// variables:  dfail + efail + pfail, with dfail=0/1, efail=0/2, pfail=0/4,
-// i.e., a return of 5 indicates that density and pressure were
-// non-positive, but energy was fine
-inline int legal_state(const realtype& rho, const realtype& mx,
-                       const realtype& my, const realtype& mz,
-                       const realtype& et, const UserData& udata)
-{
-  int dfail, efail, pfail;
-  dfail = (rho > ZERO) ? 0 : 1;
-  efail = (et > ZERO) ? 0 : 2;
-  pfail = (eos(rho, mx, my, mz, et, udata) > ZERO) ? 0 : 4;
-  return(dfail+efail+pfail);
+  realtype totvals[] = {ZERO, ZERO};
+  bool outproc = (udata.myid == 0);
+  long int i, j, k;
+  int retval;
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++) {
+        totvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl)];
+        totvals[1] += et[IDX(i,j,k,udata.nxl,udata.nyl)];
+      }
+  totvals[0] *= udata.dx*udata.dy*udata.dz;
+  totvals[1] *= udata.dx*udata.dy*udata.dz;
+  retval = MPI_Reduce(MPI_IN_PLACE, &totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+  if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
+  if (!outproc)  return(0);
+  printf("     tot_mass = %21.16e,  tot_energy = %21.16e\n", totvals[0], totvals[1]);
+  return(0);
 }
 
 
