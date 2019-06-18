@@ -143,8 +143,10 @@ Additionally, this file contains the parameter `showstats`, a nonzero
 value enables optional output of RMS averages for each field at the
 same frequency as the solution is output to disk. 
 
-The auxiliary source code file must contain two functions.  The
-initial condition function <img src="/tex/d3cb4393199b89ca003e78d3486fa147.svg?invert_in_darkmode&sanitize=true" align=middle width=46.837068299999984pt height=24.65753399999998pt/> must have the signature:
+The auxiliary source code file must contain three functions.  Each of
+these must return an integer flag indicating success (0) or failure
+(nonzero). The initial condition function <img src="/tex/d3cb4393199b89ca003e78d3486fa147.svg?invert_in_darkmode&sanitize=true" align=middle width=46.837068299999984pt height=24.65753399999998pt/> must have the
+signature: 
 
 ```C++
    int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
@@ -155,6 +157,22 @@ and the forcing function <img src="/tex/c441e18e502be64ac772003edac839dc.svg?inv
 ```C++
    int external_forces(const realtype& t, N_Vector G, const UserData& udata);
 ```
+
+Additionally, a function must be supplied to compute/output any
+desired solution diagnostic information:
+
+```C++
+   int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata);
+```
+
+If no diagnostics information is desired, then this routine may just
+return 0.
+
+Here, the `initial_conditions` routine will be called once when the
+simulation begins, `external_forces` will be called on every
+evaluation of the ODE right-hand side function for the Euler
+equations, and `output_diagnostics` will be called at the same
+frequency as the solution is output to disk.
 
 A second input file, `solve_params.txt` specifies all ARKode time
 integration-related parameters that may be used to control the
