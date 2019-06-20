@@ -33,12 +33,12 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
       for (i=0; i<udata.nxl; i++) {
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
-        zloc = (udata.ks+j+HALF)*udata.dz + udata.zl;
-        rho[IDX(i,j,k,udata.nxl,udata.nyl)] = RCONST(1.0);
-        mx[ IDX(i,j,k,udata.nxl,udata.nyl)] = RCONST(0.5);
-        my[ IDX(i,j,k,udata.nxl,udata.nyl)] = RCONST(0.5);
-        mz[ IDX(i,j,k,udata.nxl,udata.nyl)] = RCONST(0.5);
-        et[ IDX(i,j,k,udata.nxl,udata.nyl)] = RCONST(1.0);
+        zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
+        rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(4.0);
+        mx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(0.5);
+        my[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(0.2);
+        mz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(0.1);
+        et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(2.0);
       }
   return 0;
 }
@@ -64,12 +64,12 @@ int external_forces(const realtype& t, N_Vector G, const UserData& udata)
       for (i=0; i<udata.nxl; i++) {
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
-        zloc = (udata.ks+j+HALF)*udata.dz + udata.zl;
-        Grho[IDX(i,j,k,udata.nxl,udata.nyl)] = ZERO;
-        Gmx[ IDX(i,j,k,udata.nxl,udata.nyl)] = ZERO;
-        Gmy[ IDX(i,j,k,udata.nxl,udata.nyl)] = ZERO;
-        Gmz[ IDX(i,j,k,udata.nxl,udata.nyl)] = ZERO;
-        Get[ IDX(i,j,k,udata.nxl,udata.nyl)] = ZERO;
+        zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
+        Grho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmy[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Get[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
       }
   return 0;
 }

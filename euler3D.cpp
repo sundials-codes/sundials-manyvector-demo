@@ -11,6 +11,9 @@
 // Header files
 #include <euler3D.hpp>
 
+#ifdef DEBUG
+#include "fenv.h"
+#endif
 
 // prototypes of local functions to be provided to ARKode
 //    f routine to compute the ODE RHS function f(t,y).
@@ -20,6 +23,10 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data);
 // Main Program
 int main(int argc, char* argv[]) {
 
+#ifdef DEBUG
+  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
+  
   // general problem parameters
   long int N, Ntot, i;
 
@@ -31,7 +38,7 @@ int main(int argc, char* argv[]) {
   int fixedpt;                   // flag denoting use of fixed-point nonlinear solver
   int myid;                      // MPI process ID
   N_Vector w = NULL;             // empty vectors for storing overall solution
-  N_Vector wsub[5] = {NULL, NULL, NULL, NULL, NULL};
+  N_Vector wsub[NVAR];
   void *arkode_mem = NULL;       // empty ARKStep memory structure
 
   // initialize MPI
@@ -85,13 +92,14 @@ int main(int argc, char* argv[]) {
     DFID=fopen("diags_euler3D.txt","w");
 
   // Initialize N_Vector data structures
-  N = (udata.nxl)*(udata.nyl)*(udata.nzl)*5;
-  Ntot = nx*ny*nz*5;
-  for (i=0; i<5; i++) {
+  N = (udata.nxl)*(udata.nyl)*(udata.nzl);
+  Ntot = nx*ny*nz;
+  for (i=0; i<NVAR; i++) {
+    wsub[i] = NULL;
     wsub[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsub[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
   }
-  w = N_VNew_MPIManyVector(5, wsub);  // solution vector
+  w = N_VNew_MPIManyVector(NVAR, wsub);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // set initial conditions
@@ -221,7 +229,7 @@ int main(int argc, char* argv[]) {
 
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution vectors
-  for (i=0; i<5; i++)
+  for (i=0; i<NVAR; i++)
     N_VDestroy(wsub[i]);
   ARKStepFree(&arkode_mem);    // Free integrator memory
   MPI_Finalize();              // Finalize MPI
@@ -273,114 +281,122 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   long int nxl = udata->nxl;
   long int nyl = udata->nyl;
   long int nzl = udata->nzl;
-
-  // iterate over subdomain interior, computing approximation to RHS
-  realtype w1d[7][5], dw[5];
+  realtype w1d[6][NVAR];
   long int v, i, j, k;
-  for (k=3; k<nzl-3; k++)
-    for (j=3; j<nyl-3; j++)
-      for (i=3; i<nxl-3; i++) {
+
+  // compute face-centered fluxes over subdomain interior
+  for (k=3; k<nzl-2; k++)
+    for (j=3; j<nyl-2; j++)
+      for (i=3; i<nxl-2; i++) {
 
         // return with failure on non-positive density, energy or pressure
-        retval = legal_state(rho[IDX(i,j,k,nxl,nyl)], mx[IDX(i,j,k,nxl,nyl)],
-                             my[IDX(i,j,k,nxl,nyl)], mz[IDX(i,j,k,nxl,nyl)],
-                             et[IDX(i,j,k,nxl,nyl)], *udata);
+        // (only check this first time)
+        retval = udata->legal_state(rho[IDX(i,j,k,nxl,nyl,nzl)], mx[IDX(i,j,k,nxl,nyl,nzl)],
+                                    my[ IDX(i,j,k,nxl,nyl,nzl)], mz[IDX(i,j,k,nxl,nyl,nzl)],
+                                    et[ IDX(i,j,k,nxl,nyl,nzl)]);
         if (check_flag(&retval, "legal_state (f)", 1)) return -1;
 
-        // x-directional advection
-        //    pack 1D array of variable shortcuts
-        pack1D_x(w1d, rho, mx, my, mz, et, udata->Wrecv, udata->Erecv, i, j, k, nxl, nyl, nzl);
-        //    compute update
-        div_flux(w1d, 0, udata->dx, dw, *udata);
-        //    apply update
-        rhodot[IDX(i,j,k,nxl,nyl)] -= dw[0];
-        mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
-        mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
-        mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
+        // pack 1D x-directional array of variable shortcuts
+        udata->pack1D_x(w1d, rho, mx, my, mz, et, i, j, k);
+        // compute flux at lower x-directional face
+        face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i,j,k,nxl+1,nyl,nzl)]), *udata);
 
-        // y-directional advection
-        //    pack 1D array of variable shortcuts
-        pack1D_y(w1d, rho, mx, my, mz, et, udata->Srecv, udata->Nrecv, i, j, k, nxl, nyl, nzl);
-        //    compute update
-        div_flux(w1d, 1, udata->dy, dw, *udata);
-        //    apply update
-        rhodot[IDX(i,j,k,nxl,nyl)] -= dw[0];
-        mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
-        mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
-        mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
+        // pack 1D y-directional array of variable shortcuts
+        udata->pack1D_y(w1d, rho, mx, my, mz, et, i, j, k);
+        // compute flux at lower y-directional face
+        face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j,k,nxl,nyl+1,nzl)]), *udata);
 
-        // z-directional advection
-        //    pack 1D array of variable shortcuts
-        pack1D_z(w1d, rho, mx, my, mz, et, udata->Brecv, udata->Frecv, i, j, k, nxl, nyl, nzl);
-        //    compute update
-        div_flux(w1d, 2, udata->dz, dw, *udata);
-        //    apply update
-        rhodot[IDX(i,j,k,nxl,nyl)] -= dw[0];
-        mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
-        mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
-        mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
-
+        // pack 1D z-directional array of variable shortcuts
+        udata->pack1D_z(w1d, rho, mx, my, mz, et, i, j, k);
+        // compute flux at lower z-directional face
+        face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
+        
       }
 
   // wait for boundary data to arrive from neighbors
   retval = udata->ExchangeEnd();
   if (check_flag(&retval, "ExchangeEnd (f)", 1)) return -1;
 
-  // iterate over entire domain, skipping interior
+  // computing remaining fluxes over boundary (loop over entire domain, but skip interior)
   for (k=0; k<nzl; k++)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
 
         // skip strict interior (already computed)
-        if ( (k>2) && (k<nzl-3) &&
-             (j>2) && (j<nyl-3) &&
-             (i>2) && (i<nxl-3) ) continue;
-
+        if ( (k>2) && (k<nzl-2) && (j>2) && (j<nyl-2) && (i>2) && (i<nxl-2) ) continue;
+        
         // return with failure on non-positive density, energy or pressure
-        retval = legal_state(rho[IDX(i,j,k,nxl,nyl)], mx[IDX(i,j,k,nxl,nyl)],
-                             my[IDX(i,j,k,nxl,nyl)], mz[IDX(i,j,k,nxl,nyl)],
-                             et[IDX(i,j,k,nxl,nyl)], *udata);
+        retval = udata->legal_state(rho[IDX(i,j,k,nxl,nyl,nzl)], mx[IDX(i,j,k,nxl,nyl,nzl)],
+                                    my[ IDX(i,j,k,nxl,nyl,nzl)], mz[IDX(i,j,k,nxl,nyl,nzl)],
+                                    et[ IDX(i,j,k,nxl,nyl,nzl)]);
         if (check_flag(&retval, "legal_state (f)", 1)) return -1;
 
-        // x-directional advection
-        //    pack 1D array of variable shortcuts
-        pack1D_x(w1d, rho, mx, my, mz, et, udata->Wrecv, udata->Erecv, i, j, k, nxl, nyl, nzl);
-        //    compute update
-        div_flux(w1d, 0, udata->dx, dw, *udata);
-        //    apply update
-        rhodot[IDX(i,j,k,nxl,nyl)] -= dw[0];
-        mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
-        mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
-        mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
+        // x-directional fluxes at "lower" face
+        udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, i, j, k);
+        face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i,j,k,nxl+1,nyl,nzl)]), *udata);
 
-        // y-directional advection
-        //    pack 1D array of variable shortcuts
-        pack1D_y(w1d, rho, mx, my, mz, et, udata->Srecv, udata->Nrecv, i, j, k, nxl, nyl, nzl);
-        //    compute update
-        div_flux(w1d, 1, udata->dy, dw, *udata);
-        //    apply update
-        rhodot[IDX(i,j,k,nxl,nyl)] -= dw[0];
-        mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
-        mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
-        mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
+        // x-directional fluxes at "upper" boundary face
+        if (i == nxl-1) {
+          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, i+1, j, k);
+          face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i+1,j,k,nxl+1,nyl,nzl)]), *udata);
+        }
 
-        // z-directional advection
-        //    pack 1D array of variable shortcuts
-        pack1D_z(w1d, rho, mx, my, mz, et, udata->Brecv, udata->Frecv, i, j, k, nxl, nyl, nzl);
-        //    compute update
-        div_flux(w1d, 2, udata->dz, dw, *udata);
-        //    apply update
-        rhodot[IDX(i,j,k,nxl,nyl)] -= dw[0];
-        mxdot[ IDX(i,j,k,nxl,nyl)] -= dw[1];
-        mydot[ IDX(i,j,k,nxl,nyl)] -= dw[2];
-        mzdot[ IDX(i,j,k,nxl,nyl)] -= dw[3];
-        etdot[ IDX(i,j,k,nxl,nyl)] -= dw[4];
+        // y-directional fluxes at "lower" face
+        udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, i, j, k);
+        face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j,k,nxl,nyl+1,nzl)]), *udata);
 
+        // y-directional fluxes at "upper" boundary face
+        if (j == nyl-1) {
+          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, i, j+1, k);
+          face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j+1,k,nxl,nyl+1,nzl)]), *udata);
+        }
+
+        // z-directional fluxes at "lower" face
+        udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, i, j, k);
+        face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
+
+        // z-directional fluxes at "upper" boundary face
+        if (k == nzl-1) {
+          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, i, j, k+1);
+          face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k+1,nxl,nyl,nzl+1)]), *udata);
+        }
+
+      }
+
+  // iterate over subdomain, computing RHS
+  for (k=0; k<nzl; k++)
+    for (j=0; j<nyl; j++)
+      for (i=0; i<nxl; i++) {
+        rhodot[IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(0,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                                            - udata->xflux[BUFIDX(0,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                                          + ( udata->yflux[BUFIDX(0,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                                            - udata->yflux[BUFIDX(0,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                                          + ( udata->zflux[BUFIDX(0,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                                            - udata->zflux[BUFIDX(0,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mxdot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(1,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                                            - udata->xflux[BUFIDX(1,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                                          + ( udata->yflux[BUFIDX(1,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                                            - udata->yflux[BUFIDX(1,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                                          + ( udata->zflux[BUFIDX(1,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                                            - udata->zflux[BUFIDX(1,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mydot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(2,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                                            - udata->xflux[BUFIDX(2,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                                          + ( udata->yflux[BUFIDX(2,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                                            - udata->yflux[BUFIDX(2,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                                          + ( udata->zflux[BUFIDX(2,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                                            - udata->zflux[BUFIDX(2,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mzdot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(3,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                                            - udata->xflux[BUFIDX(3,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                                          + ( udata->yflux[BUFIDX(3,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                                            - udata->yflux[BUFIDX(3,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                                          + ( udata->zflux[BUFIDX(3,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                                            - udata->zflux[BUFIDX(3,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        etdot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(4,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                                            - udata->xflux[BUFIDX(4,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                                          + ( udata->yflux[BUFIDX(4,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                                            - udata->yflux[BUFIDX(4,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                                          + ( udata->zflux[BUFIDX(4,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                                            - udata->zflux[BUFIDX(4,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
       }
 
 
@@ -473,8 +489,8 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
-        totvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl)];
-        totvals[1] += et[IDX(i,j,k,udata.nxl,udata.nyl)];
+        totvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+        totvals[1] += et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
       }
   totvals[0] *= udata.dx*udata.dy*udata.dz;
   totvals[1] *= udata.dx*udata.dy*udata.dz;
@@ -486,121 +502,6 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 }
 
 
-// Signed fluxes over patch
-void signed_fluxes(const realtype (&w1d)[7][5], realtype (&fms)[7][5],
-                   realtype (&fps)[7][5], const UserData& udata)
-{
-  // local variables
-  realtype rho, mx, my, mz, vx, vy, vz, et, p, csnd, cisq, qsq, h, gamm;
-  realtype vr[5], lv[5][5], rv[5][5], lambda[7][5], alpha[5], fx[5], fs[7][5], ws[7][5];
-  int i, j, k;
-
-  for (i=0; i<5; i++)
-    for (j=0; j<5; j++) {
-      rv[i][j] = ZERO;
-      lv[i][j] = ZERO;
-    }
-
-  // loop over patch, computing relevant quantities at each location
-  for (j=0; j<7; j++) {
-
-    // unpack state, and compute corresponding primitive variables
-    rho = w1d[j][0];  mx = w1d[j][1];  my = w1d[j][2];  mz = w1d[j][3];  et = w1d[j][4];
-    vx = mx/rho;  vy = my/rho;  vz = mz/rho;  p = eos(rho, mx, my, mz, et, udata);
-
-    // compute eigensystem
-    csnd = SUNRsqrt(udata.gamma*p/rho);
-    cisq = ONE/csnd/csnd;
-    qsq = vx*vx + vy*vy + vz*vz;
-    gamm = udata.gamma-ONE;
-    h = udata.gamma/gamm*p/rho + HALF*qsq;
-
-    lambda[j][0] = abs(vx);
-    lambda[j][1] = abs(vx);
-    lambda[j][2] = abs(vx);
-    lambda[j][3] = abs(vx+csnd);
-    lambda[j][4] = abs(vx-csnd);
-
-    rv[0][2] = ONE;
-    rv[0][3] = ONE;
-    rv[0][4] = ONE;
-
-    rv[1][2] = vx;
-    rv[1][3] = vx + csnd;
-    rv[1][4] = vx - csnd;
-
-    rv[2][1] = ONE;
-    rv[2][2] = vy;
-    rv[2][3] = vy;
-    rv[2][4] = vy;
-
-    rv[3][0] = ONE;
-    rv[3][2] = vz;
-    rv[3][3] = vz;
-    rv[3][4] = vz;
-
-    rv[4][0] = vz;
-    rv[4][1] = vy;
-    rv[4][2] = HALF*qsq;
-    rv[4][3] = h + vx*csnd;
-    rv[4][4] = h - vx*csnd;
-
-    lv[0][0] = -vz;
-    lv[0][3] = ONE;
-
-    lv[1][0] = -vy;
-    lv[1][2] = ONE;
-
-    lv[2][0] = ONE - HALF*gamm*qsq*cisq;
-    lv[2][1] = gamm*vx*cisq;
-    lv[2][2] = gamm*vy*cisq;
-    lv[2][3] = gamm*vz*cisq;
-    lv[2][4] = -gamm*cisq;
-
-    lv[3][0] = FOURTH*gamm*qsq*cisq - HALF*vx/csnd;
-    lv[3][1] = HALF/csnd - HALF*gamm*vx*cisq;
-    lv[3][2] = -HALF*gamm*vy*cisq;
-    lv[3][3] = -HALF*gamm*vz*cisq;
-    lv[3][4] = HALF*gamm*cisq;
-
-    lv[4][0] = FOURTH*gamm*qsq*cisq + HALF*vx/csnd;
-    lv[4][1] = -HALF/csnd - HALF*gamm*vx*cisq;
-    lv[4][2] = -HALF*gamm*vy*cisq;
-    lv[4][3] = -HALF*gamm*vz*cisq;
-    lv[4][4] = HALF*gamm*cisq;
-
-    // compute basic flux
-    fx[0] = mx;
-    fx[1] = rho*vx*vx + p;
-    fx[2] = rho*vx*vy;
-    fx[3] = rho*vx*vz;
-    fx[4] = vx*(et + p);
-
-    // compute projected flux stencils
-    for (i=0; i<5; i++)
-      fs[j][i] = lv[i][0]*fx[0] + lv[i][1]*fx[1] + lv[i][2]*fx[2] + lv[i][3]*fx[3] + lv[i][4]*fx[4];
-    for (i=0; i<5; i++)
-      ws[j][i] = lv[i][0]*rho + lv[i][1]*mx + lv[i][2]*my + lv[i][3]*mz + lv[i][4]*et;
-
-  }
-
-  // accumulate "alpha" values for patch
-  for (j=0; j<5; j++) {
-    alpha[j] = lambda[0][j];
-    for (i=1; i<7; i++)
-      alpha[j] = max(alpha[j], lambda[i][j]);
-  }
-
-  // compute signed fluxes over patch: fms is left-shifted, fps is right-shifted
-  for (j=0; j<7; j++)
-    for (i=0; i<5; i++) {
-      fms[j][i] = HALF*(fs[j][i] - alpha[i]*ws[j][i]);
-      fps[j][i] = HALF*(fs[j][i] + alpha[i]*ws[j][i]);
-    }
-
-}
-
-
 // Utility routine to print solution statistics
 //    firstlast = 0 indicates the first output
 //    firstlast = 1 indicates a normal output
@@ -608,7 +509,7 @@ void signed_fluxes(const realtype (&w1d)[7][5], realtype (&fms)[7][5],
 int print_stats(const realtype& t, const N_Vector w,
                 const int& firstlast, const UserData& udata)
 {
-  realtype rmsvals[] = {ZERO, ZERO, ZERO, ZERO, ZERO};
+  realtype rmsvals[NVAR];
   bool outproc = (udata.myid == 0);
   long int v, i, j, k;
   int retval;
@@ -623,18 +524,19 @@ int print_stats(const realtype& t, const N_Vector w,
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   if (firstlast < 2) {
+    for (v=0; v<NVAR; v++)  rmsvals[v] = ZERO;
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
-          rmsvals[0] += SUNRpowerI(rho[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
-          rmsvals[1] += SUNRpowerI( mx[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
-          rmsvals[2] += SUNRpowerI( my[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
-          rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
-          rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl)], 2);
+          rmsvals[0] += SUNRpowerI(rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[1] += SUNRpowerI( mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[2] += SUNRpowerI( my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
         }
-    retval = MPI_Reduce(MPI_IN_PLACE, &rmsvals, 5, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+    retval = MPI_Reduce(MPI_IN_PLACE, &rmsvals, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
-    for (v=0; v<5; v++)  rmsvals[v] = SUNRsqrt(rmsvals[v]/udata.nx/udata.ny/udata.nz);
+    for (v=0; v<NVAR; v++)  rmsvals[v] = SUNRsqrt(rmsvals[v]/udata.nx/udata.ny/udata.nz);
   }
   if (!outproc)  return(0);
   if (firstlast == 0)
@@ -655,11 +557,11 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
 {
   // reusable variables
   char outtype[2];
-  char outname[100];
+  char outname[5][100];
   FILE *FID;
   realtype *W;
-  long int i;
-  long int N = udata.nzl * udata.nyl * udata.nxl;
+  long int i, v;
+  long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
 
   // Set string for output type
   if (newappend == 1) {
@@ -668,238 +570,236 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
     sprintf(outtype, "a");
   }
 
-  // Output density
-  sprintf(outname, "euler3D_rho.%03i.txt", udata.myid);  // filename
-  FID = fopen(outname,outtype);                          // file ptr
-  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);    // data array
-  if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-  for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);       // output
-  fprintf(FID,"\n");                                     // newline
-  fclose(FID);                                           // close file
-
-  // Output x-momentum
-  sprintf(outname, "euler3D_mx.%03i.txt", udata.myid);
-  FID = fopen(outname,outtype);
-  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-  for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);
-  fprintf(FID,"\n");
-  fclose(FID);
-
-  // Output y-momentum
-  sprintf(outname, "euler3D_my.%03i.txt", udata.myid);
-  FID = fopen(outname,outtype);
-  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-  for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);
-  fprintf(FID,"\n");
-  fclose(FID);
-
-  // Output z-momentum
-  sprintf(outname, "euler3D_mz.%03i.txt", udata.myid);
-  FID = fopen(outname,outtype);
-  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-  for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);
-  fprintf(FID,"\n");
-  fclose(FID);
-
-  // Output energy
-  sprintf(outname, "euler3D_et.%03i.txt", udata.myid);
-  FID = fopen(outname,outtype);
-  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-  for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);
-  fprintf(FID,"\n");
-  fclose(FID);
+  // Set strings for output names
+  sprintf(outname[0], "euler3D_rho.%03i.txt", udata.myid);  // density
+  sprintf(outname[1], "euler3D_mx.%03i.txt",  udata.myid);  // x-momentum
+  sprintf(outname[2], "euler3D_my.%03i.txt",  udata.myid);  // y-momentum
+  sprintf(outname[3], "euler3D_mz.%03i.txt",  udata.myid);  // z-momentum
+  sprintf(outname[4], "euler3D_et.%03i.txt",  udata.myid);  // total energy
+ 
+  // Output fields to disk
+  for (v=0; v<5; v++) {
+    FID = fopen(outname[v],outtype);                     // file ptr
+    W = N_VGetSubvectorArrayPointer_MPIManyVector(w,v);  // data array
+    if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
+    for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);     // output
+    fprintf(FID,"\n");                                   // newline
+    fclose(FID);                                         // close file
+  }
 
   // return with success
   return(0);
 }
 
 
-// Utility routines to pack 1-dimensional data, properly handling
-// solution vs receive buffers
-inline void pack1D_x(realtype (&w1d)[7][5], const realtype* rho,
-                     const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* et,
-                     const realtype* Wrecv, const realtype* Erecv,
-                     const long int& i, const long int& j,
-                     const long int& k, const long int& nxl,
-                     const long int& nyl, const long int& nzl)
-{
-  for (int l=0; l<4; l++) {
-    w1d[l][0] = (i<(3-l)) ? Wrecv[BUFIDX(0,i+l,j,k,3,nyl,nzl)] : rho[IDX(i-3+l,j,k,nxl,nyl)];
-    w1d[l][1] = (i<(3-l)) ? Wrecv[BUFIDX(1,i+l,j,k,3,nyl,nzl)] : mx[IDX(i-3+l,j,k,nxl,nyl)];
-    w1d[l][2] = (i<(3-l)) ? Wrecv[BUFIDX(2,i+l,j,k,3,nyl,nzl)] : my[IDX(i-3+l,j,k,nxl,nyl)];
-    w1d[l][3] = (i<(3-l)) ? Wrecv[BUFIDX(3,i+l,j,k,3,nyl,nzl)] : mz[IDX(i-3+l,j,k,nxl,nyl)];
-    w1d[l][4] = (i<(3-l)) ? Wrecv[BUFIDX(4,i+l,j,k,3,nyl,nzl)] : et[IDX(i-3+l,j,k,nxl,nyl)];
-  }
-  w1d[3][0] = rho[IDX(i,j,k,nxl,nyl)];
-  w1d[3][1] = mx[IDX(i,j,k,nxl,nyl)];
-  w1d[3][2] = my[IDX(i,j,k,nxl,nyl)];
-  w1d[3][3] = mz[IDX(i,j,k,nxl,nyl)];
-  w1d[3][4] = et[IDX(i,j,k,nxl,nyl)];
-  for (int l=1; l<4; l++) {
-    w1d[l+3][0] = (i>(nxl-l-1)) ? Erecv[BUFIDX(0,i-nxl+l,j,k,3,nyl,nzl)] : rho[IDX(i+l,j,k,nxl,nyl)];
-    w1d[l+3][1] = (i>(nxl-l-1)) ? Erecv[BUFIDX(1,i-nxl+l,j,k,3,nyl,nzl)] : mx[IDX(i+l,j,k,nxl,nyl)];
-    w1d[l+3][2] = (i>(nxl-l-1)) ? Erecv[BUFIDX(2,i-nxl+l,j,k,3,nyl,nzl)] : my[IDX(i+l,j,k,nxl,nyl)];
-    w1d[l+3][3] = (i>(nxl-l-1)) ? Erecv[BUFIDX(3,i-nxl+l,j,k,3,nyl,nzl)] : mz[IDX(i+l,j,k,nxl,nyl)];
-    w1d[l+3][4] = (i>(nxl-l-1)) ? Erecv[BUFIDX(4,i-nxl+l,j,k,3,nyl,nzl)] : et[IDX(i+l,j,k,nxl,nyl)];
-  }
-}
-
-inline void pack1D_y(realtype (&w1d)[7][5], const realtype* rho,
-                     const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* et,
-                     const realtype* Srecv, const realtype* Nrecv,
-                     const long int& i, const long int& j,
-                     const long int& k, const long int& nxl,
-                     const long int& nyl, const long int& nzl)
-{
-  for (int l=0; l<4; l++) {
-      w1d[l][0] = (j<(3-l)) ? Srecv[BUFIDX(0,i,j+l,k,nxl,3,nzl)] : rho[IDX(i,j-3+l,k,nxl,nyl)];
-      w1d[l][1] = (j<(3-l)) ? Srecv[BUFIDX(1,i,j+l,k,nxl,3,nzl)] : mx[IDX(i,j-3+l,k,nxl,nyl)];
-      w1d[l][2] = (j<(3-l)) ? Srecv[BUFIDX(2,i,j+l,k,nxl,3,nzl)] : my[IDX(i,j-3+l,k,nxl,nyl)];
-      w1d[l][3] = (j<(3-l)) ? Srecv[BUFIDX(3,i,j+l,k,nxl,3,nzl)] : mz[IDX(i,j-3+l,k,nxl,nyl)];
-      w1d[l][4] = (j<(3-l)) ? Srecv[BUFIDX(4,i,j+l,k,nxl,3,nzl)] : et[IDX(i,j-3+l,k,nxl,nyl)];
-  }
-  w1d[3][0] = rho[IDX(i,j,k,nxl,nyl)];
-  w1d[3][1] = mx[IDX(i,j,k,nxl,nyl)];
-  w1d[3][2] = my[IDX(i,j,k,nxl,nyl)];
-  w1d[3][3] = mz[IDX(i,j,k,nxl,nyl)];
-  w1d[3][4] = et[IDX(i,j,k,nxl,nyl)];
-  for (int l=1; l<4; l++) {
-    w1d[l+3][0] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(0,i,j-nyl+l,k,nxl,3,nzl)] : rho[IDX(i,j+l,k,nxl,nyl)];
-    w1d[l+3][1] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(1,i,j-nyl+l,k,nxl,3,nzl)] : mx[IDX(i,j+l,k,nxl,nyl)];
-    w1d[l+3][2] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(2,i,j-nyl+l,k,nxl,3,nzl)] : my[IDX(i,j+l,k,nxl,nyl)];
-    w1d[l+3][3] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(3,i,j-nyl+l,k,nxl,3,nzl)] : mz[IDX(i,j+l,k,nxl,nyl)];
-    w1d[l+3][4] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(4,i,j-nyl+l,k,nxl,3,nzl)] : et[IDX(i,j+l,k,nxl,nyl)];
-  }
-}
-
-inline void pack1D_z(realtype (&w1d)[7][5], const realtype* rho,
-                     const realtype* mx, const realtype* my,
-                     const realtype* mz, const realtype* et,
-                     const realtype* Brecv, const realtype* Frecv,
-                     const long int& i, const long int& j,
-                     const long int& k, const long int& nxl,
-                     const long int& nyl, const long int& nzl)
-{
-  for (int l=0; l<4; l++) {
-    w1d[l][0] = (k<(3-l)) ? Brecv[BUFIDX(0,i,j,k+l,nxl,nyl,3)] : rho[IDX(i,j,k-3+l,nxl,nyl)];
-    w1d[l][1] = (k<(3-l)) ? Brecv[BUFIDX(1,i,j,k+l,nxl,nyl,3)] : mx[IDX(i,j,k-3+l,nxl,nyl)];
-    w1d[l][2] = (k<(3-l)) ? Brecv[BUFIDX(2,i,j,k+l,nxl,nyl,3)] : my[IDX(i,j,k-3+l,nxl,nyl)];
-    w1d[l][3] = (k<(3-l)) ? Brecv[BUFIDX(3,i,j,k+l,nxl,nyl,3)] : mz[IDX(i,j,k-3+l,nxl,nyl)];
-    w1d[l][4] = (k<(3-l)) ? Brecv[BUFIDX(4,i,j,k+l,nxl,nyl,3)] : et[IDX(i,j,k-3+l,nxl,nyl)];
-  }
-  w1d[3][0] = rho[IDX(i,j,k,nxl,nyl)];
-  w1d[3][1] = mx[IDX(i,j,k,nxl,nyl)];
-  w1d[3][2] = my[IDX(i,j,k,nxl,nyl)];
-  w1d[3][3] = mz[IDX(i,j,k,nxl,nyl)];
-  w1d[3][4] = et[IDX(i,j,k,nxl,nyl)];
-  for (int l=1; l<4; l++) {
-    w1d[l+3][0] = (k>(nzl-l-1)) ? Frecv[BUFIDX(0,i,j,k-nzl+l,nxl,nyl,3)] : rho[IDX(i,j,k+l,nxl,nyl)];
-    w1d[l+3][1] = (k>(nzl-l-1)) ? Frecv[BUFIDX(1,i,j,k-nzl+l,nxl,nyl,3)] : mx[IDX(i,j,k+l,nxl,nyl)];
-    w1d[l+3][2] = (k>(nzl-l-1)) ? Frecv[BUFIDX(2,i,j,k-nzl+l,nxl,nyl,3)] : my[IDX(i,j,k+l,nxl,nyl)];
-    w1d[l+3][3] = (k>(nzl-l-1)) ? Frecv[BUFIDX(3,i,j,k-nzl+l,nxl,nyl,3)] : mz[IDX(i,j,k+l,nxl,nyl)];
-    w1d[l+3][4] = (k>(nzl-l-1)) ? Frecv[BUFIDX(4,i,j,k-nzl+l,nxl,nyl,3)] : et[IDX(i,j,k+l,nxl,nyl)];
-  }
-}
-
-
-// given a 7-point stencil of solution values, compute Div(flux)
-// at the center node (store in dw)
+// given a 6-point stencil of solution values,
+//   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
+// and the flux direction idir, compute the face-centered flux (dw)
+// at the center of the stencil, x_{j+1/2}.
+//
+// The input "idir" handles the directionality for the 1D calculation
 //    idir = 0  implies x-directional flux
 //    idir = 1  implies y-directional flux
 //    idir = 2  implies z-directional flux
-void div_flux(realtype (&w1d)[7][5], const int& idir,
-              const realtype& dx, realtype* dw, const UserData& udata)
+//
+// This precisely follows the recipe laid out in:
+// Chi-Wang Shu (2003) "High-order Finite Difference and Finite Volume WENO
+// Schemes and Discontinuous Galerkin Methods for CFD," International Journal of 
+// Computational Fluid Dynamics, 17:2, 107-118, DOI: 10.1080/1061856031000104851
+void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
+               realtype* f_face, const UserData& udata)
 {
   // local data
   int i, j;
-  realtype fs[7][5], ws[7][5], alpha[7][5], fps[7][5], fms[7][5], eta,
-    p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11,
-    b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11,
-    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11;
-  const realtype d0 = RCONST(0.3);
-  const realtype d1 = RCONST(0.6);
-  const realtype d2 = RCONST(0.1);
-  const realtype d3 = RCONST(0.1);
-  const realtype d4 = RCONST(0.6);
-  const realtype d5 = RCONST(0.3);
-  const realtype bc = RCONST(13.0)/RCONST(12.0);
-  const realtype sixth = RCONST(1.0)/RCONST(6.0);
+  realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cisq, gamm, alpha,
+    f1, f2, f3, beta1, beta2, beta3, w1, w2, w3;
+  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[6][NVAR],
+    wproj[6][NVAR], fs[6][NVAR], fp[NVAR], fm[NVAR];
+  const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
   const realtype epsilon = 1e-6;
+  const realtype gamma1 = RCONST(0.1);
+  const realtype gamma2 = RCONST(0.6);
+  const realtype gamma3 = RCONST(0.3);
+  const realtype c11 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
+  const realtype c12 = -RCONST(1.166666666666666666666666666666666666667);  // -7/6
+  const realtype c13 = RCONST(1.833333333333333333333333333333333333333);   // 11/6
+  const realtype c21 = -RCONST(0.1666666666666666666666666666666666666667); // -1/6
+  const realtype c22 = RCONST(0.8333333333333333333333333333333333333333);  // 5/6
+  const realtype c23 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
+  const realtype c31 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
+  const realtype c32 = RCONST(0.8333333333333333333333333333333333333333);  // 5/6
+  const realtype c33 = -RCONST(0.1666666666666666666666666666666666666667); // -1/6
 
   // convert state to direction-independent version
   if (idir > 0)
-    for (i=0; i<7; i++) swap(w1d[i][1], w1d[i][1+idir]);
+    for (i=0; i<6; i++) swap(w1d[i][1], w1d[i][1+idir]);
 
-  // compute signed fluxes over patch
-  signed_fluxes(w1d, fms, fps, udata);
+  // compute pressures over stencil
+  for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
+  
+  // compute Roe-average state at face:
+  //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
+  //          [sqrt(rho), mx/sqrt(rho), my/sqrt(rho), mz/sqrt(rho), (e+p)/sqrt(rho)]
+  //   u = wbar_2 / wbar_1
+  //   v = wbar_3 / wbar_1
+  //   w = wbar_4 / wbar_1
+  //   H = wbar_5 / wbar_1
+  rhosqrL = SUNRsqrt(w1d[2][0]);
+  rhosqrR = SUNRsqrt(w1d[3][0]);
+  rhosqrbar = RCONST(0.5)*(rhosqrL + rhosqrR);
+  u = RCONST(0.5)*(w1d[2][1]/rhosqrL + w1d[3][1]/rhosqrR)/rhosqrbar;
+  v = RCONST(0.5)*(w1d[2][2]/rhosqrL + w1d[3][2]/rhosqrR)/rhosqrbar;
+  w = RCONST(0.5)*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
+  H = RCONST(0.5)*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
 
-  // perform WENO flux calculation based on shifted fluxes
-  for (j=0; j<5; j++) {
-    p0  = (      -fms[2][j] +  FIVE*fms[3][j] +    TWO*fms[4][j])*sixth;
-    p1  = (   TWO*fms[3][j] +  FIVE*fms[4][j] -        fms[5][j])*sixth;
-    p2  = (ELEVEN*fms[4][j] - SEVEN*fms[5][j] +    TWO*fms[6][j])*sixth;
-    p3  = (      -fms[1][j] +  FIVE*fms[2][j] +    TWO*fms[3][j])*sixth;
-    p4  = (   TWO*fms[2][j] +  FIVE*fms[3][j] -        fms[4][j])*sixth;
-    p5  = (ELEVEN*fms[3][j] - SEVEN*fms[4][j] +    TWO*fms[5][j])*sixth;
-    p6  = (   TWO*fps[1][j] - SEVEN*fps[2][j] + ELEVEN*fps[3][j])*sixth;
-    p7  = (      -fps[2][j] +  FIVE*fps[3][j] +    TWO*fps[4][j])*sixth;
-    p8  = (   TWO*fps[3][j] +  FIVE*fps[4][j] -        fps[5][j])*sixth;
-    p9  = (   TWO*fps[0][j] - SEVEN*fps[1][j] + ELEVEN*fps[2][j])*sixth;
-    p10 = (      -fps[1][j] +  FIVE*fps[2][j] +    TWO*fps[3][j])*sixth;
-    p11 = (   TWO*fps[2][j] +  FIVE*fps[3][j] -        fps[4][j])*sixth;
+  // compute eigenvectors at face:
+  qsq = u*u + v*v + w*w;
+  csnd = (udata.gamma-ONE)*(H - RCONST(0.5)*qsq);
+  cisq = ONE/csnd/csnd;
+  gamm = udata.gamma-ONE;
+  for (i=0; i<NVAR; i++)
+    for (j=0; j<NVAR; j++) {
+      RV[i][j] = ZERO;
+      LV[i][j] = ZERO;
+    }
+  RV[0][2] = ONE;
+  RV[0][3] = ONE;
+  RV[0][4] = ONE;
 
-    b0  = bc*pow(        fms[2][j] -  TWO*fms[3][j] +       fms[4][j],2)
-      + FOURTH*pow(      fms[2][j] - FOUR*fms[3][j] + THREE*fms[4][j],2);
-    b1  = bc*pow(        fms[3][j] -  TWO*fms[4][j] +       fms[5][j],2)
-      + FOURTH*pow(      fms[3][j] -      fms[5][j],2);
-    b2  = bc*pow(        fms[4][j] -  TWO*fms[5][j] +       fms[6][j],2)
-      + FOURTH*pow(THREE*fms[4][j] - FOUR*fms[5][j] +       fms[6][j],2);
-    b3  = bc*pow(        fms[1][j] -  TWO*fms[2][j] +       fms[3][j],2)
-      + FOURTH*pow(      fms[1][j] - FOUR*fms[2][j] + THREE*fms[3][j],2);
-    b4  = bc*pow(        fms[2][j] -  TWO*fms[3][j] +       fms[4][j],2)
-      + FOURTH*pow(      fms[2][j] -      fms[4][j],2);
-    b5  = bc*pow(        fms[3][j] -  TWO*fms[4][j] +       fms[5][j],2)
-      + FOURTH*pow(THREE*fms[3][j] - FOUR*fms[4][j] +       fms[5][j],2);
-    b6  = bc*pow(        fps[1][j] -  TWO*fps[2][j] +       fps[3][j],2)
-      + FOURTH*pow(      fps[1][j] - FOUR*fps[2][j] + THREE*fps[3][j],2);
-    b7  = bc*pow(        fps[2][j] -  TWO*fps[3][j] +       fps[4][j],2)
-      + FOURTH*pow(      fps[2][j] -      fps[4][j],2);
-    b8  = bc*pow(        fps[3][j] -  TWO*fps[4][j] +       fps[5][j],2)
-      + FOURTH*pow(THREE*fps[3][j] - FOUR*fps[4][j] +       fps[5][j],2);
-    b9  = bc*pow(        fps[0][j] -  TWO*fps[1][j] +       fps[2][j],2)
-      + FOURTH*pow(      fps[0][j] - FOUR*fps[1][j] + THREE*fps[2][j],2);
-    b10 = bc*pow(        fps[1][j] -  TWO*fps[2][j] +       fps[3][j],2)
-      + FOURTH*pow(      fps[1][j] -      fps[3][j],2);
-    b11 = bc*pow(        fps[2][j] -  TWO*fps[3][j] +       fps[4][j],2)
-      + FOURTH*pow(THREE*fps[2][j] - FOUR*fps[3][j] +       fps[4][j],2);
+  RV[1][2] = u;
+  RV[1][3] = u + csnd;
+  RV[1][4] = u - csnd;
 
-    a0  = d0 / (epsilon + b0)  / (epsilon + b0);
-    a1  = d1 / (epsilon + b1)  / (epsilon + b1);
-    a2  = d2 / (epsilon + b2)  / (epsilon + b2);
-    a3  = d0 / (epsilon + b3)  / (epsilon + b3);
-    a4  = d1 / (epsilon + b4)  / (epsilon + b4);
-    a5  = d2 / (epsilon + b5)  / (epsilon + b5);
-    a6  = d3 / (epsilon + b6)  / (epsilon + b6);
-    a7  = d4 / (epsilon + b7)  / (epsilon + b7);
-    a8  = d5 / (epsilon + b8)  / (epsilon + b8);
-    a9  = d3 / (epsilon + b9)  / (epsilon + b9);
-    a10 = d4 / (epsilon + b10) / (epsilon + b10);
-    a11 = d5 / (epsilon + b11) / (epsilon + b11);
+  RV[2][1] = ONE;
+  RV[2][2] = v;
+  RV[2][3] = v;
+  RV[2][4] = v;
 
-    dw[j] = ( (a0*p0 + a1*p1 + a2*p2)/(a0 + a1 + a2) -
-              (a3*p3 + a4*p4 + a5*p5)/(a3 + a4 + a5) +
-              (a6*p6 + a7*p7 + a8*p8)/(a6 + a7 + a8) -
-              (a9*p9 + a10*p10 + a11*p11)/(a9 + a10 + a11) ) / dx;
+  RV[3][0] = ONE;
+  RV[3][2] = w;
+  RV[3][3] = w;
+  RV[3][4] = w;
+
+  RV[4][0] = w;
+  RV[4][1] = v;
+  RV[4][2] = HALF*qsq;
+  RV[4][3] = H + u*csnd;
+  RV[4][4] = H - u*csnd;
+
+  LV[0][0] = -w;
+  LV[0][3] = ONE;
+
+  LV[1][0] = -v;
+  LV[1][2] = ONE;
+
+  LV[2][0] = ONE - HALF*gamm*qsq*cisq;
+  LV[2][1] = gamm*u*cisq;
+  LV[2][2] = gamm*v*cisq;
+  LV[2][3] = gamm*w*cisq;
+  LV[2][4] = -gamm*cisq;
+
+  LV[3][0] = FOURTH*gamm*qsq*cisq - HALF*u/csnd;
+  LV[3][1] = HALF/csnd - HALF*gamm*u*cisq;
+  LV[3][2] = -HALF*gamm*v*cisq;
+  LV[3][3] = -HALF*gamm*w*cisq;
+  LV[3][4] = HALF*gamm*cisq;
+
+  LV[4][0] = FOURTH*gamm*qsq*cisq + HALF*u/csnd;
+  LV[4][1] = -HALF/csnd - HALF*gamm*u*cisq;
+  LV[4][2] = -HALF*gamm*v*cisq;
+  LV[4][3] = -HALF*gamm*w*cisq;
+  LV[4][4] = HALF*gamm*cisq;
+
+  // compute fluxes and max wave speed over stencil
+  alpha = max(abs(u+csnd), abs(u-csnd));          // max(|u+csnd|, |u-csnd|) at face
+  for (i=0; i<6; i++) {
+    u = w1d[i][1]/w1d[i][0];
+    flux[i][0] = w1d[i][1];                       // mx
+    flux[i][1] = u*w1d[i][1] + p[i];              // rho*vx*vx + p = mx*u + p
+    flux[i][2] = u*w1d[i][2];                     // rho*vx*vy = my*u
+    flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
+    flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
+    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // c = sqrt(gamma*p/rho)
+    alpha = max(alpha, abs(u+csnd));              // compare to |u+c| in cell
+    alpha = max(alpha, abs(u-csnd));              // compare to |u-c| in cell
   }
 
-  // convert flux to direction-independent version
-  if (idir > 0) swap(dw[1], dw[1+idir]);
+  // compute projected flux stencils
+  for (j=0; j<6; j++)
+    for (i=0; i<NVAR; i++)
+      fproj[j][i] = LV[i][0]*flux[j][0] + LV[i][1]*flux[j][1] + LV[i][2]*flux[j][2]
+                  + LV[i][3]*flux[j][3] + LV[i][4]*flux[j][4];
+  for (j=0; j<6; j++)
+    for (i=0; i<NVAR; i++)
+      wproj[j][i] = LV[i][0]*w1d[j][0] + LV[i][1]*w1d[j][1] + LV[i][2]*w1d[j][2]
+                  + LV[i][3]*w1d[j][3] + LV[i][4]*w1d[j][4];
+
+  
+  // fp(x_{i+1/2}):
+
+  //   compute right-shifted Lax-Friedrichs flux over patch
+  for (j=0; j<6; j++)
+    for (i=0; i<NVAR; i++)
+      fs[j][i] = HALF*(fproj[j][i] + alpha*wproj[j][i]);
+
+  //   compute WENO signed flux for each characteristic component
+  for (i=0; i<NVAR; i++) {
+    // flux stencils
+    f1 = c11*fs[0][i] + c12*fs[1][i] + c13*fs[2][i];
+    f2 = c21*fs[1][i] + c22*fs[2][i] + c23*fs[3][i];
+    f3 = c31*fs[2][i] + c32*fs[3][i] + c33*fs[4][i];
+    // smoothness indicators
+    beta1 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
+          + RCONST(0.25)*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
+    beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
+          + RCONST(0.25)*pow(fs[1][i] - fs[3][i],2);
+    beta3 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
+          + RCONST(0.25)*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
+    // nonlinear weights
+    w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
+    w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
+    w3 = gamma3 / (epsilon + beta3) / (epsilon + beta3);
+    // resulting signed flux
+    fp[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
+  }
+
+  
+  // fm(x_{i+1/2}):
+  
+  //   compute left-shifted Lax-Friedrichs flux over patch
+  for (j=0; j<6; j++)
+    for (i=0; i<NVAR; i++)
+      fs[j][i] = HALF*(fproj[j][i] - alpha*wproj[j][i]);
+
+  //   compute WENO signed flux for each characteristic component
+  for (i=0; i<NVAR; i++) {
+    // flux stencils
+    f1 = c11*fs[0][i] + c12*fs[1][i] + c13*fs[2][i];
+    f2 = c21*fs[1][i] + c22*fs[2][i] + c23*fs[3][i];
+    f3 = c31*fs[2][i] + c32*fs[3][i] + c33*fs[4][i];
+    // smoothness indicators
+    beta1 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
+          + RCONST(0.25)*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
+    beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
+          + RCONST(0.25)*pow(fs[1][i] - fs[3][i],2);
+    beta3 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
+          + RCONST(0.25)*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
+    // nonlinear weights
+    w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
+    w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
+    w3 = gamma3 / (epsilon + beta3) / (epsilon + beta3);
+    // resulting signed flux
+    fm[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
+  }
+
+  // combine signed fluxes into output, converting back to conserved variables
+  for (i=0; i<NVAR; i++)
+    f_face[i] = RV[i][0]*(fm[0] + fp[0]) + RV[i][1]*(fm[1] + fp[1])
+      + RV[i][2]*(fm[2] + fp[2]) + RV[i][3]*(fm[3] + fp[3]) + RV[i][4]*(fm[4] + fp[4]);
+
+  // convert fluxes to direction-independent version
+  if (idir > 0) 
+    swap(f_face[1], f_face[1+idir]);
 
 }
 
