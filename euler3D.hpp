@@ -77,7 +77,7 @@ public:
   realtype dx;          // x-directional mesh spacing
   realtype dy;          // y-directional mesh spacing
   realtype dz;          // z-directional mesh spacing
-
+  
   ///// problem-defining data /////
   int      xlbc;        // boundary condition types:
   int      xrbc;        //      0 = periodic
@@ -86,7 +86,8 @@ public:
   int      zlbc;
   int      zrbc;
   realtype gamma;       // ratio of specific heat capacities, cp/cv
-
+  realtype cfl;         // fraction of maximum stable step size to use
+  
   ///// reusable arrays for WENO flux calculations /////
   realtype *xflux;
   realtype *yflux;
@@ -122,16 +123,16 @@ public:
   ///// class operations /////
   // constructor
   UserData(long int nx_, long int ny_, long int nz_, realtype xl_,
-           realtype xr_, realtype yl_, realtype yr_,
-           realtype zl_, realtype zr_, int xlbc_, int xrbc_,
-           int ylbc_, int yrbc_, int zlbc_, int zrbc_, realtype gamma_) :
+           realtype xr_, realtype yl_, realtype yr_, realtype zl_, 
+           realtype zr_, int xlbc_, int xrbc_, int ylbc_, int yrbc_, 
+           int zlbc_, int zrbc_, realtype gamma_, realtype cfl_) :
       nx(nx_), ny(ny_), nz(nz_), xl(xl_), xr(xr_), yl(yl_), yr(yr_), zl(zl_),
       zr(zr_), xlbc(xlbc_), xrbc(xrbc_), ylbc(ylbc_), yrbc(yrbc_), zlbc(zlbc_),
       zrbc(zrbc_), is(0), ie(0), js(0), je(0), ks(0), ke(0), nxl(0), nyl(0),
       nzl(0), comm(MPI_COMM_WORLD), myid(0), nprocs(0), npx(0), npy(0), npz(0),
       Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
       Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
-      ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(gamma_),
+      ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(gamma_), cfl(cfl_),
       xflux(NULL), yflux(NULL), zflux(NULL)
   {
     dx = (xr-xl)/nx;
@@ -316,37 +317,37 @@ public:
     // open an Irecv buffer for each neighbor
     if (ipW != MPI_PROC_NULL) {
       retval = MPI_Irecv(Wrecv, NVAR*3*nyl*nzl, MPI_SUNREALTYPE, ipW,
-                         MPI_ANY_TAG, comm, req);
+                         1, comm, req);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipE != MPI_PROC_NULL) {
       retval = MPI_Irecv(Erecv, NVAR*3*nyl*nzl, MPI_SUNREALTYPE, ipE,
-                         MPI_ANY_TAG, comm, req+1);
+                         0, comm, req+1);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipS != MPI_PROC_NULL) {
       retval = MPI_Irecv(Srecv, NVAR*nxl*3*nzl, MPI_SUNREALTYPE, ipS,
-                         MPI_ANY_TAG, comm, req+2);
+                         3, comm, req+2);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipN != MPI_PROC_NULL) {
       retval = MPI_Irecv(Nrecv, NVAR*nxl*3*nzl, MPI_SUNREALTYPE, ipN,
-                         MPI_ANY_TAG, comm, req+3);
+                         2, comm, req+3);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipB != MPI_PROC_NULL) {
       retval = MPI_Irecv(Brecv, NVAR*nxl*nyl*3, MPI_SUNREALTYPE, ipB,
-                         MPI_ANY_TAG, comm, req+4);
+                         5, comm, req+4);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipF != MPI_PROC_NULL) {
       retval = MPI_Irecv(Frecv, NVAR*nxl*nyl*3, MPI_SUNREALTYPE, ipF,
-                         MPI_ANY_TAG, comm, req+5);
+                         4, comm, req+5);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
@@ -730,25 +731,25 @@ public:
                             const realtype* mz, const realtype* et,
                             const long int& i, const long int& j, const long int& k) const
   {
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l][0] = (i<(3-l)) ? Wrecv[BUFIDX(0,i+l,j,k,3,nyl,nzl)] : rho[IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l][1] = (i<(3-l)) ? Wrecv[BUFIDX(1,i+l,j,k,3,nyl,nzl)] : mx[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l][2] = (i<(3-l)) ? Wrecv[BUFIDX(2,i+l,j,k,3,nyl,nzl)] : my[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l][3] = (i<(3-l)) ? Wrecv[BUFIDX(3,i+l,j,k,3,nyl,nzl)] : mz[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l][4] = (i<(3-l)) ? Wrecv[BUFIDX(4,i+l,j,k,3,nyl,nzl)] : et[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l+3][0] = (i>(nxl-l-1)) ? Erecv[BUFIDX(0,i-nxl+l,j,k,3,nyl,nzl)] : rho[IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l+3][1] = (i>(nxl-l-1)) ? Erecv[BUFIDX(1,i-nxl+l,j,k,3,nyl,nzl)] : mx[ IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l+3][2] = (i>(nxl-l-1)) ? Erecv[BUFIDX(2,i-nxl+l,j,k,3,nyl,nzl)] : my[ IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l+3][3] = (i>(nxl-l-1)) ? Erecv[BUFIDX(3,i-nxl+l,j,k,3,nyl,nzl)] : mz[ IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++)
+    for (int l=0; l<3; l++) 
       w1d[l+3][4] = (i>(nxl-l-1)) ? Erecv[BUFIDX(4,i-nxl+l,j,k,3,nyl,nzl)] : et[ IDX(i+l,j,k,nxl,nyl,nzl)];
   }
   inline void pack1D_y_bdry(realtype (&w1d)[6][NVAR], const realtype* rho,
@@ -853,7 +854,7 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
                 double& tf, double& gamma, long int& nx,
                 long int& ny, long int& nz, int& xlbc, int& xrbc,
                 int& ylbc, int& yrbc, int& zlbc, int& zrbc,
-                int& nout, int& showstats);
+                double& cfl, int& nout, int& showstats);
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);

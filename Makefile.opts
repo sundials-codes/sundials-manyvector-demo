@@ -9,8 +9,8 @@
 ###################################################################
 
 # flag to decide between optimized and debugging libraries
-LIBTYPE = DBG
-#LIBTYPE = OPT
+#LIBTYPE = DBG
+LIBTYPE = OPT
 
 # flag to enable/disable OpenMP (1=enable, 0=disable)
 USEOMP = 1

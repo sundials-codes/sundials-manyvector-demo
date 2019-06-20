@@ -17,7 +17,9 @@
 
 // prototypes of local functions to be provided to ARKode
 //    f routine to compute the ODE RHS function f(t,y).
-static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data);
+static int f(realtype t, N_Vector w, N_Vector wdot, void* user_data);
+//    stab routine to compute maximum stable step size
+static int stab(N_Vector w, realtype t, realtype* dt_stab, void* user_data);
 
 
 // Main Program
@@ -51,15 +53,15 @@ int main(int argc, char* argv[]) {
   double tstart = MPI_Wtime();
 
   /* read problem parameters from input file */
-  double xl, xr, yl, yr, zl, zr, t0, tf, gamma;
+  double xl, xr, yl, yr, zl, zr, t0, tf, gamma, cfl;
   long int nx, ny, nz;
   int xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, nout, showstats;
   retval = load_inputs(myid, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, nz,
-                       xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, nout, showstats);
+                       xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, cfl, nout, showstats);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // allocate and fill udata structure (overwriting betax for this test)
-  UserData udata(nx,ny,nz,xl,xr,yl,yr,zl,zr,xlbc,xrbc,ylbc,yrbc,zlbc,zrbc,gamma);
+  UserData udata(nx,ny,nz,xl,xr,yl,yr,zl,zr,xlbc,xrbc,ylbc,yrbc,zlbc,zrbc,gamma,cfl);
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -78,6 +80,7 @@ int main(int argc, char* argv[]) {
          << udata.ylbc << ", " << udata.yrbc << "] x ["
          << udata.zlbc << ", " << udata.zrbc << "]\n";
     cout << "   gamma: " << udata.gamma << "\n";
+    cout << "   cfl fraction: " << udata.cfl << "\n";
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
   }
@@ -130,18 +133,23 @@ int main(int argc, char* argv[]) {
     idense = 1;
 
   // Set routines
-  retval = ARKStepSetUserData(arkode_mem, (void *) (&udata));   // Pass udata to user functions
+  retval = ARKStepSetUserData(arkode_mem, (void *) (&udata));           // Pass udata to user functions
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
   if (outproc) {
-    retval = ARKStepSetDiagnostics(arkode_mem, DFID);           // Set diagnostics file
+    retval = ARKStepSetDiagnostics(arkode_mem, DFID);                   // Set diagnostics file
     if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  retval = ARKStepSStolerances(arkode_mem, rtol, atol);         // Specify tolerances
+  retval = ARKStepSStolerances(arkode_mem, rtol, atol);                 // Specify tolerances
   if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
+  // Supply cfl-stable step routine (if requested)
+  if (cfl > ZERO) {
+    retval = ARKStepSetStabilityFn(arkode_mem, stab, (void *) (&udata));
+    if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
 
   // Each processor outputs subdomain information
   char outname[100];
-  sprintf(outname, "euler3D_subdomain.%03i.txt", udata.myid);
+  sprintf(outname, "output-euler3D_subdomain.%07i.txt", udata.myid);
   FILE *UFID = fopen(outname,"w");
   fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li\n",
 	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie,
@@ -310,7 +318,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->pack1D_z(w1d, rho, mx, my, mz, et, i, j, k);
         // compute flux at lower z-directional face
         face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
-        
+
       }
 
   // wait for boundary data to arrive from neighbors
@@ -402,6 +410,48 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // return with success
   return 0;
+}
+
+
+// stab routine to compute maximum stable step size
+static int stab(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
+{
+  // access problem data
+  UserData *udata = (UserData *) user_data;
+
+  // access data arrays
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+
+  // iterate over subdomain, computing the maximum local wave speed
+  realtype u, p, csnd;
+  realtype alpha = ZERO;
+  for (long int i=0; i<(udata->nxl)*(udata->nyl)*(udata->nzl); i++) {
+    u = max( max( abs(mx[i]/rho[i]), abs(mx[i]/rho[i]) ), abs(mx[i]/rho[i]) );
+    p = udata->eos(rho[i], mx[i], my[i], mz[i], et[i]);
+    csnd = SUNRsqrt((udata->gamma) * p / rho[i]);
+    alpha = max(alpha, abs(u+csnd));
+  }
+
+  // determine maximum wave speed over entire domain
+  int retval = MPI_Allreduce(MPI_IN_PLACE, &alpha, 1, MPI_SUNREALTYPE, MPI_MAX, udata->comm);
+  if (check_flag(&retval, "MPI_Alleduce (stab)", 3)) MPI_Abort(udata->comm, 1);
+
+  // compute maximum stable step size
+  *dt_stab = (udata->cfl) * min(min(udata->dx, udata->dy), udata->dz) / alpha;
+
+  //printf("stab: alpha = %g, dt_stab = %g\n", alpha, *dt_stab);
+  
+  // return with success
+  return(0);
 }
 
 
@@ -571,11 +621,11 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   }
 
   // Set strings for output names
-  sprintf(outname[0], "euler3D_rho.%03i.txt", udata.myid);  // density
-  sprintf(outname[1], "euler3D_mx.%03i.txt",  udata.myid);  // x-momentum
-  sprintf(outname[2], "euler3D_my.%03i.txt",  udata.myid);  // y-momentum
-  sprintf(outname[3], "euler3D_mz.%03i.txt",  udata.myid);  // z-momentum
-  sprintf(outname[4], "euler3D_et.%03i.txt",  udata.myid);  // total energy
+  sprintf(outname[0], "output-euler3D_rho.%07i.txt", udata.myid);  // density
+  sprintf(outname[1], "output-euler3D_mx.%07i.txt",  udata.myid);  // x-momentum
+  sprintf(outname[2], "output-euler3D_my.%07i.txt",  udata.myid);  // y-momentum
+  sprintf(outname[3], "output-euler3D_mz.%07i.txt",  udata.myid);  // z-momentum
+  sprintf(outname[4], "output-euler3D_et.%07i.txt",  udata.myid);  // total energy
  
   // Output fields to disk
   for (v=0; v<5; v++) {
@@ -611,7 +661,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 {
   // local data
   int i, j;
-  realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cisq, gamm, alpha,
+  realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
     f1, f2, f3, beta1, beta2, beta3, w1, w2, w3;
   realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[6][NVAR],
     wproj[6][NVAR], fs[6][NVAR], fp[NVAR], fm[NVAR];
@@ -654,62 +704,64 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 
   // compute eigenvectors at face:
   qsq = u*u + v*v + w*w;
-  csnd = (udata.gamma-ONE)*(H - RCONST(0.5)*qsq);
-  cisq = ONE/csnd/csnd;
   gamm = udata.gamma-ONE;
+  csnd = gamm*(H - RCONST(0.5)*qsq);
+  cinv = ONE/csnd;
+  cisq = cinv*cinv;
   for (i=0; i<NVAR; i++)
     for (j=0; j<NVAR; j++) {
       RV[i][j] = ZERO;
       LV[i][j] = ZERO;
     }
-  RV[0][2] = ONE;
+
+  RV[0][0] = ONE;
   RV[0][3] = ONE;
   RV[0][4] = ONE;
 
-  RV[1][2] = u;
-  RV[1][3] = u + csnd;
-  RV[1][4] = u - csnd;
+  RV[1][0] = u-csnd;
+  RV[1][3] = u;
+  RV[1][4] = u+csnd;
 
+  RV[2][0] = v;
   RV[2][1] = ONE;
-  RV[2][2] = v;
   RV[2][3] = v;
   RV[2][4] = v;
 
-  RV[3][0] = ONE;
-  RV[3][2] = w;
+  RV[3][0] = w;
+  RV[3][2] = ONE;
   RV[3][3] = w;
   RV[3][4] = w;
 
-  RV[4][0] = w;
+  RV[4][0] = H-u*csnd;
   RV[4][1] = v;
-  RV[4][2] = HALF*qsq;
-  RV[4][3] = H + u*csnd;
-  RV[4][4] = H - u*csnd;
+  RV[4][2] = w;
+  RV[4][3] = HALF*qsq;
+  RV[4][4] = H+u*csnd;
 
-  LV[0][0] = -w;
-  LV[0][3] = ONE;
+  LV[0][0] = HALF*cinv*(u + HALF*gamm*qsq);
+  LV[0][1] = -HALF*cinv*(gamm*u + ONE);
+  LV[0][2] = -HALF*v*gamm*cinv;
+  LV[0][3] = -HALF*w*gamm*cinv;
+  LV[0][4] = HALF*gamm*cinv;
 
   LV[1][0] = -v;
   LV[1][2] = ONE;
 
-  LV[2][0] = ONE - HALF*gamm*qsq*cisq;
-  LV[2][1] = gamm*u*cisq;
-  LV[2][2] = gamm*v*cisq;
-  LV[2][3] = gamm*w*cisq;
-  LV[2][4] = -gamm*cisq;
+  LV[2][0] = -w;
+  LV[2][3] = ONE;
 
-  LV[3][0] = FOURTH*gamm*qsq*cisq - HALF*u/csnd;
-  LV[3][1] = HALF/csnd - HALF*gamm*u*cisq;
-  LV[3][2] = -HALF*gamm*v*cisq;
-  LV[3][3] = -HALF*gamm*w*cisq;
-  LV[3][4] = HALF*gamm*cisq;
+  LV[3][0] = -gamm*cinv*(qsq - H);
+  LV[3][1] = u*gamm*cinv;
+  LV[3][2] = v*gamm*cinv;
+  LV[3][3] = w*gamm*cinv;
+  LV[3][4] = -gamm*cinv;
 
-  LV[4][0] = FOURTH*gamm*qsq*cisq + HALF*u/csnd;
-  LV[4][1] = -HALF/csnd - HALF*gamm*u*cisq;
-  LV[4][2] = -HALF*gamm*v*cisq;
-  LV[4][3] = -HALF*gamm*w*cisq;
-  LV[4][4] = HALF*gamm*cisq;
-
+  LV[4][0] = -HALF*cinv*(u - HALF*gamm*qsq);
+  LV[4][1] = -HALF*cinv*(gamm*u - ONE);
+  LV[4][2] = -HALF*v*gamm*cinv;
+  LV[4][3] = -HALF*w*gamm*cinv;
+  LV[4][4] = HALF*gamm*cinv;
+  
   // compute fluxes and max wave speed over stencil
   alpha = max(abs(u+csnd), abs(u-csnd));          // max(|u+csnd|, |u-csnd|) at face
   for (i=0; i<6; i++) {
@@ -792,6 +844,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     fm[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
+  
   // combine signed fluxes into output, converting back to conserved variables
   for (i=0; i<NVAR; i++)
     f_face[i] = RV[i][0]*(fm[0] + fp[0]) + RV[i][1]*(fm[1] + fp[1])

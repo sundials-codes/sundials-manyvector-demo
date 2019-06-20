@@ -24,10 +24,10 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
                 double& tf, double& gamma, long int& nx,
                 long int& ny, long int& nz, int& xlbc, int& xrbc,
                 int& ylbc, int& yrbc, int& zlbc, int& zrbc,
-                int& nout, int& showstats)
+                double& cfl, int& nout, int& showstats)
 {
   int retval;
-  double dbuff[9];
+  double dbuff[10];
   long int ibuff[11];
 
   // root process reads solver parameters from file and packs send buffers
@@ -61,6 +61,7 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
       retval += sscanf(line,"yrbc = %i", &yrbc);
       retval += sscanf(line,"zlbc = %i", &zlbc);
       retval += sscanf(line,"zrbc = %i", &zrbc);
+      retval += sscanf(line,"cfl = %lf", &cfl);
       retval += sscanf(line,"nout = %i", &nout);
       retval += sscanf(line,"showstats = %i", &showstats);
 
@@ -92,10 +93,11 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
     dbuff[6]  = t0;
     dbuff[7]  = tf;
     dbuff[8]  = gamma;
+    dbuff[9]  = cfl;
   }
 
   // perform broadcast and unpack results
-  retval = MPI_Bcast(dbuff, 9, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(dbuff, 10, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
   retval = MPI_Bcast(ibuff, 11, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
@@ -110,6 +112,7 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
   t0    = dbuff[6];
   tf    = dbuff[7];
   gamma = dbuff[8];
+  cfl   = dbuff[9];
   nx    = ibuff[0];
   ny    = ibuff[1];
   nz    = ibuff[2];
