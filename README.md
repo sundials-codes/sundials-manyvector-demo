@@ -171,8 +171,10 @@ return 0.
 Here, the `initial_conditions` routine will be called once when the
 simulation begins, `external_forces` will be called on every
 evaluation of the ODE right-hand side function for the Euler
-equations, and `output_diagnostics` will be called at the same
-frequency as the solution is output to disk.
+equations (it is assumed that this does not require parallel
+communication, or the results from `UserData::ExchangeStart` /
+`UserData::ExchangeEnd`), and `output_diagnostics` will be called at
+the same frequency as the solution is output to disk.
 
 A second input file, `solve_params.txt` specifies all ARKode time
 integration-related parameters that may be used to control the
