@@ -15,6 +15,8 @@
 #include "fenv.h"
 #endif
 
+//#define WENO5_JW
+
 // prototypes of local functions to be provided to ARKode
 //    f routine to compute the ODE RHS function f(t,y).
 static int f(realtype t, N_Vector w, N_Vector wdot, void* user_data);
@@ -642,6 +644,194 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
 }
 
 
+
+#ifdef WENO5_JW
+
+// utility function
+static inline realtype phi(const realtype &a, const realtype &b, const realtype &c, 
+                           const realtype &d, const realtype &eps)
+{
+  realtype a0 = ONE/pow(eps + RCONST(13.0)*pow(a-b,2) + RCONST(3.0)*pow(a-RCONST(3.0)*b,2), 2);
+  realtype a1 = RCONST(6.0)/pow(eps + RCONST(13.0)*pow(b-c,2) + RCONST(3.0)*pow(b+c,2), 2);
+  realtype a2 = RCONST(3.0)/pow(eps + RCONST(13.0)*pow(c-d,2) + RCONST(3.0)*pow(RCONST(3.0)*c-d,2), 2);
+  realtype omega0 = a0 / (a0 + a1 + a2);
+  realtype omega2 = a2 / (a0 + a1 + a2);
+  return((TWO*omega0*(a-TWO*b+c) + (omega2-HALF)*(b-TWO*c+d))/RCONST(6.0));
+}
+
+// given a 6-point stencil of solution values,
+//   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
+// and the flux direction idir, compute the face-centered flux (dw)
+// at the center of the stencil, x_{j+1/2}.
+//
+// The input "idir" handles the directionality for the 1D calculation
+//    idir = 0  implies x-directional flux
+//    idir = 1  implies y-directional flux
+//    idir = 2  implies z-directional flux
+//
+// This precisely follows the recipe laid out in:
+// Guang-Shan Jiang and Cheng-chin Wu (1999) "A High-order WENO finite
+// difference scheme for the equations of ideal magnetohydrodynamics,"
+// J. Computational Physics, 150, 561-594
+void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
+               realtype* f_face, const UserData& udata)
+{
+  // local data
+  int i, j;
+  realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm;
+  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], alpha[NVAR], p[6], flux[6][NVAR], fs[6][NVAR],
+    ws[6][NVAR], fsp[5][NVAR], fsm[5][NVAR], dfsp[4][NVAR], dfsm[4][NVAR], fhat[NVAR];
+  const realtype epsilon = 1e-6;
+
+  // convert state to direction-independent version
+  if (idir > 0)
+    for (i=0; i<6; i++) swap(w1d[i][1], w1d[i][1+idir]);
+
+  // compute pressures over stencil
+  for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
+  
+  // compute Roe-average state at face:
+  //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
+  //          [sqrt(rho), mx/sqrt(rho), my/sqrt(rho), mz/sqrt(rho), (e+p)/sqrt(rho)]
+  //   u = wbar_2 / wbar_1
+  //   v = wbar_3 / wbar_1
+  //   w = wbar_4 / wbar_1
+  //   H = wbar_5 / wbar_1
+  rhosqrL = SUNRsqrt(w1d[2][0]);
+  rhosqrR = SUNRsqrt(w1d[3][0]);
+  rhosqrbar = RCONST(0.5)*(rhosqrL + rhosqrR);
+  u = RCONST(0.5)*(w1d[2][1]/rhosqrL + w1d[3][1]/rhosqrR)/rhosqrbar;
+  v = RCONST(0.5)*(w1d[2][2]/rhosqrL + w1d[3][2]/rhosqrR)/rhosqrbar;
+  w = RCONST(0.5)*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
+  H = RCONST(0.5)*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
+
+  // compute eigenvectors at face:
+  qsq = u*u + v*v + w*w;
+  gamm = udata.gamma-ONE;
+  csnd = gamm*(H - RCONST(0.5)*qsq);
+  cinv = ONE/csnd;
+  cisq = cinv*cinv;
+  for (i=0; i<NVAR; i++)
+    for (j=0; j<NVAR; j++) {
+      RV[i][j] = ZERO;
+      LV[i][j] = ZERO;
+    }
+
+  RV[0][0] = ONE;
+  RV[0][3] = ONE;
+  RV[0][4] = ONE;
+
+  RV[1][0] = u-csnd;
+  RV[1][3] = u;
+  RV[1][4] = u+csnd;
+
+  RV[2][0] = v;
+  RV[2][1] = ONE;
+  RV[2][3] = v;
+  RV[2][4] = v;
+
+  RV[3][0] = w;
+  RV[3][2] = ONE;
+  RV[3][3] = w;
+  RV[3][4] = w;
+
+  RV[4][0] = H-u*csnd;
+  RV[4][1] = v;
+  RV[4][2] = w;
+  RV[4][3] = HALF*qsq;
+  RV[4][4] = H+u*csnd;
+
+  LV[0][0] = HALF*cinv*(u + HALF*gamm*qsq);
+  LV[0][1] = -HALF*cinv*(gamm*u + ONE);
+  LV[0][2] = -HALF*v*gamm*cinv;
+  LV[0][3] = -HALF*w*gamm*cinv;
+  LV[0][4] = HALF*gamm*cinv;
+
+  LV[1][0] = -v;
+  LV[1][2] = ONE;
+
+  LV[2][0] = -w;
+  LV[2][3] = ONE;
+
+  LV[3][0] = -gamm*cinv*(qsq - H);
+  LV[3][1] = u*gamm*cinv;
+  LV[3][2] = v*gamm*cinv;
+  LV[3][3] = w*gamm*cinv;
+  LV[3][4] = -gamm*cinv;
+
+  LV[4][0] = -HALF*cinv*(u - HALF*gamm*qsq);
+  LV[4][1] = -HALF*cinv*(gamm*u - ONE);
+  LV[4][2] = -HALF*v*gamm*cinv;
+  LV[4][3] = -HALF*w*gamm*cinv;
+  LV[4][4] = HALF*gamm*cinv;
+
+  // compute fluxes and max wave speed over stencil
+  for (i=0; i<NVAR; i++)  alpha[i] = ZERO;
+  for (i=0; i<6; i++) {
+    u = w1d[i][1]/w1d[i][0];
+    flux[i][0] = w1d[i][1];                       // mx
+    flux[i][1] = u*w1d[i][1] + p[i];              // rho*vx*vx + p = mx*u + p
+    flux[i][2] = u*w1d[i][2];                     // rho*vx*vy = my*u
+    flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
+    flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
+    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // c = sqrt(gamma*p/rho)
+    alpha[0] = max(alpha[0], abs(u-csnd));
+    alpha[1] = max(alpha[1], abs(u));
+    alpha[2] = max(alpha[2], abs(u));
+    alpha[3] = max(alpha[3], abs(u));
+    alpha[4] = max(alpha[4], abs(u+csnd));
+  }
+
+  // compute characteristic fluxes and variables:
+  //    fs[0][:] corresp. w/ fs(x_{i-3}), fs[5][:] corresp. w/ fs(x_{i+2}), 
+  for (j=0; j<6; j++)
+    for (i=0; i<NVAR; i++)
+      fs[j][i] = LV[i][0]*flux[j][0] + LV[i][1]*flux[j][1] + LV[i][2]*flux[j][2]
+               + LV[i][3]*flux[j][3] + LV[i][4]*flux[j][4];
+  //    ws[0][:] corresp. w/ ws(x_{i-3}), ws[5][:] corresp. w/ ws(x_{i+2}), 
+  for (j=0; j<6; j++)
+    for (i=0; i<NVAR; i++)
+      ws[j][i] = LV[i][0]*w1d[j][0] + LV[i][1]*w1d[j][1] + LV[i][2]*w1d[j][2]
+               + LV[i][3]*w1d[j][3] + LV[i][4]*w1d[j][4];
+
+  // compute shifted fluxes:
+  //   fsp[0][:] corresp. w/ fsp(x_{i-3}), fsp[4][:] corresp. w/ fsp(x_{i+1})
+  //   fsm[0][:] corresp. w/ fsp(x_{i-2}), fsm[4][:] corresp. w/ fs,(x_{i+2})
+  for (j=0; j<5; j++)
+    for (i=0; i<NVAR; i++) {
+      fsp[j][i] = HALF*(fs[j][i] + alpha[i]*w1d[j][i]);
+      fsm[j][i] = HALF*(fs[j+1][i] - alpha[i]*w1d[j+1][i]);
+    }
+
+  // compute shifted flux differences:
+  //   dfsp[0][:] corresp. w/ dfsp(x_{i-5/2}), dfsp[3][:] corresp. w/ dfsp(x_{i+1/2})
+  //   dfsm[0][:] corresp. w/ dfsp(x_{i-3/2}), dfsm[3][:] corresp. w/ dfsm(x_{i+3/2})
+  for (j=0; j<4; j++)
+    for (i=0; i<NVAR; i++) {
+      dfsp[j][i] = fsp[j+1][i] - fsp[j][i];
+      dfsm[j][i] = fsm[j+1][i] - fsm[j][i];
+    }
+
+  // compute characteristic flux at x_{i-1/2}
+  for (i=0; i<NVAR; i++)
+    fhat[i] = (-fs[1][i] + RCONST(7.0)*fs[2][i] + RCONST(7.0)*fs[3][i] - fs[4][i])/RCONST(12.0)
+      - phi(dfsp[0][i], dfsp[1][i], dfsp[2][i], dfsp[3][i], epsilon)
+      + phi(dfsm[3][i], dfsm[2][i], dfsm[1][i], dfsm[0][i], epsilon);
+  
+  // convert back to conserved flux
+  for (i=0; i<NVAR; i++)
+    f_face[i] = RV[i][0]*fhat[0] + RV[i][1]*fhat[1] + RV[i][2]*fhat[2] + RV[i][3]*fhat[3] + RV[i][4]*fhat[4];
+
+  // convert fluxes to direction-independent version
+  if (idir > 0) 
+    swap(f_face[1], f_face[1+idir]);
+
+}
+
+
+#else
+
+
 // given a 6-point stencil of solution values,
 //   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
 // and the flux direction idir, compute the face-centered flux (dw)
@@ -858,5 +1048,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     swap(f_face[1], f_face[1+idir]);
 
 }
+
+#endif
 
 //---- end of file ----
