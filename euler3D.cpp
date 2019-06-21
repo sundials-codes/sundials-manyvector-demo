@@ -664,7 +664,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
     f1, f2, f3, beta1, beta2, beta3, w1, w2, w3;
   realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[6][NVAR],
-    wproj[6][NVAR], fs[6][NVAR], fp[NVAR], fm[NVAR];
+    wproj[6][NVAR], fs[5][NVAR], fp[NVAR], fm[NVAR];
   const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
   const realtype epsilon = 1e-6;
   const realtype gamma1 = RCONST(0.1);
@@ -761,7 +761,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   LV[4][2] = -HALF*v*gamm*cinv;
   LV[4][3] = -HALF*w*gamm*cinv;
   LV[4][4] = HALF*gamm*cinv;
-  
+
   // compute fluxes and max wave speed over stencil
   alpha = max(abs(u+csnd), abs(u-csnd));          // max(|u+csnd|, |u-csnd|) at face
   for (i=0; i<6; i++) {
@@ -789,8 +789,8 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   
   // fp(x_{i+1/2}):
 
-  //   compute right-shifted Lax-Friedrichs flux over patch
-  for (j=0; j<6; j++)
+  //   compute right-shifted Lax-Friedrichs flux over left portion of patch
+  for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
       fs[j][i] = HALF*(fproj[j][i] + alpha*wproj[j][i]);
 
@@ -802,11 +802,11 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     f3 = c31*fs[2][i] + c32*fs[3][i] + c33*fs[4][i];
     // smoothness indicators
     beta1 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
-          + RCONST(0.25)*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
+          + FOURTH*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
     beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
-          + RCONST(0.25)*pow(fs[1][i] - fs[3][i],2);
+          + FOURTH*pow(fs[1][i] - fs[3][i],2);
     beta3 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
-          + RCONST(0.25)*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
+          + FOURTH*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
     // nonlinear weights
     w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
     w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
@@ -818,10 +818,10 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   
   // fm(x_{i+1/2}):
   
-  //   compute left-shifted Lax-Friedrichs flux over patch
-  for (j=0; j<6; j++)
+  //   compute left-shifted Lax-Friedrichs flux over right portion of patch
+  for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(fproj[j][i] - alpha*wproj[j][i]);
+      fs[j][i] = HALF*(fproj[j+1][i] - alpha*wproj[j+1][i]);
 
   //   compute WENO signed flux for each characteristic component
   for (i=0; i<NVAR; i++) {
@@ -831,11 +831,11 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     f3 = c31*fs[2][i] + c32*fs[3][i] + c33*fs[4][i];
     // smoothness indicators
     beta1 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
-          + RCONST(0.25)*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
+          + FOURTH*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
     beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
-          + RCONST(0.25)*pow(fs[1][i] - fs[3][i],2);
+          + FOURTH*pow(fs[1][i] - fs[3][i],2);
     beta3 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
-          + RCONST(0.25)*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
+          + FOURTH*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
     // nonlinear weights
     w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
     w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
@@ -848,7 +848,8 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   // combine signed fluxes into output, converting back to conserved variables
   for (i=0; i<NVAR; i++)
     f_face[i] = RV[i][0]*(fm[0] + fp[0]) + RV[i][1]*(fm[1] + fp[1])
-      + RV[i][2]*(fm[2] + fp[2]) + RV[i][3]*(fm[3] + fp[3]) + RV[i][4]*(fm[4] + fp[4]);
+              + RV[i][2]*(fm[2] + fp[2]) + RV[i][3]*(fm[3] + fp[3])
+              + RV[i][4]*(fm[4] + fp[4]);
 
   // convert fluxes to direction-independent version
   if (idir > 0) 
