@@ -663,8 +663,8 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   int i, j;
   realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
     f1, f2, f3, beta1, beta2, beta3, w1, w2, w3;
-  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[6][NVAR],
-    wproj[6][NVAR], fs[5][NVAR], fp[NVAR], fm[NVAR];
+  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[5][NVAR],
+    fs[5][NVAR], fp[NVAR], fm[NVAR];
   const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
   const realtype epsilon = 1e-6;
   const realtype gamma1 = RCONST(0.1);
@@ -776,37 +776,33 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     alpha = max(alpha, abs(u-csnd));              // compare to |u-c| in cell
   }
 
-  // compute projected flux stencils
-  for (j=0; j<6; j++)
-    for (i=0; i<NVAR; i++)
-      fproj[j][i] = LV[i][0]*flux[j][0] + LV[i][1]*flux[j][1] + LV[i][2]*flux[j][2]
-                  + LV[i][3]*flux[j][3] + LV[i][4]*flux[j][4];
-  for (j=0; j<6; j++)
-    for (i=0; i<NVAR; i++)
-      wproj[j][i] = LV[i][0]*w1d[j][0] + LV[i][1]*w1d[j][1] + LV[i][2]*w1d[j][2]
-                  + LV[i][3]*w1d[j][3] + LV[i][4]*w1d[j][4];
-
   
   // fp(x_{i+1/2}):
 
   //   compute right-shifted Lax-Friedrichs flux over left portion of patch
   for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(fproj[j][i] + alpha*wproj[j][i]);
+      fs[j][i] = HALF*(flux[j][i] + alpha*w1d[j][i]);
 
+  // compute projected flux
+  for (j=0; j<5; j++)
+    for (i=0; i<NVAR; i++)
+      fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
+                  + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
+ 
   //   compute WENO signed flux for each characteristic component
   for (i=0; i<NVAR; i++) {
     // flux stencils
-    f1 = c11*fs[0][i] + c12*fs[1][i] + c13*fs[2][i];
-    f2 = c21*fs[1][i] + c22*fs[2][i] + c23*fs[3][i];
-    f3 = c31*fs[2][i] + c32*fs[3][i] + c33*fs[4][i];
+    f1 = c11*fproj[0][i] + c12*fproj[1][i] + c13*fproj[2][i];
+    f2 = c21*fproj[1][i] + c22*fproj[2][i] + c23*fproj[3][i];
+    f3 = c31*fproj[2][i] + c32*fproj[3][i] + c33*fproj[4][i];
     // smoothness indicators
-    beta1 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
-          + FOURTH*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
-    beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
-          + FOURTH*pow(fs[1][i] - fs[3][i],2);
-    beta3 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
+    beta1 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
+          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
+    beta2 = bc*pow(fproj[1][i] - RCONST(2.0)*fproj[2][i] + fproj[3][i],2)
+          + FOURTH*pow(fproj[1][i] - fproj[3][i],2);
+    beta3 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
+          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
     // nonlinear weights
     w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
     w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
@@ -821,21 +817,27 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
   for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(fproj[j+1][i] - alpha*wproj[j+1][i]);
+      fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
 
+  // compute projected flux
+  for (j=0; j<5; j++)
+    for (i=0; i<NVAR; i++)
+      fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
+                  + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
+  
   //   compute WENO signed flux for each characteristic component
   for (i=0; i<NVAR; i++) {
     // flux stencils
-    f1 = c11*fs[0][i] + c12*fs[1][i] + c13*fs[2][i];
-    f2 = c21*fs[1][i] + c22*fs[2][i] + c23*fs[3][i];
-    f3 = c31*fs[2][i] + c32*fs[3][i] + c33*fs[4][i];
+    f1 = c11*fproj[0][i] + c12*fproj[1][i] + c13*fproj[2][i];
+    f2 = c21*fproj[1][i] + c22*fproj[2][i] + c23*fproj[3][i];
+    f3 = c31*fproj[2][i] + c32*fproj[3][i] + c33*fproj[4][i];
     // smoothness indicators
-    beta1 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
-          + FOURTH*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
-    beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
-          + FOURTH*pow(fs[1][i] - fs[3][i],2);
-    beta3 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
+    beta1 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
+          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
+    beta2 = bc*pow(fproj[1][i] - RCONST(2.0)*fproj[2][i] + fproj[3][i],2)
+          + FOURTH*pow(fproj[1][i] - fproj[3][i],2);
+    beta3 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
+          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
     // nonlinear weights
     w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
     w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
