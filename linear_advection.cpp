@@ -12,16 +12,16 @@
     vz(X,t)  = 0
     p(X,t)   = p0
 
- Note1: since these are specified in terms of primitive variables, 
- we convert between primitive and conserved variables for the 
+ Note1: since these are specified in terms of primitive variables,
+ we convert between primitive and conserved variables for the
  initial conditions and accuracy results.
 
- Note2: the choice of x-directional advection above is purely 
- illustrative; the direction of advection is specified via 
- pre-processor directives.  In order or priority: ADVECTION_Z, 
+ Note2: the choice of x-directional advection above is purely
+ illustrative; the direction of advection is specified via
+ pre-processor directives.  In order or priority: ADVECTION_Z,
  ADVECTION_Y or ADVECTION_X (default).
 
- Note3: this problem must be run on a problem with integer 
+ Note3: this problem must be run on a problem with integer
  extents in each Cartesian direction.
 
 ---------------------------------------------------------------*/
@@ -88,7 +88,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   long int nxl = udata.nxl;
   long int nyl = udata.nyl;
   long int nzl = udata.nzl;
-  
+
   if (udata.myid == 0) {
 #ifdef ADVECTION_X
     cout << "\nLinear advection test problem, x-directional propagation\n\n";
@@ -100,7 +100,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     cout << "\nLinear advection test problem, z-directional propagation\n\n";
 #endif
   }
-  
+
   for (k=0; k<nzl; k++)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
@@ -167,6 +167,7 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
   realtype xloc, yloc, zloc, rhotrue, mxtrue, mytrue, mztrue, ettrue, err;
   realtype errI[] = {ZERO, ZERO, ZERO, ZERO, ZERO};
   realtype errR[] = {ZERO, ZERO, ZERO, ZERO, ZERO};
+  realtype toterrI[NVAR], toterrR[NVAR];
   realtype twopi = RCONST(8.0)*atan(RCONST(1.0));
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
@@ -196,36 +197,38 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
         err = abs(rhotrue-rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[0] = max(errI[0], err);
         errR[0] += err*err;
-        
+
         mxtrue = rhotrue*vx0;
         err = abs(mxtrue-mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[1] = max(errI[1], err);
         errR[1] += err*err;
-        
+
         mytrue = rhotrue*vy0;
         err = abs(mytrue-my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[2] = max(errI[2], err);
         errR[2] += err*err;
-        
+
         mztrue = rhotrue*vz0;
         err = abs(mztrue-mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[3] = max(errI[3], err);
         errR[3] += err*err;
-        
+
         ettrue = udata.eos_inv(rhotrue, mxtrue, mytrue, mztrue, p0);
         err = abs(ettrue-et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[4] = max(errI[4], err);
         errR[4] += err*err;
-        
+
       }
-  retval = MPI_Reduce(MPI_IN_PLACE, &errI, 5, MPI_SUNREALTYPE, MPI_MAX, 0, udata.comm);
+  retval = MPI_Reduce(errI, toterrI, 5, MPI_SUNREALTYPE, MPI_MAX, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (output_diagnostics)", 3)) return(1);
-  retval = MPI_Reduce(MPI_IN_PLACE, &errR, 5, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+  retval = MPI_Reduce(errR, toterrR, 5, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (output_diagnostics)", 3)) return(1);
-  for (v=0; v<5; v++)  errR[v] = SUNRsqrt(errR[v]/udata.nx/udata.ny/udata.nz);
+  for (v=0; v<5; v++)  toterrR[v] = SUNRsqrt(toterrR[v]/udata.nx/udata.ny/udata.nz);
   if (udata.myid == 0) {
-    printf("     errI = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n", errI[0], errI[1], errI[2], errI[3], errI[4]);
-    printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n", errR[0], errR[1], errR[2], errR[3], errR[4]);
+    printf("     errI = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n",
+           toterrI[0], toterrI[1], toterrI[2], toterrI[3], toterrI[4]);
+    printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n",
+           toterrR[0], toterrR[1], toterrR[2], toterrR[3], toterrR[4]);
   }
   return(check_conservation(t, w, udata));
 }

@@ -20,8 +20,8 @@
 // prototypes of local functions to be provided to ARKode
 //    f routine to compute the ODE RHS function f(t,y).
 static int f(realtype t, N_Vector w, N_Vector wdot, void* user_data);
-//    stab routine to compute maximum stable step size
-static int stab(N_Vector w, realtype t, realtype* dt_stab, void* user_data);
+//    stability routine to compute maximum stable step size
+static int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data);
 
 
 // Main Program
@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
-  
+
   // general problem parameters
   long int N, Ntot, i;
 
@@ -145,7 +145,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   // Supply cfl-stable step routine (if requested)
   if (cfl > ZERO) {
-    retval = ARKStepSetStabilityFn(arkode_mem, stab, (void *) (&udata));
+    retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
     if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
   // output diagnostic information (if applicable)
   retval = output_diagnostics(t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // compute setup time
   double tsetup = MPI_Wtime() - tstart;
   tstart = MPI_Wtime();
@@ -202,7 +202,7 @@ int main(int argc, char* argv[]) {
     // output diagnostic information (if applicable)
     retval = output_diagnostics(t, w, udata);
     if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // output results to disk
     retval = output_solution(w, 0, udata);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -256,6 +256,9 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
   // access problem data
   UserData *udata = (UserData *) user_data;
+
+  // initialize output to zeros
+  N_VConst(ZERO, wdot);
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
@@ -334,7 +337,7 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
         // skip strict interior (already computed)
         if ( (k>2) && (k<nzl-2) && (j>2) && (j<nyl-2) && (i>2) && (i<nxl-2) ) continue;
-        
+
         // return with failure on non-positive density, energy or pressure
         retval = udata->legal_state(rho[IDX(i,j,k,nxl,nyl,nzl)], mx[IDX(i,j,k,nxl,nyl,nzl)],
                                     my[ IDX(i,j,k,nxl,nyl,nzl)], mz[IDX(i,j,k,nxl,nyl,nzl)],
@@ -347,8 +350,8 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
         // x-directional fluxes at "upper" boundary face
         if (i == nxl-1) {
-          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, i+1, j, k);
-          face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i+1,j,k,nxl+1,nyl,nzl)]), *udata);
+          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, nxl, j, k);
+          face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,nxl,j,k,nxl+1,nyl,nzl)]), *udata);
         }
 
         // y-directional fluxes at "lower" face
@@ -357,8 +360,8 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
         // y-directional fluxes at "upper" boundary face
         if (j == nyl-1) {
-          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, i, j+1, k);
-          face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j+1,k,nxl,nyl+1,nzl)]), *udata);
+          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, i, nyl, k);
+          face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,nyl,k,nxl,nyl+1,nzl)]), *udata);
         }
 
         // z-directional fluxes at "lower" face
@@ -367,13 +370,13 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
         // z-directional fluxes at "upper" boundary face
         if (k == nzl-1) {
-          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, i, j, k+1);
-          face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k+1,nxl,nyl,nzl+1)]), *udata);
+          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, i, j, nzl);
+          face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,nzl,nxl,nyl,nzl+1)]), *udata);
         }
 
       }
 
-  // iterate over subdomain, computing RHS
+  // iterate over subdomain, updating RHS (source terms were already included)
   for (k=0; k<nzl; k++)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
@@ -415,23 +418,23 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 }
 
 
-// stab routine to compute maximum stable step size
-static int stab(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
+// stability routine to compute maximum stable step size
+static int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
 {
   // access problem data
   UserData *udata = (UserData *) user_data;
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (stability)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (stability)", 0)) return -1;
   realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (stability)", 0)) return -1;
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (stability)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (stab)", 0)) return -1;
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (stability)", 0)) return -1;
 
   // iterate over subdomain, computing the maximum local wave speed
   realtype u, p, csnd;
@@ -445,13 +448,13 @@ static int stab(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
 
   // determine maximum wave speed over entire domain
   int retval = MPI_Allreduce(MPI_IN_PLACE, &alpha, 1, MPI_SUNREALTYPE, MPI_MAX, udata->comm);
-  if (check_flag(&retval, "MPI_Alleduce (stab)", 3)) MPI_Abort(udata->comm, 1);
+  if (check_flag(&retval, "MPI_Alleduce (stability)", 3)) MPI_Abort(udata->comm, 1);
 
   // compute maximum stable step size
   *dt_stab = (udata->cfl) * min(min(udata->dx, udata->dy), udata->dz) / alpha;
 
   //printf("stab: alpha = %g, dt_stab = %g\n", alpha, *dt_stab);
-  
+
   // return with success
   return(0);
 }
@@ -530,6 +533,7 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
 // the root task then outputs these values to screen
 int check_conservation(const realtype& t, const N_Vector w, const UserData& udata)
 {
+  realtype sumvals[] = {ZERO, ZERO};
   realtype totvals[] = {ZERO, ZERO};
   bool outproc = (udata.myid == 0);
   long int i, j, k;
@@ -541,12 +545,12 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
-        totvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
-        totvals[1] += et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+        sumvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+        sumvals[1] += et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
       }
-  totvals[0] *= udata.dx*udata.dy*udata.dz;
-  totvals[1] *= udata.dx*udata.dy*udata.dz;
-  retval = MPI_Reduce(MPI_IN_PLACE, &totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+  sumvals[0] *= udata.dx*udata.dy*udata.dz;
+  sumvals[1] *= udata.dx*udata.dy*udata.dz;
+  retval = MPI_Reduce(sumvals, totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
   if (!outproc)  return(0);
   printf("     tot_mass = %21.16e,  tot_energy = %21.16e\n", totvals[0], totvals[1]);
@@ -561,7 +565,7 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 int print_stats(const realtype& t, const N_Vector w,
                 const int& firstlast, const UserData& udata)
 {
-  realtype rmsvals[NVAR];
+  realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
   long int v, i, j, k;
   int retval;
@@ -586,9 +590,9 @@ int print_stats(const realtype& t, const N_Vector w,
           rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
           rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
         }
-    retval = MPI_Reduce(MPI_IN_PLACE, &rmsvals, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+    retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
-    for (v=0; v<NVAR; v++)  rmsvals[v] = SUNRsqrt(rmsvals[v]/udata.nx/udata.ny/udata.nz);
+    for (v=0; v<NVAR; v++)  totrms[v] = SUNRsqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
   }
   if (!outproc)  return(0);
   if (firstlast == 0)
@@ -597,7 +601,7 @@ int print_stats(const realtype& t, const N_Vector w,
     cout << "   -----------------------------------------------------------------------\n";
   if (firstlast<2)
     printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f\n", t,
-           rmsvals[0], rmsvals[1], rmsvals[2], rmsvals[3], rmsvals[4]);
+           totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
   return(0);
 }
 
@@ -628,7 +632,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   sprintf(outname[2], "output-euler3D_my.%07i.txt",  udata.myid);  // y-momentum
   sprintf(outname[3], "output-euler3D_mz.%07i.txt",  udata.myid);  // z-momentum
   sprintf(outname[4], "output-euler3D_et.%07i.txt",  udata.myid);  // total energy
- 
+
   // Output fields to disk
   for (v=0; v<5; v++) {
     FID = fopen(outname[v],outtype);                     // file ptr
@@ -648,7 +652,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
 #ifdef WENO5_JW
 
 // utility function
-static inline realtype phi(const realtype &a, const realtype &b, const realtype &c, 
+static inline realtype phi(const realtype &a, const realtype &b, const realtype &c,
                            const realtype &d, const realtype &eps)
 {
   realtype a0 = ONE/pow(eps + RCONST(13.0)*pow(a-b,2) + RCONST(3.0)*pow(a-RCONST(3.0)*b,2), 2);
@@ -689,7 +693,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 
   // compute pressures over stencil
   for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
-  
+
   // compute Roe-average state at face:
   //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
   //          [sqrt(rho), mx/sqrt(rho), my/sqrt(rho), mz/sqrt(rho), (e+p)/sqrt(rho)]
@@ -783,12 +787,12 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   }
 
   // compute characteristic fluxes and variables:
-  //    fs[0][:] corresp. w/ fs(x_{i-3}), fs[5][:] corresp. w/ fs(x_{i+2}), 
+  //    fs[0][:] corresp. w/ fs(x_{i-3}), fs[5][:] corresp. w/ fs(x_{i+2}),
   for (j=0; j<6; j++)
     for (i=0; i<NVAR; i++)
       fs[j][i] = LV[i][0]*flux[j][0] + LV[i][1]*flux[j][1] + LV[i][2]*flux[j][2]
                + LV[i][3]*flux[j][3] + LV[i][4]*flux[j][4];
-  //    ws[0][:] corresp. w/ ws(x_{i-3}), ws[5][:] corresp. w/ ws(x_{i+2}), 
+  //    ws[0][:] corresp. w/ ws(x_{i-3}), ws[5][:] corresp. w/ ws(x_{i+2}),
   for (j=0; j<6; j++)
     for (i=0; i<NVAR; i++)
       ws[j][i] = LV[i][0]*w1d[j][0] + LV[i][1]*w1d[j][1] + LV[i][2]*w1d[j][2]
@@ -817,13 +821,13 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     fhat[i] = (-fs[1][i] + RCONST(7.0)*fs[2][i] + RCONST(7.0)*fs[3][i] - fs[4][i])/RCONST(12.0)
       - phi(dfsp[0][i], dfsp[1][i], dfsp[2][i], dfsp[3][i], epsilon)
       + phi(dfsm[3][i], dfsm[2][i], dfsm[1][i], dfsm[0][i], epsilon);
-  
+
   // convert back to conserved flux
   for (i=0; i<NVAR; i++)
     f_face[i] = RV[i][0]*fhat[0] + RV[i][1]*fhat[1] + RV[i][2]*fhat[2] + RV[i][3]*fhat[3] + RV[i][4]*fhat[4];
 
   // convert fluxes to direction-independent version
-  if (idir > 0) 
+  if (idir > 0)
     swap(f_face[1], f_face[1+idir]);
 
 }
@@ -844,7 +848,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 //
 // This precisely follows the recipe laid out in:
 // Chi-Wang Shu (2003) "High-order Finite Difference and Finite Volume WENO
-// Schemes and Discontinuous Galerkin Methods for CFD," International Journal of 
+// Schemes and Discontinuous Galerkin Methods for CFD," International Journal of
 // Computational Fluid Dynamics, 17:2, 107-118, DOI: 10.1080/1061856031000104851
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
                realtype* f_face, const UserData& udata)
@@ -876,7 +880,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 
   // compute pressures over stencil
   for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
-  
+
   // compute Roe-average state at face:
   //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
   //          [sqrt(rho), mx/sqrt(rho), my/sqrt(rho), mz/sqrt(rho), (e+p)/sqrt(rho)]
@@ -966,7 +970,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     alpha = max(alpha, abs(u-csnd));              // compare to |u-c| in cell
   }
 
-  
+
   // fp(x_{i+1/2}):
 
   //   compute right-shifted Lax-Friedrichs flux over left portion of patch
@@ -979,7 +983,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     for (i=0; i<NVAR; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
- 
+
   //   compute WENO signed flux for each characteristic component
   for (i=0; i<NVAR; i++) {
     // flux stencils
@@ -1001,20 +1005,23 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     fp[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
-  
+
   // fm(x_{i+1/2}):
-  
+
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
+  // for (j=0; j<5; j++)
+  //   for (i=0; i<NVAR; i++)
+  //     fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
   for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
+      fs[j][i] = HALF*(flux[j][i] - alpha*w1d[j][i]);
 
   // compute projected flux
   for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
-  
+
   //   compute WENO signed flux for each characteristic component
   for (i=0; i<NVAR; i++) {
     // flux stencils
@@ -1036,7 +1043,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     fm[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
-  
+
   // combine signed fluxes into output, converting back to conserved variables
   for (i=0; i<NVAR; i++)
     f_face[i] = RV[i][0]*(fm[0] + fp[0]) + RV[i][1]*(fm[1] + fp[1])
@@ -1044,7 +1051,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
               + RV[i][4]*(fm[4] + fp[4]);
 
   // convert fluxes to direction-independent version
-  if (idir > 0) 
+  if (idir > 0)
     swap(f_face[1], f_face[1+idir]);
 
 }
