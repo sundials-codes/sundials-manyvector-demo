@@ -151,18 +151,23 @@ Individual test problems may be uniquely specified through an input
 file and an auxiliarly source code file that should be linked with
 this main routine at compile time. 
 
-The input file, `input_euler3D.txt`, contains:
-
-* the ratio of specific heats, $\gamma$ -- `gamma`
+The default input file name is `input_euler3D.txt`, however alternate
+input file names may be specified on the command line (the first
+argument following the executable name).  This input file contains:
 
 * spatial domain, $\Omega$ -- `xl`, `xr`, `yl`, `yr`, `zl`, `zr`
 
 * time interval, $(t_0,t_f]$ -- `t0`, `tf`
 
+* the ratio of specific heats, $\gamma$ -- `gamma`
+
 * spatial discretization dimensions -- `nx`, `ny`, `nz`
 
 * boundary condition types -- `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc`, `zrbc`
   
+* desired cfl fraction -- `cfl` (if set to zero, then the time step is
+  chosen purely using temporal adaptivity).
+
 * number of desired solution outputs -- `nout`
 
 Additionally, this file contains the parameter `showstats`, a nonzero
@@ -204,10 +209,11 @@ the same frequency as the solution is output to disk.
 
 A second input file, `solve_params.txt` specifies all ARKode time
 integration-related parameters that may be used to control the
-simulation without recompilation.  Both `input_euler3D.txt` and
-`solve_params.txt` are internally documented; however, for further
-information on the ARKode solver parameters and the meaning of
-individual values, see the ARKode documentation,
+simulation without recompilation.  Both the problem-specific input
+file (nominally `input_euler3D.txt`) and `solve_params.txt` are
+internally documented; however, for further information on the ARKode
+solver parameters and the meaning of individual values, see the ARKode
+documentation,
 http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html.
 
 

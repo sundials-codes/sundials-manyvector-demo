@@ -24,9 +24,14 @@ ifeq ($(USEOMP),0)
 endif
 
 # shortcuts for include and library paths, etc.
-INCS = -I. $(SUNINCDIRS) ${KLUINCDIRS}
+INCS = -I./include $(SUNINCDIRS) ${KLUINCDIRS}
 
-SUNDLIBS = -L$(SUNLIBDIR) -lsundials_arkode -lsundials_nvecmpimanyvector -lsundials_nvecparallel -lsundials_nvecserial -lsundials_sunlinsolklu
+SUNDLIBS = -L$(SUNLIBDIR) \
+           -lsundials_arkode \
+           -lsundials_nvecmpimanyvector \
+           -lsundials_nvecparallel \
+           -lsundials_nvecserial \
+           -lsundials_sunlinsolklu
 KLULIBS = -L$(KLULIBDIR) -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig
 LIBS = ${SUNDLIBS} ${KLULIBS} -lm
 
@@ -36,24 +41,43 @@ LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
 TESTS = compile_test.exe \
         linear_advection_x.exe \
         linear_advection_y.exe \
-        linear_advection_z.exe
+        linear_advection_z.exe \
+        sod_x.exe \
+        sod_y.exe \
+        sod_z.exe \
+        shu_osher.exe \
+        hurricane.exe \
+        rayleigh_taylor.exe \
+        interacting_bubbles.exe \
+        implosion.exe \
+        explosion.exe \
+        double_mach_reflection.exe
+
+# instruct Make to look in 'src' for source code files
+VPATH = src
 
 # target to build all test executables
 all : ${TESTS}
 
 # build rules for specific tests
-linear_advection_x.exe : linear_advection.cpp euler3D.o init_from_file.o
+linear_advection_x.exe : src/linear_advection.cpp euler3D.o io.o
 	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-linear_advection_y.exe : linear_advection.cpp euler3D.o init_from_file.o
+linear_advection_y.exe : src/linear_advection.cpp euler3D.o io.o
 	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-linear_advection_z.exe : linear_advection.cpp euler3D.o init_from_file.o
+linear_advection_z.exe : src/linear_advection.cpp euler3D.o io.o
+	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+sod_x.exe : src/sod.cpp euler3D.o io.o
+	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+sod_y.exe : src/sod.cpp euler3D.o io.o
+	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+sod_z.exe : src/sod.cpp euler3D.o io.o
 	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 # general build rules
-%.exe : %.o euler3D.o init_from_file.o
+%.exe : %.o euler3D.o io.o
 	${CXX} ${CXXFLAGS} ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-.cpp.o : euler3D.hpp
+.cpp.o : include/euler3D.hpp
 	${CXX} -c ${CXXFLAGS} ${OMPFLAGS} ${INCS} $< -o $@
 
 outclean :

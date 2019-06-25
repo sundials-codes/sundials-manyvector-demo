@@ -1,0 +1,35 @@
+# Input file for 3D compressible Euler demo code.
+#
+# Spatial domain: [xl,xr] x [yl,yr] x [zl,zr]
+# Temporal domain: (t0, tf]
+# Ratio of gas specific heats: gamma
+# Global spatial grid: nx * ny * nz
+# Boundary conditions: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
+#    0 = periodic  (opposite periodic faces must have matching types)
+#    1 = homogeneous Neumann
+#    2 = homogeneous Dirichlet
+# Max CFL fraction: cfl (disabled if set to zero)
+# Number of solution outputs: nout
+# Flag to enable diagnostic solution outpt: showstats
+#
+xl = 0.0
+xr = 1.0
+yl = 0.0
+yr = 1.0
+zl = 0.0
+zr = 1.0
+t0 = 0.0
+tf = 1.0
+gamma = 1.4
+nx = 4
+ny = 4
+nz = 256
+xlbc = 1
+xrbc = 1
+ylbc = 1
+yrbc = 1
+zlbc = 0
+zrbc = 0
+cfl  = 0.0
+nout = 10
+showstats = 1

@@ -42,7 +42,7 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
         yslice = False
     
     # load solution data
-    nx, ny, nz, nt, rho, mx, my, mz, et = load_data()
+    nx, ny, nz, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et = load_data()
 
     # output general information to screen
     print('Generating plots for data set:')
@@ -80,7 +80,7 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
         print('time step', tstep+1, 'out of', nt)
             
         # set string constants for current time, mesh sizes
-        tstr  = repr(tstep)
+        tstr  = repr(tgrid[tstep])
         nxstr = repr(nx)
         nystr = repr(ny)
         nzstr = repr(nz)
@@ -95,9 +95,7 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
             etname  = 'xslice-euler3D_et.'  + repr(tstep).zfill(4) + '.png'
                 
             # set y and z meshgrid objects
-            yspan = np.linspace(0.0, 1.0, ny)
-            zspan = np.linspace(0.0, 1.0, nz)
-            Z,Y = np.meshgrid(zspan,yspan)
+            Z,Y = np.meshgrid(zgrid,ygrid)
                 
             # plot slices of current solution as surfaces, and save to disk
             fig = plt.figure(1)
@@ -164,9 +162,7 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
             etname  = 'yslice-euler3D_et.'  + repr(tstep).zfill(4) + '.png'
             
             # set x and z meshgrid objects
-            xspan = np.linspace(0.0, 1.0, nx)
-            zspan = np.linspace(0.0, 1.0, nz)
-            Z,X = np.meshgrid(zspan,xspan)
+            Z,X = np.meshgrid(zgrid,xgrid)
                 
             # plot slices of current solution as surfaces, and save to disk
             fig = plt.figure(1)
@@ -232,9 +228,7 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
             etname  = 'zslice-euler3D_et.'  + repr(tstep).zfill(4) + '.png'
                 
             # set x and z meshgrid objects
-            xspan = np.linspace(0.0, 1.0, nx)
-            yspan = np.linspace(0.0, 1.0, ny)
-            Y,X = np.meshgrid(yspan,xspan)
+            Y,X = np.meshgrid(ygrid,xgrid)
 
             # plot slices of current solution as surfaces, and save to disk
             fig = plt.figure(1)

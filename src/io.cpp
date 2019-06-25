@@ -5,11 +5,15 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Utility routines to read problem and solver input parameters
+ Implementation file for input/output utility routines.   
+ Input routines read problem and solver input parameters
  from specified files.  For solver parameters, this calls
  associated "set" routines to specify options to ARKode.
----------------------------------------------------------------*/
+ Output routines compute/output shared diagnostics information,
+ or write solution data to disk.
+ ---------------------------------------------------------------*/
 
+// Header files
 #include <euler3D.hpp>
 #include <string.h>
 
@@ -19,12 +23,12 @@
 // Load problem-defining parameters from file: root process
 // reads parameters and broadcasts results to remaining
 // processes
-int load_inputs(int myid, double& xl, double& xr, double& yl,
-                double& yr, double& zl, double& zr, double& t0,
-                double& tf, double& gamma, long int& nx,
-                long int& ny, long int& nz, int& xlbc, int& xrbc,
-                int& ylbc, int& yrbc, int& zlbc, int& zrbc,
-                double& cfl, int& nout, int& showstats)
+int load_inputs(int myid, const char fname[], double& xl,
+                double& xr, double& yl, double& yr, double& zl,
+                double& zr, double& t0, double& tf, double& gamma,
+                long int& nx, long int& ny, long int& nz, int& xlbc,
+                int& xrbc, int& ylbc, int& yrbc, int& zlbc,
+                int& zrbc, double& cfl, int& nout, int& showstats)
 {
   int retval;
   double dbuff[10];
@@ -35,7 +39,7 @@ int load_inputs(int myid, double& xl, double& xr, double& yl,
 
     char line[MAX_LINE_LENGTH];
     FILE *FID=NULL;
-    FID = fopen("input_euler3D.txt","r");
+    FID = fopen(fname,"r");
     if (check_flag((void *) FID, "fopen (load_inputs)", 0)) return(1);
     while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
 
@@ -610,4 +614,123 @@ void* arkstep_init_from_file(int myid, const char fname[],
 }
 
 
-/*---- end of file ----*/
+// Computes the total of each conserved quantity;
+// the root task then outputs these values to screen
+int check_conservation(const realtype& t, const N_Vector w, const UserData& udata)
+{
+  realtype sumvals[] = {ZERO, ZERO};
+  realtype totvals[] = {ZERO, ZERO};
+  bool outproc = (udata.myid == 0);
+  long int i, j, k;
+  int retval;
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++) {
+        sumvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+        sumvals[1] += et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+      }
+  sumvals[0] *= udata.dx*udata.dy*udata.dz;
+  sumvals[1] *= udata.dx*udata.dy*udata.dz;
+  retval = MPI_Reduce(sumvals, totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+  if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
+  if (!outproc)  return(0);
+  printf("     tot_mass = %21.16e,  tot_energy = %21.16e\n", totvals[0], totvals[1]);
+  return(0);
+}
+
+
+// Utility routine to print solution statistics
+//    firstlast = 0 indicates the first output
+//    firstlast = 1 indicates a normal output
+//    firstlast = 2 indicates the lastoutput
+int print_stats(const realtype& t, const N_Vector w,
+                const int& firstlast, const UserData& udata)
+{
+  realtype rmsvals[NVAR], totrms[NVAR];
+  bool outproc = (udata.myid == 0);
+  long int v, i, j, k;
+  int retval;
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  if (firstlast < 2) {
+    for (v=0; v<NVAR; v++)  rmsvals[v] = ZERO;
+    for (k=0; k<udata.nzl; k++)
+      for (j=0; j<udata.nyl; j++)
+        for (i=0; i<udata.nxl; i++) {
+          rmsvals[0] += SUNRpowerI(rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[1] += SUNRpowerI( mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[2] += SUNRpowerI( my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+        }
+    retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+    if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
+    for (v=0; v<NVAR; v++)  totrms[v] = SUNRsqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
+  }
+  if (!outproc)  return(0);
+  if (firstlast == 0)
+    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms\n";
+  if (firstlast != 1)
+    cout << "   -----------------------------------------------------------------------\n";
+  if (firstlast<2)
+    printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f\n", t,
+           totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
+  return(0);
+}
+
+
+// Utility routine to output the current solution
+//    newappend == 1 indicates create a new file
+//    newappend == 0 indicates append to existing file
+int output_solution(const N_Vector w, const int& newappend, const UserData& udata)
+{
+  // reusable variables
+  char outtype[2];
+  char outname[5][100];
+  FILE *FID;
+  realtype *W;
+  long int i, v;
+  long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
+
+  // Set string for output type
+  if (newappend == 1) {
+    sprintf(outtype, "w");
+  } else {
+    sprintf(outtype, "a");
+  }
+
+  // Set strings for output names
+  sprintf(outname[0], "output-euler3D_rho.%07i.txt", udata.myid);  // density
+  sprintf(outname[1], "output-euler3D_mx.%07i.txt",  udata.myid);  // x-momentum
+  sprintf(outname[2], "output-euler3D_my.%07i.txt",  udata.myid);  // y-momentum
+  sprintf(outname[3], "output-euler3D_mz.%07i.txt",  udata.myid);  // z-momentum
+  sprintf(outname[4], "output-euler3D_et.%07i.txt",  udata.myid);  // total energy
+
+  // Output fields to disk
+  for (v=0; v<5; v++) {
+    FID = fopen(outname[v],outtype);                     // file ptr
+    W = N_VGetSubvectorArrayPointer_MPIManyVector(w,v);  // data array
+    if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
+    for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);     // output
+    fprintf(FID,"\n");                                   // newline
+    fclose(FID);                                         // close file
+  }
+
+  // return with success
+  return(0);
+}
+
+
+//---- end of file ----

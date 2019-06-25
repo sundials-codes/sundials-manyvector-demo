@@ -15,9 +15,6 @@
 #include "fenv.h"
 #endif
 
-//#define WENO5_JW
-#define WENO5_SIMPLE
-
 // prototypes of local functions to be provided to ARKode
 //    f routine to compute the ODE RHS function f(t,y).
 static int f(realtype t, N_Vector w, N_Vector wdot, void* user_data);
@@ -55,13 +52,26 @@ int main(int argc, char* argv[]) {
   // start run timer
   double tstart = MPI_Wtime();
 
-  /* read problem parameters from input file */
+  // set input file name based on command-line input (if present)
+  char *infile;
+  if (argc > 1) {
+    infile = argv[1];
+  } else {
+    infile = new char[20];
+    sprintf(infile, "input_euler3D.txt");
+  }
+  
+  // read problem parameters from input file
   double xl, xr, yl, yr, zl, zr, t0, tf, gamma, cfl;
   long int nx, ny, nz;
   int xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, nout, showstats;
-  retval = load_inputs(myid, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, nz,
-                       xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, cfl, nout, showstats);
+  retval = load_inputs(myid, infile, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, 
+                       nz, xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, cfl, nout, showstats);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+  realtype dTout = (tf-t0)/nout;
+
+  // tidy up if 'infile' was allocated above
+  if (argc == 1)  delete[] infile;
 
   // allocate and fill udata structure (overwriting betax for this test)
   UserData udata(nx,ny,nz,xl,xr,yl,yr,zl,zr,xlbc,xrbc,ylbc,yrbc,zlbc,zrbc,gamma,cfl);
@@ -150,13 +160,14 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // Each processor outputs subdomain information
+  // Each processor outputs domain/subdomain information
   char outname[100];
   sprintf(outname, "output-euler3D_subdomain.%07i.txt", udata.myid);
   FILE *UFID = fopen(outname,"w");
-  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li\n",
+  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
 	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie,
-          udata.js, udata.je, udata.ks, udata.ke);
+          udata.js, udata.je, udata.ks, udata.ke, udata.xl, udata.xr,
+          udata.yl, udata.yr, udata.zl, udata.zr, t0, tf, dTout);
   fclose(UFID);
 
   // Output initial conditions to disk
@@ -174,7 +185,6 @@ int main(int argc, char* argv[]) {
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
   realtype t = t0;
-  realtype dTout = (tf-t0)/nout;
   realtype tout = t0+dTout;
   if (showstats) {
     retval = print_stats(t, w, 0, udata);
@@ -530,312 +540,6 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
 }
 
 
-// Computes the total of each conserved quantity;
-// the root task then outputs these values to screen
-int check_conservation(const realtype& t, const N_Vector w, const UserData& udata)
-{
-  realtype sumvals[] = {ZERO, ZERO};
-  realtype totvals[] = {ZERO, ZERO};
-  bool outproc = (udata.myid == 0);
-  long int i, j, k;
-  int retval;
-  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
-  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
-        sumvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
-        sumvals[1] += et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
-      }
-  sumvals[0] *= udata.dx*udata.dy*udata.dz;
-  sumvals[1] *= udata.dx*udata.dy*udata.dz;
-  retval = MPI_Reduce(sumvals, totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
-  if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
-  if (!outproc)  return(0);
-  printf("     tot_mass = %21.16e,  tot_energy = %21.16e\n", totvals[0], totvals[1]);
-  return(0);
-}
-
-
-// Utility routine to print solution statistics
-//    firstlast = 0 indicates the first output
-//    firstlast = 1 indicates a normal output
-//    firstlast = 2 indicates the lastoutput
-int print_stats(const realtype& t, const N_Vector w,
-                const int& firstlast, const UserData& udata)
-{
-  realtype rmsvals[NVAR], totrms[NVAR];
-  bool outproc = (udata.myid == 0);
-  long int v, i, j, k;
-  int retval;
-  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-  realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-  realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-  realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-  if (firstlast < 2) {
-    for (v=0; v<NVAR; v++)  rmsvals[v] = ZERO;
-    for (k=0; k<udata.nzl; k++)
-      for (j=0; j<udata.nyl; j++)
-        for (i=0; i<udata.nxl; i++) {
-          rmsvals[0] += SUNRpowerI(rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[1] += SUNRpowerI( mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[2] += SUNRpowerI( my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-        }
-    retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
-    if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
-    for (v=0; v<NVAR; v++)  totrms[v] = SUNRsqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
-  }
-  if (!outproc)  return(0);
-  if (firstlast == 0)
-    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms\n";
-  if (firstlast != 1)
-    cout << "   -----------------------------------------------------------------------\n";
-  if (firstlast<2)
-    printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f\n", t,
-           totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
-  return(0);
-}
-
-
-// Utility routine to output the current solution
-//    newappend == 1 indicates create a new file
-//    newappend == 0 indicates append to existing file
-int output_solution(const N_Vector w, const int& newappend, const UserData& udata)
-{
-  // reusable variables
-  char outtype[2];
-  char outname[5][100];
-  FILE *FID;
-  realtype *W;
-  long int i, v;
-  long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
-
-  // Set string for output type
-  if (newappend == 1) {
-    sprintf(outtype, "w");
-  } else {
-    sprintf(outtype, "a");
-  }
-
-  // Set strings for output names
-  sprintf(outname[0], "output-euler3D_rho.%07i.txt", udata.myid);  // density
-  sprintf(outname[1], "output-euler3D_mx.%07i.txt",  udata.myid);  // x-momentum
-  sprintf(outname[2], "output-euler3D_my.%07i.txt",  udata.myid);  // y-momentum
-  sprintf(outname[3], "output-euler3D_mz.%07i.txt",  udata.myid);  // z-momentum
-  sprintf(outname[4], "output-euler3D_et.%07i.txt",  udata.myid);  // total energy
-
-  // Output fields to disk
-  for (v=0; v<5; v++) {
-    FID = fopen(outname[v],outtype);                     // file ptr
-    W = N_VGetSubvectorArrayPointer_MPIManyVector(w,v);  // data array
-    if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-    for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);     // output
-    fprintf(FID,"\n");                                   // newline
-    fclose(FID);                                         // close file
-  }
-
-  // return with success
-  return(0);
-}
-
-
-
-#ifdef WENO5_JW
-
-// utility function
-static inline realtype phi(const realtype &a, const realtype &b, const realtype &c,
-                           const realtype &d, const realtype &eps)
-{
-  realtype a0 = ONE/pow(eps + RCONST(13.0)*pow(a-b,2) + RCONST(3.0)*pow(a-RCONST(3.0)*b,2), 2);
-  realtype a1 = RCONST(6.0)/pow(eps + RCONST(13.0)*pow(b-c,2) + RCONST(3.0)*pow(b+c,2), 2);
-  realtype a2 = RCONST(3.0)/pow(eps + RCONST(13.0)*pow(c-d,2) + RCONST(3.0)*pow(RCONST(3.0)*c-d,2), 2);
-  realtype omega0 = a0 / (a0 + a1 + a2);
-  realtype omega2 = a2 / (a0 + a1 + a2);
-  return((TWO*omega0*(a-TWO*b+c) + (omega2-HALF)*(b-TWO*c+d))/RCONST(6.0));
-}
-
-// given a 6-point stencil of solution values,
-//   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
-// and the flux direction idir, compute the face-centered flux (dw)
-// at the center of the stencil, x_{j+1/2}.
-//
-// The input "idir" handles the directionality for the 1D calculation
-//    idir = 0  implies x-directional flux
-//    idir = 1  implies y-directional flux
-//    idir = 2  implies z-directional flux
-//
-// This precisely follows the recipe laid out in:
-// Guang-Shan Jiang and Cheng-chin Wu (1999) "A High-order WENO finite
-// difference scheme for the equations of ideal magnetohydrodynamics,"
-// J. Computational Physics, 150, 561-594
-void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
-               realtype* f_face, const UserData& udata)
-{
-  // local data
-  int i, j;
-  realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm;
-  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], alpha[NVAR], p[6], flux[6][NVAR], fs[6][NVAR],
-    ws[6][NVAR], fsp[5][NVAR], fsm[5][NVAR], dfsp[4][NVAR], dfsm[4][NVAR], fhat[NVAR];
-  const realtype epsilon = 1e-6;
-
-  // convert state to direction-independent version
-  if (idir > 0)
-    for (i=0; i<6; i++) swap(w1d[i][1], w1d[i][1+idir]);
-
-  // compute pressures over stencil
-  for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
-
-  // compute Roe-average state at face:
-  //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
-  //          [sqrt(rho), mx/sqrt(rho), my/sqrt(rho), mz/sqrt(rho), (e+p)/sqrt(rho)]
-  //   u = wbar_2 / wbar_1
-  //   v = wbar_3 / wbar_1
-  //   w = wbar_4 / wbar_1
-  //   H = wbar_5 / wbar_1
-  rhosqrL = SUNRsqrt(w1d[2][0]);
-  rhosqrR = SUNRsqrt(w1d[3][0]);
-  rhosqrbar = RCONST(0.5)*(rhosqrL + rhosqrR);
-  u = RCONST(0.5)*(w1d[2][1]/rhosqrL + w1d[3][1]/rhosqrR)/rhosqrbar;
-  v = RCONST(0.5)*(w1d[2][2]/rhosqrL + w1d[3][2]/rhosqrR)/rhosqrbar;
-  w = RCONST(0.5)*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
-  H = RCONST(0.5)*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
-
-  // compute eigenvectors at face:
-  qsq = u*u + v*v + w*w;
-  gamm = udata.gamma-ONE;
-  csnd = gamm*(H - RCONST(0.5)*qsq);
-  cinv = ONE/csnd;
-  cisq = cinv*cinv;
-  for (i=0; i<NVAR; i++)
-    for (j=0; j<NVAR; j++) {
-      RV[i][j] = ZERO;
-      LV[i][j] = ZERO;
-    }
-
-  RV[0][0] = ONE;
-  RV[0][3] = ONE;
-  RV[0][4] = ONE;
-
-  RV[1][0] = u-csnd;
-  RV[1][3] = u;
-  RV[1][4] = u+csnd;
-
-  RV[2][0] = v;
-  RV[2][1] = ONE;
-  RV[2][3] = v;
-  RV[2][4] = v;
-
-  RV[3][0] = w;
-  RV[3][2] = ONE;
-  RV[3][3] = w;
-  RV[3][4] = w;
-
-  RV[4][0] = H-u*csnd;
-  RV[4][1] = v;
-  RV[4][2] = w;
-  RV[4][3] = HALF*qsq;
-  RV[4][4] = H+u*csnd;
-
-  LV[0][0] = HALF*cinv*(u + HALF*gamm*qsq);
-  LV[0][1] = -HALF*cinv*(gamm*u + ONE);
-  LV[0][2] = -HALF*v*gamm*cinv;
-  LV[0][3] = -HALF*w*gamm*cinv;
-  LV[0][4] = HALF*gamm*cinv;
-
-  LV[1][0] = -v;
-  LV[1][2] = ONE;
-
-  LV[2][0] = -w;
-  LV[2][3] = ONE;
-
-  LV[3][0] = -gamm*cinv*(qsq - H);
-  LV[3][1] = u*gamm*cinv;
-  LV[3][2] = v*gamm*cinv;
-  LV[3][3] = w*gamm*cinv;
-  LV[3][4] = -gamm*cinv;
-
-  LV[4][0] = -HALF*cinv*(u - HALF*gamm*qsq);
-  LV[4][1] = -HALF*cinv*(gamm*u - ONE);
-  LV[4][2] = -HALF*v*gamm*cinv;
-  LV[4][3] = -HALF*w*gamm*cinv;
-  LV[4][4] = HALF*gamm*cinv;
-
-  // compute fluxes and max wave speed over stencil
-  for (i=0; i<NVAR; i++)  alpha[i] = ZERO;
-  for (i=0; i<6; i++) {
-    u = w1d[i][1]/w1d[i][0];
-    flux[i][0] = w1d[i][1];                       // mx
-    flux[i][1] = u*w1d[i][1] + p[i];              // rho*vx*vx + p = mx*u + p
-    flux[i][2] = u*w1d[i][2];                     // rho*vx*vy = my*u
-    flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
-    flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
-    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // c = sqrt(gamma*p/rho)
-    alpha[0] = max(alpha[0], abs(u-csnd));
-    alpha[1] = max(alpha[1], abs(u));
-    alpha[2] = max(alpha[2], abs(u));
-    alpha[3] = max(alpha[3], abs(u));
-    alpha[4] = max(alpha[4], abs(u+csnd));
-  }
-
-  // compute characteristic fluxes and variables:
-  //    fs[0][:] corresp. w/ fs(x_{i-3}), fs[5][:] corresp. w/ fs(x_{i+2}),
-  for (j=0; j<6; j++)
-    for (i=0; i<NVAR; i++)
-      fs[j][i] = LV[i][0]*flux[j][0] + LV[i][1]*flux[j][1] + LV[i][2]*flux[j][2]
-               + LV[i][3]*flux[j][3] + LV[i][4]*flux[j][4];
-  //    ws[0][:] corresp. w/ ws(x_{i-3}), ws[5][:] corresp. w/ ws(x_{i+2}),
-  for (j=0; j<6; j++)
-    for (i=0; i<NVAR; i++)
-      ws[j][i] = LV[i][0]*w1d[j][0] + LV[i][1]*w1d[j][1] + LV[i][2]*w1d[j][2]
-               + LV[i][3]*w1d[j][3] + LV[i][4]*w1d[j][4];
-
-  // compute shifted fluxes:
-  //   fsp[0][:] corresp. w/ fsp(x_{i-3}), fsp[4][:] corresp. w/ fsp(x_{i+1})
-  //   fsm[0][:] corresp. w/ fsp(x_{i-2}), fsm[4][:] corresp. w/ fs,(x_{i+2})
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++) {
-      fsp[j][i] = HALF*(fs[j][i] + alpha[i]*w1d[j][i]);
-      fsm[j][i] = HALF*(fs[j+1][i] - alpha[i]*w1d[j+1][i]);
-    }
-
-  // compute shifted flux differences:
-  //   dfsp[0][:] corresp. w/ dfsp(x_{i-5/2}), dfsp[3][:] corresp. w/ dfsp(x_{i+1/2})
-  //   dfsm[0][:] corresp. w/ dfsp(x_{i-3/2}), dfsm[3][:] corresp. w/ dfsm(x_{i+3/2})
-  for (j=0; j<4; j++)
-    for (i=0; i<NVAR; i++) {
-      dfsp[j][i] = fsp[j+1][i] - fsp[j][i];
-      dfsm[j][i] = fsm[j+1][i] - fsm[j][i];
-    }
-
-  // compute characteristic flux at x_{i-1/2}
-  for (i=0; i<NVAR; i++)
-    fhat[i] = (-fs[1][i] + RCONST(7.0)*fs[2][i] + RCONST(7.0)*fs[3][i] - fs[4][i])/RCONST(12.0)
-      - phi(dfsp[0][i], dfsp[1][i], dfsp[2][i], dfsp[3][i], epsilon)
-      + phi(dfsm[3][i], dfsm[2][i], dfsm[1][i], dfsm[0][i], epsilon);
-
-  // convert back to conserved flux
-  for (i=0; i<NVAR; i++)
-    f_face[i] = RV[i][0]*fhat[0] + RV[i][1]*fhat[1] + RV[i][2]*fhat[2] + RV[i][3]*fhat[3] + RV[i][4]*fhat[4];
-
-  // convert fluxes to direction-independent version
-  if (idir > 0)
-    swap(f_face[1], f_face[1+idir]);
-
-}
-
-
-#else
-#ifdef WENO5_SIMPLE
 
 // given a 6-point stencil of solution values,
 //   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
@@ -961,232 +665,5 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     swap(f_face[1], f_face[1+idir]);
 
 }
-
-
-#else
-
-
-// given a 6-point stencil of solution values,
-//   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
-// and the flux direction idir, compute the face-centered flux (dw)
-// at the center of the stencil, x_{j+1/2}.
-//
-// The input "idir" handles the directionality for the 1D calculation
-//    idir = 0  implies x-directional flux
-//    idir = 1  implies y-directional flux
-//    idir = 2  implies z-directional flux
-//
-// This precisely follows the recipe laid out in:
-// Chi-Wang Shu (2003) "High-order Finite Difference and Finite Volume WENO
-// Schemes and Discontinuous Galerkin Methods for CFD," International Journal of
-// Computational Fluid Dynamics, 17:2, 107-118, DOI: 10.1080/1061856031000104851
-void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
-               realtype* f_face, const UserData& udata)
-{
-  // local data
-  int i, j;
-  realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
-    f1, f2, f3, beta1, beta2, beta3, w1, w2, w3;
-  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[5][NVAR],
-    fs[5][NVAR], fp[NVAR], fm[NVAR];
-  const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
-  const realtype epsilon = 1e-6;
-  const realtype gamma1 = RCONST(0.1);
-  const realtype gamma2 = RCONST(0.6);
-  const realtype gamma3 = RCONST(0.3);
-  const realtype c11 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
-  const realtype c12 = -RCONST(1.166666666666666666666666666666666666667);  // -7/6
-  const realtype c13 = RCONST(1.833333333333333333333333333333333333333);   // 11/6
-  const realtype c21 = -RCONST(0.1666666666666666666666666666666666666667); // -1/6
-  const realtype c22 = RCONST(0.8333333333333333333333333333333333333333);  // 5/6
-  const realtype c23 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
-  const realtype c31 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
-  const realtype c32 = RCONST(0.8333333333333333333333333333333333333333);  // 5/6
-  const realtype c33 = -RCONST(0.1666666666666666666666666666666666666667); // -1/6
-
-  // convert state to direction-independent version
-  if (idir > 0)
-    for (i=0; i<6; i++) swap(w1d[i][1], w1d[i][1+idir]);
-
-  // compute pressures over stencil
-  for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
-
-  // compute Roe-average state at face:
-  //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
-  //          [sqrt(rho), mx/sqrt(rho), my/sqrt(rho), mz/sqrt(rho), (e+p)/sqrt(rho)]
-  //   u = wbar_2 / wbar_1
-  //   v = wbar_3 / wbar_1
-  //   w = wbar_4 / wbar_1
-  //   H = wbar_5 / wbar_1
-  rhosqrL = SUNRsqrt(w1d[2][0]);
-  rhosqrR = SUNRsqrt(w1d[3][0]);
-  rhosqrbar = RCONST(0.5)*(rhosqrL + rhosqrR);
-  u = RCONST(0.5)*(w1d[2][1]/rhosqrL + w1d[3][1]/rhosqrR)/rhosqrbar;
-  v = RCONST(0.5)*(w1d[2][2]/rhosqrL + w1d[3][2]/rhosqrR)/rhosqrbar;
-  w = RCONST(0.5)*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
-  H = RCONST(0.5)*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
-
-  // compute eigenvectors at face:
-  qsq = u*u + v*v + w*w;
-  gamm = udata.gamma-ONE;
-  csnd = gamm*(H - RCONST(0.5)*qsq);
-  cinv = ONE/csnd;
-  cisq = cinv*cinv;
-  for (i=0; i<NVAR; i++)
-    for (j=0; j<NVAR; j++) {
-      RV[i][j] = ZERO;
-      LV[i][j] = ZERO;
-    }
-
-  RV[0][0] = ONE;
-  RV[0][3] = ONE;
-  RV[0][4] = ONE;
-
-  RV[1][0] = u-csnd;
-  RV[1][3] = u;
-  RV[1][4] = u+csnd;
-
-  RV[2][0] = v;
-  RV[2][1] = ONE;
-  RV[2][3] = v;
-  RV[2][4] = v;
-
-  RV[3][0] = w;
-  RV[3][2] = ONE;
-  RV[3][3] = w;
-  RV[3][4] = w;
-
-  RV[4][0] = H-u*csnd;
-  RV[4][1] = v;
-  RV[4][2] = w;
-  RV[4][3] = HALF*qsq;
-  RV[4][4] = H+u*csnd;
-
-  LV[0][0] = HALF*cinv*(u + HALF*gamm*qsq);
-  LV[0][1] = -HALF*cinv*(gamm*u + ONE);
-  LV[0][2] = -HALF*v*gamm*cinv;
-  LV[0][3] = -HALF*w*gamm*cinv;
-  LV[0][4] = HALF*gamm*cinv;
-
-  LV[1][0] = -v;
-  LV[1][2] = ONE;
-
-  LV[2][0] = -w;
-  LV[2][3] = ONE;
-
-  LV[3][0] = -gamm*cinv*(qsq - H);
-  LV[3][1] = u*gamm*cinv;
-  LV[3][2] = v*gamm*cinv;
-  LV[3][3] = w*gamm*cinv;
-  LV[3][4] = -gamm*cinv;
-
-  LV[4][0] = -HALF*cinv*(u - HALF*gamm*qsq);
-  LV[4][1] = -HALF*cinv*(gamm*u - ONE);
-  LV[4][2] = -HALF*v*gamm*cinv;
-  LV[4][3] = -HALF*w*gamm*cinv;
-  LV[4][4] = HALF*gamm*cinv;
-
-  // compute fluxes and max wave speed over stencil
-  alpha = max(abs(u+csnd), abs(u-csnd));          // max(|u+csnd|, |u-csnd|) at face
-  for (i=0; i<6; i++) {
-    u = w1d[i][1]/w1d[i][0];
-    flux[i][0] = w1d[i][1];                       // mx
-    flux[i][1] = u*w1d[i][1] + p[i];              // rho*vx*vx + p = mx*u + p
-    flux[i][2] = u*w1d[i][2];                     // rho*vx*vy = my*u
-    flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
-    flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
-    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // c = sqrt(gamma*p/rho)
-    alpha = max(alpha, abs(u+csnd));              // compare to |u+c| in cell
-    alpha = max(alpha, abs(u-csnd));              // compare to |u-c| in cell
-  }
-
-
-  // fp(x_{i+1/2}):
-
-  //   compute right-shifted Lax-Friedrichs flux over left portion of patch
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(flux[j][i] + alpha*w1d[j][i]);
-
-  // compute projected flux
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
-      fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
-                  + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
-
-  //   compute WENO signed flux for each characteristic component
-  for (i=0; i<NVAR; i++) {
-    // flux stencils
-    f1 = c11*fproj[0][i] + c12*fproj[1][i] + c13*fproj[2][i];
-    f2 = c21*fproj[1][i] + c22*fproj[2][i] + c23*fproj[3][i];
-    f3 = c31*fproj[2][i] + c32*fproj[3][i] + c33*fproj[4][i];
-    // smoothness indicators
-    beta1 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
-          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
-    beta2 = bc*pow(fproj[1][i] - RCONST(2.0)*fproj[2][i] + fproj[3][i],2)
-          + FOURTH*pow(fproj[1][i] - fproj[3][i],2);
-    beta3 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
-    // nonlinear weights
-    w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
-    w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
-    w3 = gamma3 / (epsilon + beta3) / (epsilon + beta3);
-    // resulting signed flux
-    fp[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
-  }
-
-
-  // fm(x_{i+1/2}):
-
-  //   compute left-shifted Lax-Friedrichs flux over right portion of patch
-  // for (j=0; j<5; j++)
-  //   for (i=0; i<NVAR; i++)
-  //     fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(flux[j][i] - alpha*w1d[j][i]);
-
-  // compute projected flux
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
-      fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
-                  + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
-
-  //   compute WENO signed flux for each characteristic component
-  for (i=0; i<NVAR; i++) {
-    // flux stencils
-    f1 = c11*fproj[0][i] + c12*fproj[1][i] + c13*fproj[2][i];
-    f2 = c21*fproj[1][i] + c22*fproj[2][i] + c23*fproj[3][i];
-    f3 = c31*fproj[2][i] + c32*fproj[3][i] + c33*fproj[4][i];
-    // smoothness indicators
-    beta1 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
-          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
-    beta2 = bc*pow(fproj[1][i] - RCONST(2.0)*fproj[2][i] + fproj[3][i],2)
-          + FOURTH*pow(fproj[1][i] - fproj[3][i],2);
-    beta3 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
-    // nonlinear weights
-    w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
-    w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
-    w3 = gamma3 / (epsilon + beta3) / (epsilon + beta3);
-    // resulting signed flux
-    fm[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
-  }
-
-
-  // combine signed fluxes into output, converting back to conserved variables
-  for (i=0; i<NVAR; i++)
-    f_face[i] = RV[i][0]*(fm[0] + fp[0]) + RV[i][1]*(fm[1] + fp[1])
-              + RV[i][2]*(fm[2] + fp[2]) + RV[i][3]*(fm[3] + fp[3])
-              + RV[i][4]*(fm[4] + fp[4]);
-
-  // convert fluxes to direction-independent version
-  if (idir > 0)
-    swap(f_face[1], f_face[1+idir]);
-
-}
-
-#endif
-#endif
 
 //---- end of file ----
