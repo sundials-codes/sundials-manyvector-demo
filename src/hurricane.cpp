@@ -5,24 +5,24 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- "Hurricane" two-dimensional test test problem (see section 3.2.1 of 
-  L. Pan, J. Li and K. Xu, "A Few Benchmark Test Cases for 
-  Higher-Order Euler Solvers," Numer. Math. Theor. Meth. Appl., 
+ "Hurricane" two-dimensional test test problem (see section 3.2.1 of
+  L. Pan, J. Li and K. Xu, "A Few Benchmark Test Cases for
+  Higher-Order Euler Solvers," Numer. Math. Theor. Meth. Appl.,
   10:711-736, 2017.
     rho(X,t) = rho0
     vx(X,t)  = v0*sin(theta)
     vy(X,t)  = -v0*cos(theta)
     vz(X,t)  = 0
     p(X,t)   = A*rho0^2
- where theta=arctan(y/x).  We perform their "Critical rotation" 
- problem via the parameters: A=25, v0=10, rho0=1, over the 
- computational domain [-1,1]^3, using homogeneous Neumann 
+ where theta=arctan(y/x).  We perform their "Critical rotation"
+ problem via the parameters: A=25, v0=10, rho0=1, over the
+ computational domain [-1,1]^3, using homogeneous Neumann
  boundary conditions, to a final time of t=0.045.
 
- Note1: we may actually perform this test in any one of the x-y, 
- y-z, or z-x planes, as specified via the preprocessor directive 
- TEST_XY, TEST_YZ or TEST_ZX; these have order of precedence 
- TEST_YZ then TEST_ZX then TEST_XY, defaulting to TEST_XY if 
+ Note1: we may actually perform this test in any one of the x-y,
+ y-z, or z-x planes, as specified via the preprocessor directive
+ TEST_XY, TEST_YZ or TEST_ZX; these have order of precedence
+ TEST_YZ then TEST_ZX then TEST_XY, defaulting to TEST_XY if
  none are specified.
 
  Note2: since these are specified in terms of primitive variables,
@@ -196,7 +196,7 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
   tloc = (t == ZERO) ? 1e-14 : t;
   p0prime = Amp*udata.gamma*pow(rho0,udata.gamma-ONE);
   rthresh = TWO*t*SUNRsqrt(p0prime);
-  
+
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
@@ -283,6 +283,9 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
     printf("     errI = %9.2e  %9.2e  %9.2e  %9.2e\n", toterrI[0], toterrI[1], toterrI[2], toterrI[3]);
     printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e\n", toterrR[0], toterrR[1], toterrR[2], toterrR[3]);
   }
+
+  // return with success
+  return(0);
 }
 
 //---- end of file ----

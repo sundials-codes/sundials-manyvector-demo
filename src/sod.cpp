@@ -5,23 +5,23 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Sod shock tube test problem (see section 5.2 of 
- J.A. Greenough and W.J. Rider, "A quantitative comparison of 
- numerical methods for the compressible Euler equations: 
- fifth-order WENO and piecewise-linear Godunov," J. Comput. 
+ Sod shock tube test problem (see section 5.2 of
+ J.A. Greenough and W.J. Rider, "A quantitative comparison of
+ numerical methods for the compressible Euler equations:
+ fifth-order WENO and piecewise-linear Godunov," J. Comput.
  Phys., 196:259-281, 2004)
     [rho, vx, vy, vz, p] = { [1, 0, 0, 0, 1]        if dir < 0.5
                            { [0.125, 0, 0, 0, 0.1]  if dir > 0.5
- where "dir" can be any one of x, y or z, depending on the 
- desired directionality of the shock tube problem.   This is 
- specified via pre-processor directives.  In order or priority: 
+ where "dir" can be any one of x, y or z, depending on the
+ desired directionality of the shock tube problem.   This is
+ specified via pre-processor directives.  In order or priority:
  ADVECTION_Z, ADVECTION_Y or ADVECTION_X (default).
 
  Note1: since these are specified in terms of primitive variables,
  we convert between primitive and conserved variables for the
  initial conditions and accuracy results.
 
- Note2: this problem should be run with homogeneous Neumann 
+ Note2: this problem should be run with homogeneous Neumann
  boundary conditions in all directions.
 
 ---------------------------------------------------------------*/
@@ -122,7 +122,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     return -1;
   }
 #endif
-                             
+
   for (k=0; k<nzl; k++)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
@@ -231,7 +231,7 @@ realtype fsecant(const realtype& p4, const realtype& p1, const realtype& p5,
 //         xI location of discontinuity at t=0,
 //         gamma parameter for gas equation of state
 // Outputs: density (rho), velocity (u) and pressure (p) at (t,x)
-int exact_Riemann(const realtype& t, const realtype& x, const realtype &xI,  
+int exact_Riemann(const realtype& t, const realtype& x, const realtype &xI,
                   const realtype& gamma, realtype& rho, realtype& u, realtype& p)
 {
 
@@ -277,7 +277,7 @@ int exact_Riemann(const realtype& t, const realtype& x, const realtype &xI,
       return(1);
     }
   }
-  
+
   // compute post-shock density and velocity
   z  = (p4 / p5 - ONE);
   c5 = SUNRsqrt(gamma * p5 / rho5);
@@ -455,6 +455,9 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
     printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n",
            toterrR[0], toterrR[1], toterrR[2], toterrR[3], toterrR[4]);
   }
+
+  // return with success
+  return(0);
 }
 
 //---- end of file ----
