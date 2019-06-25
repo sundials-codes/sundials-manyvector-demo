@@ -16,7 +16,6 @@
 #endif
 
 //#define WENO5_JW
-#define WENO5_SIMPLE
 
 // prototypes of local functions to be provided to ARKode
 //    f routine to compute the ODE RHS function f(t,y).
@@ -835,135 +834,6 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 
 
 #else
-#ifdef WENO5_SIMPLE
-
-// given a 6-point stencil of solution values,
-//   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
-// and the flux direction idir, compute the face-centered flux (dw)
-// at the center of the stencil, x_{j+1/2}.
-//
-// The input "idir" handles the directionality for the 1D calculation
-//    idir = 0  implies x-directional flux
-//    idir = 1  implies y-directional flux
-//    idir = 2  implies z-directional flux
-//
-// This precisely follows the recipe laid out in:
-// Guang-Shan Jiang and Cheng-chin Wu (1999) "A High-order WENO finite
-// difference scheme for the equations of ideal magnetohydrodynamics,"
-// J. Computational Physics, 150, 561-594
-void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
-               realtype* f_face, const UserData& udata)
-{
-  // local data
-  int i, j;
-  realtype u, p, csnd, alpha, beta1, beta2, beta3, w1, w2, w3, f1, f2, f3;
-  realtype flux[6][NVAR], fs[5][NVAR];
-  const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
-  const realtype dm[3] = {RCONST(0.1), RCONST(0.6), RCONST(0.3)};
-  const realtype cm[3][3] = {{RCONST(1.833333333333333333333333333333333333333),    // 11/6
-                              -RCONST(1.166666666666666666666666666666666666667),   // -7/6
-                              RCONST(0.3333333333333333333333333333333333333333)},  // 1/3
-                             {RCONST(0.3333333333333333333333333333333333333333),   // 1/3
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              -RCONST(0.1666666666666666666666666666666666666667)}, // -1/6
-                             {-RCONST(0.1666666666666666666666666666666666666667),  // -1/6
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              RCONST(0.3333333333333333333333333333333333333333)}}; // 1/3
-  const realtype dp[3] = {RCONST(0.3), RCONST(0.6), RCONST(0.1)};
-  const realtype cp[3][3] = {{RCONST(0.3333333333333333333333333333333333333333),   // 1/3
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              -RCONST(0.1666666666666666666666666666666666666667)}, // -1/6
-                             {-RCONST(0.1666666666666666666666666666666666666667),  // -1/6
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              RCONST(0.3333333333333333333333333333333333333333)},  // 1/3
-                             {RCONST(0.3333333333333333333333333333333333333333),   // 1/3
-                              -RCONST(1.166666666666666666666666666666666666667),   // -7/6
-                              RCONST(1.833333333333333333333333333333333333333)}};  // 11/6
-  const realtype epsilon = 1e-6;
-
-  // convert state to direction-independent version
-  if (idir > 0)
-    for (i=0; i<6; i++) swap(w1d[i][1], w1d[i][1+idir]);
-
-  // compute fluxes and max wave speed over stencil
-  alpha = ZERO;
-  for (i=0; i<6; i++) {
-    u = w1d[i][1]/w1d[i][0];
-    p = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
-    flux[i][0] = w1d[i][1];                    // mx
-    flux[i][1] = u*w1d[i][1] + p;              // rho*vx*vx + p = mx*u + p
-    flux[i][2] = u*w1d[i][2];                  // rho*vx*vy = my*u
-    flux[i][3] = u*w1d[i][3];                  // rho*vx*vz = mz*u
-    flux[i][4] = u*(w1d[i][4] + p);            // vx*(et + p) = u*(et + p)
-    csnd = SUNRsqrt(udata.gamma*p/w1d[i][0]);  // c = sqrt(gamma*p/rho)
-    alpha = max(alpha, abs(u)+csnd);
-  }
-
-  // fp(x_{i+1/2}):
-
-  //   compute right-shifted Lax-Friedrichs flux over left portion of patch
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(flux[j][i] + alpha*w1d[j][i]);
-
-  //   compute WENO signed fluxes
-  for (i=0; i<NVAR; i++) {
-    // smoothness indicators
-    beta1 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
-    beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
-          + FOURTH*pow(fs[1][i] - fs[3][i],2);
-    beta3 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
-          + FOURTH*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
-    // nonlinear weights
-    w1 = dp[0] / (epsilon + beta1) / (epsilon + beta1);
-    w2 = dp[1] / (epsilon + beta2) / (epsilon + beta2);
-    w3 = dp[2] / (epsilon + beta3) / (epsilon + beta3);
-    // flux stencils
-    f1 = cp[0][0]*fs[2][i] + cp[0][1]*fs[3][i] + cp[0][2]*fs[4][i];
-    f2 = cp[1][0]*fs[1][i] + cp[1][1]*fs[2][i] + cp[1][2]*fs[3][i];
-    f3 = cp[2][0]*fs[0][i] + cp[2][1]*fs[1][i] + cp[2][2]*fs[2][i];
-    // resulting signed flux
-    f_face[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
-  }
-
-  // fm(x_{i+1/2}):
-  
-  //   compute right-shifted Lax-Friedrichs flux over left portion of patch
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
-
-  //   compute WENO signed fluxes
-  for (i=0; i<NVAR; i++) {
-    // smoothness indicators
-    beta1 = bc*pow(fs[2][i] - RCONST(2.0)*fs[3][i] + fs[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fs[2][i] - RCONST(4.0)*fs[3][i] + fs[4][i],2);
-    beta2 = bc*pow(fs[1][i] - RCONST(2.0)*fs[2][i] + fs[3][i],2)
-          + FOURTH*pow(fs[1][i] - fs[3][i],2);
-    beta3 = bc*pow(fs[0][i] - RCONST(2.0)*fs[1][i] + fs[2][i],2)
-          + FOURTH*pow(fs[0][i] - RCONST(4.0)*fs[1][i] + RCONST(3.0)*fs[2][i],2);
-    // nonlinear weights
-    w1 = dm[0] / (epsilon + beta1) / (epsilon + beta1);
-    w2 = dm[1] / (epsilon + beta2) / (epsilon + beta2);
-    w3 = dm[2] / (epsilon + beta3) / (epsilon + beta3);
-    // flux stencils
-    f1 = cm[0][0]*fs[2][i] + cm[0][1]*fs[3][i] + cm[0][2]*fs[4][i];
-    f2 = cm[1][0]*fs[1][i] + cm[1][1]*fs[2][i] + cm[1][2]*fs[3][i];
-    f3 = cm[2][0]*fs[0][i] + cm[2][1]*fs[1][i] + cm[2][2]*fs[2][i];
-    // resulting signed flux
-    f_face[i] += (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
-  }
-
-  
-  // convert fluxes to direction-independent version
-  if (idir > 0) 
-    swap(f_face[1], f_face[1+idir]);
-
-}
-
-
-#else
 
 
 // given a 6-point stencil of solution values,
@@ -986,23 +856,31 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   // local data
   int i, j;
   realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
-    f1, f2, f3, beta1, beta2, beta3, w1, w2, w3;
+    beta1, beta2, beta3, w1, w2, w3, f1, f2, f3;
   realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[5][NVAR],
     fs[5][NVAR], fp[NVAR], fm[NVAR];
   const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
+  const realtype dm[3] = {RCONST(0.1), RCONST(0.6), RCONST(0.3)};
+  const realtype cm[3][3] = {{RCONST(1.833333333333333333333333333333333333333),    // 11/6
+                              -RCONST(1.166666666666666666666666666666666666667),   // -7/6
+                              RCONST(0.3333333333333333333333333333333333333333)},  // 1/3
+                             {RCONST(0.3333333333333333333333333333333333333333),   // 1/3
+                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
+                              -RCONST(0.1666666666666666666666666666666666666667)}, // -1/6
+                             {-RCONST(0.1666666666666666666666666666666666666667),  // -1/6
+                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
+                              RCONST(0.3333333333333333333333333333333333333333)}}; // 1/3
+  const realtype dp[3] = {RCONST(0.3), RCONST(0.6), RCONST(0.1)};
+  const realtype cp[3][3] = {{RCONST(0.3333333333333333333333333333333333333333),   // 1/3
+                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
+                              -RCONST(0.1666666666666666666666666666666666666667)}, // -1/6
+                             {-RCONST(0.1666666666666666666666666666666666666667),  // -1/6
+                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
+                              RCONST(0.3333333333333333333333333333333333333333)},  // 1/3
+                             {RCONST(0.3333333333333333333333333333333333333333),   // 1/3
+                              -RCONST(1.166666666666666666666666666666666666667),   // -7/6
+                              RCONST(1.833333333333333333333333333333333333333)}};  // 11/6
   const realtype epsilon = 1e-6;
-  const realtype gamma1 = RCONST(0.1);
-  const realtype gamma2 = RCONST(0.6);
-  const realtype gamma3 = RCONST(0.3);
-  const realtype c11 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
-  const realtype c12 = -RCONST(1.166666666666666666666666666666666666667);  // -7/6
-  const realtype c13 = RCONST(1.833333333333333333333333333333333333333);   // 11/6
-  const realtype c21 = -RCONST(0.1666666666666666666666666666666666666667); // -1/6
-  const realtype c22 = RCONST(0.8333333333333333333333333333333333333333);  // 5/6
-  const realtype c23 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
-  const realtype c31 = RCONST(0.3333333333333333333333333333333333333333);  // 1/3
-  const realtype c32 = RCONST(0.8333333333333333333333333333333333333333);  // 5/6
-  const realtype c33 = -RCONST(0.1666666666666666666666666666666666666667); // -1/6
 
   // convert state to direction-independent version
   if (idir > 0)
@@ -1087,7 +965,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   LV[4][4] = HALF*gamm*cinv;
 
   // compute fluxes and max wave speed over stencil
-  alpha = max(abs(u+csnd), abs(u-csnd));          // max(|u+csnd|, |u-csnd|) at face
+  alpha = ZERO;
   for (i=0; i<6; i++) {
     u = w1d[i][1]/w1d[i][0];
     flux[i][0] = w1d[i][1];                       // mx
@@ -1096,10 +974,8 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
     flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
     csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // c = sqrt(gamma*p/rho)
-    alpha = max(alpha, abs(u+csnd));              // compare to |u+c| in cell
-    alpha = max(alpha, abs(u-csnd));              // compare to |u-c| in cell
+    alpha = max(alpha, abs(u)+csnd);
   }
-
 
   // fp(x_{i+1/2}):
 
@@ -1114,37 +990,33 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
 
-  //   compute WENO signed flux for each characteristic component
+  //   compute WENO signed fluxes
   for (i=0; i<NVAR; i++) {
-    // flux stencils
-    f1 = c11*fproj[0][i] + c12*fproj[1][i] + c13*fproj[2][i];
-    f2 = c21*fproj[1][i] + c22*fproj[2][i] + c23*fproj[3][i];
-    f3 = c31*fproj[2][i] + c32*fproj[3][i] + c33*fproj[4][i];
     // smoothness indicators
-    beta1 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
-          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
+    beta1 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
+          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
     beta2 = bc*pow(fproj[1][i] - RCONST(2.0)*fproj[2][i] + fproj[3][i],2)
           + FOURTH*pow(fproj[1][i] - fproj[3][i],2);
-    beta3 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
+    beta3 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
+          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
     // nonlinear weights
-    w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
-    w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
-    w3 = gamma3 / (epsilon + beta3) / (epsilon + beta3);
+    w1 = dp[0] / (epsilon + beta1) / (epsilon + beta1);
+    w2 = dp[1] / (epsilon + beta2) / (epsilon + beta2);
+    w3 = dp[2] / (epsilon + beta3) / (epsilon + beta3);
+    // flux stencils
+    f1 = cp[0][0]*fproj[2][i] + cp[0][1]*fproj[3][i] + cp[0][2]*fproj[4][i];
+    f2 = cp[1][0]*fproj[1][i] + cp[1][1]*fproj[2][i] + cp[1][2]*fproj[3][i];
+    f3 = cp[2][0]*fproj[0][i] + cp[2][1]*fproj[1][i] + cp[2][2]*fproj[2][i];
     // resulting signed flux
     fp[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
-
   // fm(x_{i+1/2}):
-
+  
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
-  // for (j=0; j<5; j++)
-  //   for (i=0; i<NVAR; i++)
-  //     fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
   for (j=0; j<5; j++)
     for (i=0; i<NVAR; i++)
-      fs[j][i] = HALF*(flux[j][i] - alpha*w1d[j][i]);
+      fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
 
   // compute projected flux
   for (j=0; j<5; j++)
@@ -1152,27 +1024,26 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
 
-  //   compute WENO signed flux for each characteristic component
+  //   compute WENO signed fluxes
   for (i=0; i<NVAR; i++) {
-    // flux stencils
-    f1 = c11*fproj[0][i] + c12*fproj[1][i] + c13*fproj[2][i];
-    f2 = c21*fproj[1][i] + c22*fproj[2][i] + c23*fproj[3][i];
-    f3 = c31*fproj[2][i] + c32*fproj[3][i] + c33*fproj[4][i];
     // smoothness indicators
-    beta1 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
-          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
+    beta1 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
+          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
     beta2 = bc*pow(fproj[1][i] - RCONST(2.0)*fproj[2][i] + fproj[3][i],2)
           + FOURTH*pow(fproj[1][i] - fproj[3][i],2);
-    beta3 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
-          + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
+    beta3 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
+          + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
     // nonlinear weights
-    w1 = gamma1 / (epsilon + beta1) / (epsilon + beta1);
-    w2 = gamma2 / (epsilon + beta2) / (epsilon + beta2);
-    w3 = gamma3 / (epsilon + beta3) / (epsilon + beta3);
+    w1 = dm[0] / (epsilon + beta1) / (epsilon + beta1);
+    w2 = dm[1] / (epsilon + beta2) / (epsilon + beta2);
+    w3 = dm[2] / (epsilon + beta3) / (epsilon + beta3);
+    // flux stencils
+    f1 = cm[0][0]*fproj[2][i] + cm[0][1]*fproj[3][i] + cm[0][2]*fproj[4][i];
+    f2 = cm[1][0]*fproj[1][i] + cm[1][1]*fproj[2][i] + cm[1][2]*fproj[3][i];
+    f3 = cm[2][0]*fproj[0][i] + cm[2][1]*fproj[1][i] + cm[2][2]*fproj[2][i];
     // resulting signed flux
     fm[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
-
 
   // combine signed fluxes into output, converting back to conserved variables
   for (i=0; i<NVAR; i++)
@@ -1181,12 +1052,11 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
               + RV[i][4]*(fm[4] + fp[4]);
 
   // convert fluxes to direction-independent version
-  if (idir > 0)
+  if (idir > 0) 
     swap(f_face[1], f_face[1+idir]);
 
 }
 
-#endif
 #endif
 
 //---- end of file ----
