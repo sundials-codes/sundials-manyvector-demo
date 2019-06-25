@@ -45,8 +45,9 @@ TESTS = compile_test.exe \
         sod_x.exe \
         sod_y.exe \
         sod_z.exe \
-        shu_osher.exe \
-        hurricane.exe \
+        hurricane_xy.exe \
+        hurricane_zx.exe \
+        hurricane_yz.exe \
         rayleigh_taylor.exe \
         interacting_bubbles.exe \
         implosion.exe \
@@ -72,6 +73,12 @@ sod_y.exe : src/sod.cpp euler3D.o io.o
 	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 sod_z.exe : src/sod.cpp euler3D.o io.o
 	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+hurricane_xy.exe : src/hurricane.cpp euler3D.o io.o
+	${CXX} ${CXXFLAGS} -DTEST_XY ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+hurricane_yz.exe : src/hurricane.cpp euler3D.o io.o
+	${CXX} ${CXXFLAGS} -DTEST_YZ ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+hurricane_zx.exe : src/hurricane.cpp euler3D.o io.o
+	${CXX} ${CXXFLAGS} -DTEST_ZX ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 # general build rules
 %.exe : %.o euler3D.o io.o

@@ -36,3 +36,9 @@
 
 # Temporary files
 *~
+
+# Simulation output files
+output*.txt
+diags*.txt
+
+

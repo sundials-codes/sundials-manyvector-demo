@@ -1,0 +1,45 @@
+# ARKStep solver parameter input file.  For further descriptions of
+# each parameter and the meaning of individual values, see the ARKode
+# documentation,
+#    http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html
+#
+# Only non-default values need to be specified in this file;
+# missing/commented options will be set to their default values.
+#
+order = 4           # temporal order of accuracy
+dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
+imex = 1            # time integrator type: 0=>dirk, 1=>erk, 2=>ark
+btable = -1         # specific built-in Butcher table to use (<0 => default)
+adapt_method = 0    # temporal adaptivity algorithm to use
+maxnef = 0          # max num temporal error failures (0 => default)
+maxncf = 0          # max num nonlinear convergence failures (0 => default)
+mxhnil = 0          # max num tn+h=tn warnings (0 => default)
+mxsteps = 0         # max internal steps per 'evolve' call (0 => default)
+cflfac = 0          # max multiple of dt_cfl condition to use (0 => default)
+safety = 0          # temporal step size safety factor (0 => default)
+bias = 0            # temporal error bias factor (0 => default)
+growth = 0          # max temporal growth/step (0 => default)
+hfixed_lb = 0       # bounds on recommended dt change to hold dt fixed (0 => default)
+hfixed_ub = 0
+pq = 0              # use of method/embedding order for adaptivity (0 => default)
+k1 = 0              # temporal adaptivity parameters (0 => default)
+k2 = 0
+k3 = 0
+etamx1 = 0          # max change after first internal step (0 => default)
+etamxf = 0          # max change on a general internal step (0 => default)
+etacf = 0           # step reduction factor on nonlinear convergence failure (0 => default)
+small_nef = 0       # num error fails before etacf is used (0 => default)
+crdown = 0          # nonlinear convergence rate estimate factor (0 => default)
+rdiv = 0            # nonlinear divergence threshold (0 => default)
+dgmax = 0           # max dt change before linear setup is called (0 => default)
+predictor = 0       # nonlinear predictor algorithm (0 => default)
+msbp = 0            # max steps between linear setups (0 => default)
+fixedpt = 0         # use fixed-point nonlinear solver (0 => default)
+m_aa = 0            # Anderson acceleration subspace size (if fixedpt==1; 0 => default)
+maxcor = 0          # max iterations per nonlinear solve (0 => default)
+nlscoef = 0         # nonlinear tolerance reduction factor (0 => default)
+h0 = 0.0            # initial time step size (0 => default)
+hmin = 0.0          # minimum time step size (0 => default)
+hmax = 0.0          # maximum time step size (0 => infinite)
+rtol = 1e-4         # relative solution tolerance (0 => default)
+atol = 1e-12        # absolute solution tolerance (0 => default)

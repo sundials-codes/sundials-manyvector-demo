@@ -3,13 +3,12 @@ Remaining items for "completion" of initial demonstration code:
 * Fluid tests:
   a. simple linear advection [1D] ("entropy convection")
   b. SOD shock tube [1D] -- see Greenough & Rider JCP 2004
-  c. Shu & Osher [1D] -- see Greenough & Rider JCP 2004
-  d. Hurricane-like flow evolution with critical rotation [2D] (has exact solution) -- see Pan et al Num. Math. Theor. Meth. Appl. 2017, section 3.2.1-1
-  e. Rayleigh-Taylor instability [2D] -- see Liska & Wendroff SISC 2003, or Pan et al Num. Math. Theor. Meth. Appl. 2017, section 3.3
-  f. Interacting bubbles -- see Yang and Cai SISC 2013, section 6.1.2
-  g. Implosion problem [2D] -- see Liska & Wendroff SISC 2003, section 4.7
-  h. Explosion problem [2D] -- see Liska & Wendroff SISC 2003, section 4.8
-  i. Double mach reflection problem [2D] -- see Andreyev final report, section 4.2.2
+  c. Hurricane-like flow evolution with critical rotation [2D] (has exact solution) -- see Pan et al Num. Math. Theor. Meth. Appl. 2017, section 3.2.1-1
+  d. Rayleigh-Taylor instability [2D] -- see Liska & Wendroff SISC 2003, or Pan et al Num. Math. Theor. Meth. Appl. 2017, section 3.3
+  e. Interacting bubbles -- see Yang and Cai SISC 2013, section 6.1.2
+  f. Implosion problem [2D] -- see Liska & Wendroff SISC 2003, section 4.7
+  g. Explosion problem [2D] -- see Liska & Wendroff SISC 2003, section 4.8
+  h. Double mach reflection problem [2D] -- see Andreyev final report, section 4.2.2
 
 * HDF5 parallel I/O, with restart capabilities.  Store current
   solutions as well as current time and step size to HDF5 files.  On

@@ -5,24 +5,29 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Simple linear advection test problem:
-    rho(X,t) = rho0 + Amp*sin(2*pi*(x-vx0*t))
-    vx(X,t)  = vx0
-    vy(X,t)  = 0
+ "Hurricane" two-dimensional test test problem (see section 3.2.1 of 
+  L. Pan, J. Li and K. Xu, "A Few Benchmark Test Cases for 
+  Higher-Order Euler Solvers," Numer. Math. Theor. Meth. Appl., 
+  10:711-736, 2017.
+    rho(X,t) = rho0
+    vx(X,t)  = v0*sin(theta)
+    vy(X,t)  = -v0*cos(theta)
     vz(X,t)  = 0
-    p(X,t)   = p0
+    p(X,t)   = A*rho0^2
+ where theta=arctan(y/x).  We perform their "Critical rotation" 
+ problem via the parameters: A=25, v0=10, rho0=1, over the 
+ computational domain [-1,1]^3, using homogeneous Neumann 
+ boundary conditions, to a final time of t=0.045.
 
- Note1: since these are specified in terms of primitive variables,
+ Note1: we may actually perform this test in any one of the x-y, 
+ y-z, or z-x planes, as specified via the preprocessor directive 
+ TEST_XY, TEST_YZ or TEST_ZX; these have order of precedence 
+ TEST_YZ then TEST_ZX then TEST_XY, defaulting to TEST_XY if 
+ none are specified.
+
+ Note2: since these are specified in terms of primitive variables,
  we convert between primitive and conserved variables for the
  initial conditions and accuracy results.
-
- Note2: the choice of x-directional advection above is purely
- illustrative; the direction of advection is specified via
- pre-processor directives.  In order or priority: ADVECTION_Z,
- ADVECTION_Y or ADVECTION_X (default).
-
- Note3: this problem must be run on a problem with integer
- extents in each Cartesian direction.
 
 ---------------------------------------------------------------*/
 
@@ -30,42 +35,24 @@
 #include <euler3D.hpp>
 
 // determine problem directionality
-#ifdef ADVECTION_Z
-  #undef ADVECTION_X
-  #undef ADVECTION_Y
+#ifdef TEST_YZ
+  #undef TEST_XY
+  #undef TEST_ZX
 #else
-  #ifdef ADVECTION_Y
-    #undef ADVECTION_X
-    #undef ADVECTION_Z
+  #ifdef TEST_ZX
+    #undef TEST_XY
   #else
-    #ifndef ADVECTION_X
-      #define ADVECTION_X
+    #ifndef TEST_XY
+      #define TEST_XY
     #endif
-    #undef ADVECTION_Y
-    #undef ADVECTION_Z
   #endif
 #endif
 
 
 // problem specification constants
 #define rho0 RCONST(1.0)
-#define p0   RCONST(1.0)
-#define Amp  RCONST(0.1)
-#ifdef ADVECTION_X
-  #define vx0  RCONST(0.5)
-#else
-  #define vx0  RCONST(0.0)
-#endif
-#ifdef ADVECTION_Y
-  #define vy0  RCONST(0.5)
-#else
-  #define vy0  RCONST(0.0)
-#endif
-#ifdef ADVECTION_Z
-  #define vz0  RCONST(0.5)
-#else
-  #define vz0  RCONST(0.0)
-#endif
+#define v0   RCONST(10.0)
+#define Amp  RCONST(25.0)
 
 
 // Initial conditions
@@ -73,8 +60,8 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
   // iterate over subdomain, setting initial condition
   long int i, j, k;
-  realtype xloc, yloc, zloc;
-  realtype twopi = RCONST(8.0)*atan(RCONST(1.0));
+  realtype xloc, yloc, zloc, theta;
+  const realtype halfpi = RCONST(2.0)*atan(RCONST(1.0));
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -90,15 +77,33 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   long int nzl = udata.nzl;
 
   if (udata.myid == 0) {
-#ifdef ADVECTION_X
-    cout << "\nLinear advection test problem, x-directional propagation\n\n";
+#ifdef TEST_XY
+    cout << "\nHurricane test problem (xy-plane)\n\n";
 #endif
-#ifdef ADVECTION_Y
-    cout << "\nLinear advection test problem, y-directional propagation\n\n";
+#ifdef TEST_ZX
+    cout << "\nHurricane test problem (zx-plane)\n\n";
 #endif
-#ifdef ADVECTION_Z
-    cout << "\nLinear advection test problem, z-directional propagation\n\n";
+#ifdef TEST_YZ
+    cout << "\nHurricane test problem (yz-plane)\n\n";
 #endif
+  }
+
+  // return error if input parameters are inappropriate
+  if ((udata.xlbc != 1) || (udata.xrbc != 1)) {
+    cerr << "\nInappropriate x-boundary conditions, exiting\n\n";
+    return -1;
+  }
+  if ((udata.ylbc != 1) || (udata.yrbc != 1)) {
+    cerr << "\nInappropriate y-boundary conditions, exiting\n\n";
+    return -1;
+  }
+  if ((udata.zlbc != 1) || (udata.zrbc != 1)) {
+    cerr << "\nInappropriate z-boundary conditions, exiting\n\n";
+    return -1;
+  }
+  if ((udata.gamma != TWO)) {
+    cerr << "\nInappropriate gamma, exiting\n\n";
+    return -1;
   }
 
   for (k=0; k<nzl; k++)
@@ -107,22 +112,31 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-#ifdef ADVECTION_X
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(xloc-vx0*t));
+
+        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0;
+#ifdef TEST_XY
+        theta = (xloc == ZERO) ? halfpi : atan(yloc/xloc);
+        mx[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sin(theta);
+        my[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*cos(theta);
+        mz[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
-#ifdef ADVECTION_Y
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(yloc-vy0*t));
+#ifdef TEST_ZX
+        theta = (zloc == ZERO) ? halfpi : atan(xloc/zloc);
+        mz[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sin(theta);
+        mx[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*cos(theta);
+        my[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
-#ifdef ADVECTION_Z
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(zloc-vz0*t));
+#ifdef TEST_YZ
+        theta = (yloc == ZERO) ? halfpi : atan(zloc/yloc);
+        my[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sin(theta);
+        mz[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*cos(theta);
+        mx[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = vx0*rho[IDX(i,j,k,nxl,nyl,nzl)];
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = vy0*rho[IDX(i,j,k,nxl,nyl,nzl)];
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = vz0*rho[IDX(i,j,k,nxl,nyl,nzl)];
         et[ IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rho[IDX(i,j,k,nxl,nyl,nzl)],
                                                     mx[ IDX(i,j,k,nxl,nyl,nzl)],
                                                     my[ IDX(i,j,k,nxl,nyl,nzl)],
-                                                    mz[ IDX(i,j,k,nxl,nyl,nzl)], p0);
+                                                    mz[ IDX(i,j,k,nxl,nyl,nzl)],
+                                                    Amp*pow(rho0,udata.gamma));
       }
   return 0;
 }
@@ -164,73 +178,111 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
   // iterate over subdomain, computing solution error
   long int v, i, j, k;
   int retval;
-  realtype xloc, yloc, zloc, rhotrue, mxtrue, mytrue, mztrue, ettrue, err;
-  realtype errI[] = {ZERO, ZERO, ZERO, ZERO, ZERO};
-  realtype errR[] = {ZERO, ZERO, ZERO, ZERO, ZERO};
-  realtype toterrI[NVAR], toterrR[NVAR];
-  realtype twopi = RCONST(8.0)*atan(RCONST(1.0));
+  realtype tloc, xloc, yloc, zloc, theta, r, p0prime, rthresh, rhotrue, mxtrue, mytrue, mztrue, err;
+  realtype errI[] = {ZERO, ZERO, ZERO, ZERO};
+  realtype errR[] = {ZERO, ZERO, ZERO, ZERO};
+  realtype toterrI[4], toterrR[4];
+  const realtype halfpi = RCONST(2.0)*atan(RCONST(1.0));
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
   realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
-  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
+
+  // set some reusable constants (protect t against division-by-zero)
+  tloc = (t == ZERO) ? 1e-14 : t;
+  p0prime = Amp*udata.gamma*pow(rho0,udata.gamma-ONE);
+  rthresh = TWO*t*SUNRsqrt(p0prime);
+  
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-#ifdef ADVECTION_X
-        rhotrue = rho0 + Amp*sin(twopi*(xloc-vx0*t));
+
+#ifdef TEST_XY
+        theta = (xloc == ZERO) ? halfpi : atan(yloc/xloc);
+        r = SUNRsqrt(xloc*xloc + yloc*yloc);
+        if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        if (r < rthresh) {
+          rhotrue = r * r / (RCONST(8.0) * Amp * t * t);
+          mxtrue = rhotrue * (xloc + yloc) / (TWO * t);
+          mytrue = rhotrue * (yloc - xloc) / (TWO * t);
+          mztrue = ZERO;
+        } else {
+          rhotrue = rho0;
+          mxtrue = ( TWO*t*p0prime*cos(theta) +
+                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sin(theta) )/r;
+          mytrue = ( TWO*t*p0prime*sin(theta) -
+                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*cos(theta) )/r;
+          mztrue = ZERO;
+        }
 #endif
-#ifdef ADVECTION_Y
-        rhotrue = rho0 + Amp*sin(twopi*(yloc-vy0*t));
+#ifdef TEST_ZX
+        theta = (zloc == ZERO) ? halfpi : atan(xloc/zloc);
+        r = SUNRsqrt(zloc*zloc + xloc*xloc);
+        if (r < rthresh) {
+          rhotrue = r * r / (RCONST(8.0) * Amp * t * t);
+          mztrue = rhotrue * (zloc + xloc) / (TWO * t);
+          mxtrue = rhotrue * (xloc - zloc) / (TWO * t);
+          mytrue = ZERO;
+        } else {
+          rhotrue = rho0;
+          mztrue = ( TWO*t*p0prime*cos(theta) +
+                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sin(theta) )/r;
+          mxtrue = ( TWO*t*p0prime*sin(theta) -
+                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*cos(theta) )/r;
+          mytrue = ZERO;
+        }
 #endif
-#ifdef ADVECTION_Z
-        rhotrue = rho0 + Amp*sin(twopi*(zloc-vz0*t));
+#ifdef TEST_YZ
+        theta = (yloc == ZERO) ? halfpi : atan(zloc/yloc);
+        r = SUNRsqrt(yloc*yloc+ zloc*zloc);
+        if (r < rthresh) {
+          rhotrue = r * r / (RCONST(8.0) * Amp * t * t);
+          mytrue = rhotrue * (yloc + zloc) / (TWO * t);
+          mztrue = rhotrue * (zloc - yloc) / (TWO * t);
+          mxtrue = ZERO;
+        } else {
+          rhotrue = rho0;
+          mytrue = ( TWO*t*p0prime*cos(theta) +
+                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sin(theta) )/r;
+          mztrue = ( TWO*t*p0prime*sin(theta) -
+                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*cos(theta) )/r;
+          mxtrue = ZERO;
+        }
 #endif
+
         err = abs(rhotrue-rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[0] = max(errI[0], err);
         errR[0] += err*err;
 
-        mxtrue = rhotrue*vx0;
         err = abs(mxtrue-mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[1] = max(errI[1], err);
         errR[1] += err*err;
 
-        mytrue = rhotrue*vy0;
         err = abs(mytrue-my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[2] = max(errI[2], err);
         errR[2] += err*err;
 
-        mztrue = rhotrue*vz0;
         err = abs(mztrue-mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[3] = max(errI[3], err);
         errR[3] += err*err;
 
-        ettrue = udata.eos_inv(rhotrue, mxtrue, mytrue, mztrue, p0);
-        err = abs(ettrue-et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
-        errI[4] = max(errI[4], err);
-        errR[4] += err*err;
-
       }
-  retval = MPI_Reduce(errI, toterrI, 5, MPI_SUNREALTYPE, MPI_MAX, 0, udata.comm);
+  retval = MPI_Reduce(errI, toterrI, 4, MPI_SUNREALTYPE, MPI_MAX, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (output_diagnostics)", 3)) return(1);
-  retval = MPI_Reduce(errR, toterrR, 5, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
+  retval = MPI_Reduce(errR, toterrR, 4, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (output_diagnostics)", 3)) return(1);
-  for (v=0; v<5; v++)  toterrR[v] = SUNRsqrt(toterrR[v]/udata.nx/udata.ny/udata.nz);
+  for (v=0; v<4; v++)  toterrR[v] = SUNRsqrt(toterrR[v]/udata.nx/udata.ny/udata.nz);
   if (udata.myid == 0) {
-    printf("     errI = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n",
-           toterrI[0], toterrI[1], toterrI[2], toterrI[3], toterrI[4]);
-    printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n",
-           toterrR[0], toterrR[1], toterrR[2], toterrR[3], toterrR[4]);
+    printf("     errI = %9.2e  %9.2e  %9.2e  %9.2e\n", toterrI[0], toterrI[1], toterrI[2], toterrI[3]);
+    printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e\n", toterrR[0], toterrR[1], toterrR[2], toterrR[3]);
   }
-  return(check_conservation(t, w, udata));
 }
 
 //---- end of file ----
