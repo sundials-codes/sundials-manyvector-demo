@@ -1,14 +1,26 @@
 Remaining items for "completion" of initial demonstration code:
 
 * Fluid tests:
-  a. simple linear advection [1D] ("entropy convection")
-  b. SOD shock tube [1D] -- see Greenough & Rider JCP 2004
-  c. Hurricane-like flow evolution with critical rotation [2D] (has exact solution) -- see Pan et al Num. Math. Theor. Meth. Appl. 2017, section 3.2.1-1
-  d. Rayleigh-Taylor instability [2D] -- see Liska & Wendroff SISC 2003, or Pan et al Num. Math. Theor. Meth. Appl. 2017, section 3.3
+  a. simple linear advection [1D] ("entropy convection")  [done]
+  b. SOD shock tube [1D] -- see Greenough & Rider JCP 2004  [done]
+  c. Hurricane-like flow evolution with critical rotation [2D] (has
+     exact solution) -- see Pan et al Num. Math. Theor. Meth. Appl. 2017,
+     section 3.2.1-1  [in progress]
+  d. Rayleigh-Taylor instability [2D] -- see Liska & Wendroff SISC
+     2003, or Pan et al Num. Math. Theor. Meth. Appl. 2017, section
+     3.3  [yet to begin]
   e. Interacting bubbles -- see Yang and Cai SISC 2013, section 6.1.2
-  f. Implosion problem [2D] -- see Liska & Wendroff SISC 2003, section 4.7
-  g. Explosion problem [2D] -- see Liska & Wendroff SISC 2003, section 4.8
-  h. Double mach reflection problem [2D] -- see Andreyev final report, section 4.2.2
+     [yet to begin] 
+  f. Implosion problem [2D] -- see Liska & Wendroff SISC 2003, section
+     4.7  [yet to begin] 
+  g. Explosion problem [2D] -- see Liska & Wendroff SISC 2003, section
+     4.8  [yet to begin] 
+  h. Double mach reflection problem [2D] -- see Andreyev final report,
+     section 4.2.2  [yet to begin] 
+
+* Update default parallel decomposition strategy when a given
+  dimension is too "short" to parallelize (e.g., when running a 1D or
+  2D test in parallel that is "short" in the x-direction).
 
 * HDF5 parallel I/O, with restart capabilities.  Store current
   solutions as well as current time and step size to HDF5 files.  On
