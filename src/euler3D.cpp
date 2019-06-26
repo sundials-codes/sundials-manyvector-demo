@@ -52,26 +52,15 @@ int main(int argc, char* argv[]) {
   // start run timer
   double tstart = MPI_Wtime();
 
-  // set input file name based on command-line input (if present)
-  char *infile;
-  if (argc > 1) {
-    infile = argv[1];
-  } else {
-    infile = new char[20];
-    sprintf(infile, "input_euler3D.txt");
-  }
-  
   // read problem parameters from input file
   double xl, xr, yl, yr, zl, zr, t0, tf, gamma, cfl;
   long int nx, ny, nz;
   int xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, nout, showstats;
-  retval = load_inputs(myid, infile, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, 
+  retval = load_inputs(myid, argc, argv, xl, xr, yl, yr, zl, zr, t0, tf, gamma, nx, ny, 
                        nz, xlbc, xrbc, ylbc, yrbc, zlbc, zrbc, cfl, nout, showstats);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
   realtype dTout = (tf-t0)/nout;
-
-  // tidy up if 'infile' was allocated above
-  if (argc == 1)  delete[] infile;
 
   // allocate and fill udata structure (overwriting betax for this test)
   UserData udata(nx,ny,nz,xl,xr,yl,yr,zl,zr,xlbc,xrbc,ylbc,yrbc,zlbc,zrbc,gamma,cfl);

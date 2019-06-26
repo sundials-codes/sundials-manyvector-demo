@@ -849,12 +849,13 @@ public:
 // Additional utility routines
 
 //    Load inputs from file
-int load_inputs(int myid, const char fname[], double& xl, double& xr, 
-                double& yl, double& yr, double& zl, double& zr, 
-                double& t0, double& tf, double& gamma, long int& nx,
-                long int& ny, long int& nz, int& xlbc, int& xrbc,
-                int& ylbc, int& yrbc, int& zlbc, int& zrbc,
-                double& cfl, int& nout, int& showstats);
+int load_inputs(int myid, int argc, char* argv[],
+                double& xl, double& xr, double& yl, double& yr,
+                double& zl, double& zr, double& t0, double& tf,
+                double& gamma, long int& nx, long int& ny,
+                long int& nz, int& xlbc, int& xrbc, int& ylbc,
+                int& yrbc, int& zlbc, int& zrbc, double& cfl,
+                int& nout, int& showstats);
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);

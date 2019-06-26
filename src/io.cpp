@@ -16,6 +16,8 @@
 // Header files
 #include <euler3D.hpp>
 #include <string.h>
+#include "gopt.h"
+
 
 #define MAX_LINE_LENGTH 512
 
@@ -23,9 +25,9 @@
 // Load problem-defining parameters from file: root process
 // reads parameters and broadcasts results to remaining
 // processes
-int load_inputs(int myid, const char fname[], double& xl,
-                double& xr, double& yl, double& yr, double& zl,
-                double& zr, double& t0, double& tf, double& gamma,
+int load_inputs(int myid, int argc, char* argv[], double& xl,  
+                double& xr, double& yl, double& yr, double& zl, 
+                double& zr, double& t0, double& tf, double& gamma, 
                 long int& nx, long int& ny, long int& nz, int& xlbc,
                 int& xrbc, int& ylbc, int& yrbc, int& zlbc,
                 int& zrbc, double& cfl, int& nout, int& showstats)
@@ -34,49 +36,171 @@ int load_inputs(int myid, const char fname[], double& xl,
   double dbuff[10];
   long int ibuff[11];
 
-  // root process reads solver parameters from file and packs send buffers
+  // root process handles command-line and file-based solver parameters, and packs send buffers
   if (myid == 0) {
 
-    char line[MAX_LINE_LENGTH];
-    FILE *FID=NULL;
-    FID = fopen(fname,"r");
-    if (check_flag((void *) FID, "fopen (load_inputs)", 0)) return(1);
-    while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
-
-      /* initialize return flag for line */
-      retval = 0;
-
-      /* read parameters */
-      retval += sscanf(line,"xl = %lf", &xl);
-      retval += sscanf(line,"xr = %lf", &xr);
-      retval += sscanf(line,"yl = %lf", &yl);
-      retval += sscanf(line,"yr = %lf", &yr);
-      retval += sscanf(line,"zl = %lf", &zl);
-      retval += sscanf(line,"zr = %lf", &zr);
-      retval += sscanf(line,"t0 = %lf", &t0);
-      retval += sscanf(line,"tf = %lf", &tf);
-      retval += sscanf(line,"gamma = %lf", &gamma);
-      retval += sscanf(line,"nx = %li", &nx);
-      retval += sscanf(line,"ny = %li", &ny);
-      retval += sscanf(line,"nz = %li", &nz);
-      retval += sscanf(line,"xlbc = %i", &xlbc);
-      retval += sscanf(line,"xrbc = %i", &xrbc);
-      retval += sscanf(line,"ylbc = %i", &ylbc);
-      retval += sscanf(line,"yrbc = %i", &yrbc);
-      retval += sscanf(line,"zlbc = %i", &zlbc);
-      retval += sscanf(line,"zrbc = %i", &zrbc);
-      retval += sscanf(line,"cfl = %lf", &cfl);
-      retval += sscanf(line,"nout = %i", &nout);
-      retval += sscanf(line,"showstats = %i", &showstats);
-
-      /* if unable to read the line (and it looks suspicious) issue a warning */
-      if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
-        fprintf(stderr, "load_inputs Warning: parameter line was not interpreted:\n%s", line);
-
+    // set default problem constants
+    xl    = RCONST(0.0);
+    xr    = RCONST(1.0);
+    yl    = RCONST(0.0);
+    yr    = RCONST(1.0);
+    zl    = RCONST(0.0);
+    zr    = RCONST(1.0);
+    t0    = RCONST(0.0);
+    tf    = RCONST(1.0);
+    gamma = RCONST(1.4);
+    cfl   = RCONST(0.0);
+    nx    = 4;
+    ny    = 4;
+    nz    = 4;
+    xlbc  = 0;
+    xrbc  = 0;
+    ylbc  = 0;
+    yrbc  = 0;
+    zlbc  = 0;
+    zrbc  = 0;
+    nout  = 10;
+    showstats = 0;
+    
+    // use 'gopt' to handle parsing command-line; first define all available options
+    struct option options[24];
+    enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0, 
+                itf, igam, inx, iny, inz, ixlb, ixrb, iylb, 
+                iyrb, izlb, izrb, icfl, inout, ishow };
+    for (int i=0; i<23; i++) {
+      options[i].short_name = '0';
+      options[i].flags = GOPT_ARGUMENT_REQUIRED;
     }
-    fclose(FID);
+    options[23].flags = GOPT_LAST;
+    options[ifname].short_name = 'f';
+    options[ifname].long_name = "infile";
+    options[ihelp].short_name = 'h';
+    options[ihelp].long_name = "help";
+    options[ihelp].flags = GOPT_ARGUMENT_FORBIDDEN;
+    options[ixl].long_name = "xl";
+    options[ixr].long_name = "xr";
+    options[iyl].long_name = "yl";
+    options[iyr].long_name = "yr";
+    options[izl].long_name = "zl";
+    options[izr].long_name = "zr";
+    options[it0].long_name = "t0";
+    options[itf].long_name = "tf";
+    options[igam].long_name = "gamma";
+    options[inx].long_name = "nx";
+    options[iny].long_name = "ny";
+    options[inz].long_name = "nz";
+    options[ixlb].long_name = "xlbc";
+    options[ixrb].long_name = "xrbc";
+    options[iylb].long_name = "ylbc";
+    options[iyrb].long_name = "yrbc";
+    options[izlb].long_name = "zlbc";
+    options[izrb].long_name = "zrbc";
+    options[icfl].long_name = "cfl";
+    options[inout].long_name = "nout";
+    options[ishow].long_name = "showstats";
+    argc = gopt(argv, options);
+    //gopt_errors(argv[0], options);
 
-    // pack buffers
+    // handle help request
+    if (options[ihelp].count) {
+      cout << "\nEuler3D SUNDIALS ManyVector+Multirate demonstration code\n"
+           << "\nUsage: " << argv[0] << " [options]\n"
+           << "   -h or --help prints this message and exits the program\n"
+           << "\nAvailable options (and the default if not provided):\n"
+           << "   --xl=<float>     (" << xl << ")\n"
+           << "   --xr=<float>     (" << xr << ")\n"
+           << "   --yl=<float>     (" << yl << ")\n"
+           << "   --yr=<float>     (" << yr << ")\n"
+           << "   --zl=<float>     (" << zl << ")\n"
+           << "   --zr=<float>     (" << zr << ")\n"
+           << "   --t0=<float>     (" << t0 << ")\n"
+           << "   --tf=<float>     (" << tf << ")\n"
+           << "   --gamma=<float>  (" << gamma << ")\n"
+           << "   --nx=<int>       (" << nx << ")\n"
+           << "   --ny=<int>       (" << ny << ")\n"
+           << "   --nz=<int>       (" << nz << ")\n"
+           << "   --xlbc=<int>     (" << xlbc << ")\n"
+           << "   --xrbc=<int>     (" << xrbc << ")\n"
+           << "   --ylbc=<int>     (" << ylbc << ")\n"
+           << "   --yrbc=<int>     (" << yrbc << ")\n"
+           << "   --zlbc=<int>     (" << zlbc << ")\n"
+           << "   --zrbc=<int>     (" << zrbc << ")\n"
+           << "   --cfl=<float>    (" << cfl << ")\n"
+           << "   --nout=<int>     (" << nout << ")\n"
+           << "   --showstats      (disabled)\n"
+           << "\nAlternately, all of these options may be specified in a single\n"
+           << "input file (with command-line arguments taking precedence if an\n"
+           << "option is provided in both places) via:"
+           << "   -f <fname> or --infile=<fname>\n\n\n";
+      return(1);
+    }
+    
+    // if an input file was specified, read that here
+    if (options[ifname].count) {
+      char line[MAX_LINE_LENGTH];
+      FILE *FID=NULL;
+      FID = fopen(options[ifname].argument,"r");
+      if (check_flag((void *) FID, "fopen (load_inputs)", 0)) return(-1);
+      while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
+
+        /* initialize return flag for line */
+        retval = 0;
+
+        /* read parameters */
+        retval += sscanf(line,"xl = %lf", &xl);
+        retval += sscanf(line,"xr = %lf", &xr);
+        retval += sscanf(line,"yl = %lf", &yl);
+        retval += sscanf(line,"yr = %lf", &yr);
+        retval += sscanf(line,"zl = %lf", &zl);
+        retval += sscanf(line,"zr = %lf", &zr);
+        retval += sscanf(line,"t0 = %lf", &t0);
+        retval += sscanf(line,"tf = %lf", &tf);
+        retval += sscanf(line,"gamma = %lf", &gamma);
+        retval += sscanf(line,"nx = %li", &nx);
+        retval += sscanf(line,"ny = %li", &ny);
+        retval += sscanf(line,"nz = %li", &nz);
+        retval += sscanf(line,"xlbc = %i", &xlbc);
+        retval += sscanf(line,"xrbc = %i", &xrbc);
+        retval += sscanf(line,"ylbc = %i", &ylbc);
+        retval += sscanf(line,"yrbc = %i", &yrbc);
+        retval += sscanf(line,"zlbc = %i", &zlbc);
+        retval += sscanf(line,"zrbc = %i", &zrbc);
+        retval += sscanf(line,"cfl = %lf", &cfl);
+        retval += sscanf(line,"nout = %i", &nout);
+        retval += sscanf(line,"showstats = %i", &showstats);
+
+        /* if unable to read the line (and it looks suspicious) issue a warning */
+        if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
+          fprintf(stderr, "load_inputs Warning: parameter line was not interpreted:\n%s", line);
+      }
+      fclose(FID);
+      
+    }
+
+    // replace any current option with a value specified on the command line
+    if (options[ixl].count)  xl = atof(options[ixl].argument);
+    if (options[ixr].count)  xr = atof(options[ixr].argument);
+    if (options[iyl].count)  yl = atof(options[iyl].argument);
+    if (options[iyr].count)  yr = atof(options[iyr].argument);
+    if (options[izl].count)  zl = atof(options[izl].argument);
+    if (options[izr].count)  zr = atof(options[izr].argument);
+    if (options[it0].count)  t0 = atof(options[it0].argument);
+    if (options[itf].count)  tf = atof(options[itf].argument);
+    if (options[igam].count)  gamma = atof(options[igam].argument);
+    if (options[inx].count)  nx = atoi(options[inx].argument);
+    if (options[iny].count)  ny = atoi(options[iny].argument);
+    if (options[inz].count)  nz = atoi(options[inz].argument);
+    if (options[ixlb].count)  xlbc = atoi(options[ixlb].argument);
+    if (options[ixrb].count)  xrbc = atoi(options[ixrb].argument);
+    if (options[iylb].count)  ylbc = atoi(options[iylb].argument);
+    if (options[iyrb].count)  yrbc = atoi(options[iyrb].argument);
+    if (options[izlb].count)  zlbc = atoi(options[izlb].argument);
+    if (options[izrb].count)  zrbc = atoi(options[izrb].argument);
+    if (options[icfl].count)  cfl = atof(options[icfl].argument);
+    if (options[inout].count)  nout = atoi(options[inout].argument);
+    if (options[ishow].count)  showstats = 1;
+    
+    // pack buffers with final parameter values
     ibuff[0]  = nx;
     ibuff[1]  = ny;
     ibuff[2]  = nz;
@@ -102,9 +226,9 @@ int load_inputs(int myid, const char fname[], double& xl,
 
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 10, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
+  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
   retval = MPI_Bcast(ibuff, 11, MPI_LONG, 0, MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(1);
+  if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
   xl    = dbuff[0];
