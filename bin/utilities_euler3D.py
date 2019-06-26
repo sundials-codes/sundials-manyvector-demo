@@ -42,10 +42,10 @@ def load_subdomain_info(nprocs):
     dTout = np.float(subd[17])
     for i in range(1,nprocs):
         sname = 'output-euler3D_subdomain.' + repr(i).zfill(7) + '.txt'
-        subd = np.loadtxt(sname, dtype=np.int)
+        subd = np.loadtxt(sname)
         if ((subd[0] != nx) or (subd[1] != ny) or (subd[2] != nz)):
             sys.exit("error: subdomain files incompatible (clean up and re-run test)")
-        subdomains[i,:] = subd[3:]
+        subdomains[i,:] = subd[3:9]
     return [nx, ny, nz, subdomains, domain, dTout]
 
 # load solution data into multi-dimensional arrays
@@ -121,10 +121,10 @@ def load_data():
             nzl = kend-kstart+1
             for i in range(nt):
                 rho[istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-                mx[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-                my[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-                mz[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-                et[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
+                mx[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(mx_data[i,:], (nxl,nyl,nzl), order='F')
+                my[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(my_data[i,:], (nxl,nyl,nzl), order='F')
+                mz[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(mz_data[i,:], (nxl,nyl,nzl), order='F')
+                et[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(et_data[i,:], (nxl,nyl,nzl), order='F')
 
     return [nx, ny, nz, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et]
 

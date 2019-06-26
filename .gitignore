@@ -20,6 +20,10 @@
 *.mod
 *.smod
 
+# Python cache files
+__pycache__
+*.pyc
+
 # Compiled Static libraries
 *.lai
 *.la
@@ -37,8 +41,8 @@
 # Temporary files
 *~
 
-# Simulation output files
+# Simulation output/graphics files
 output*.txt
 diags*.txt
-
+*.png
 

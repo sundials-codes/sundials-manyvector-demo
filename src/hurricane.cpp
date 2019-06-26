@@ -60,7 +60,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
   // iterate over subdomain, setting initial condition
   long int i, j, k;
-  realtype xloc, yloc, zloc, theta;
+  realtype xloc, yloc, zloc, r, costheta, sintheta;
   const realtype halfpi = RCONST(2.0)*atan(RCONST(1.0));
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
@@ -113,25 +113,34 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
 
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0;
 #ifdef TEST_XY
-        theta = (xloc == ZERO) ? halfpi : atan(yloc/xloc);
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sin(theta);
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*cos(theta);
+        r = SUNRsqrt(xloc*xloc + yloc*yloc);
+        if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        costheta = xloc/r;
+        sintheta = yloc/r;
+        mx[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sintheta;
+        my[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*costheta;
         mz[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
 #ifdef TEST_ZX
-        theta = (zloc == ZERO) ? halfpi : atan(xloc/zloc);
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sin(theta);
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*cos(theta);
+        r = SUNRsqrt(zloc*zloc + xloc*xloc);
+        if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        costheta = zloc/r;
+        sintheta = xloc/r;
+        mz[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sintheta;
+        mx[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*costheta;
         my[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
 #ifdef TEST_YZ
-        theta = (yloc == ZERO) ? halfpi : atan(zloc/yloc);
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sin(theta);
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*cos(theta);
+        r = SUNRsqrt(yloc*yloc + zloc*zloc);
+        if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        costheta = yloc/r;
+        sintheta = zloc/r;
+        my[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sintheta;
+        mz[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*costheta;
         mx[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
+        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0;
         et[ IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rho[IDX(i,j,k,nxl,nyl,nzl)],
                                                     mx[ IDX(i,j,k,nxl,nyl,nzl)],
                                                     my[ IDX(i,j,k,nxl,nyl,nzl)],
@@ -178,7 +187,8 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
   // iterate over subdomain, computing solution error
   long int v, i, j, k;
   int retval;
-  realtype tloc, xloc, yloc, zloc, theta, r, p0prime, rthresh, rhotrue, mxtrue, mytrue, mztrue, err;
+  realtype xloc, yloc, zloc, r, costheta, sintheta, p0prime,
+    rthresh, rhotrue, mxtrue, mytrue, mztrue, err;
   realtype errI[] = {ZERO, ZERO, ZERO, ZERO};
   realtype errR[] = {ZERO, ZERO, ZERO, ZERO};
   realtype toterrI[4], toterrR[4];
@@ -193,7 +203,6 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
 
   // set some reusable constants (protect t against division-by-zero)
-  tloc = (t == ZERO) ? 1e-14 : t;
   p0prime = Amp*udata.gamma*pow(rho0,udata.gamma-ONE);
   rthresh = TWO*t*SUNRsqrt(p0prime);
 
@@ -205,9 +214,10 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
 
 #ifdef TEST_XY
-        theta = (xloc == ZERO) ? halfpi : atan(yloc/xloc);
         r = SUNRsqrt(xloc*xloc + yloc*yloc);
         if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        costheta = xloc/r;
+        sintheta = yloc/r;
         if (r < rthresh) {
           rhotrue = r * r / (RCONST(8.0) * Amp * t * t);
           mxtrue = rhotrue * (xloc + yloc) / (TWO * t);
@@ -215,16 +225,18 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
           mztrue = ZERO;
         } else {
           rhotrue = rho0;
-          mxtrue = ( TWO*t*p0prime*cos(theta) +
-                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sin(theta) )/r;
-          mytrue = ( TWO*t*p0prime*sin(theta) -
-                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*cos(theta) )/r;
+          mxtrue = rho0 * ( TWO*t*p0prime*costheta +
+                            SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sintheta )/r;
+          mytrue = rho0 * ( TWO*t*p0prime*sintheta -
+                            SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*costheta )/r;
           mztrue = ZERO;
         }
 #endif
 #ifdef TEST_ZX
-        theta = (zloc == ZERO) ? halfpi : atan(xloc/zloc);
         r = SUNRsqrt(zloc*zloc + xloc*xloc);
+        if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        costheta = zloc/r;
+        sintheta = xloc/r;
         if (r < rthresh) {
           rhotrue = r * r / (RCONST(8.0) * Amp * t * t);
           mztrue = rhotrue * (zloc + xloc) / (TWO * t);
@@ -232,16 +244,18 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
           mytrue = ZERO;
         } else {
           rhotrue = rho0;
-          mztrue = ( TWO*t*p0prime*cos(theta) +
-                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sin(theta) )/r;
-          mxtrue = ( TWO*t*p0prime*sin(theta) -
-                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*cos(theta) )/r;
+          mztrue = rho0 * ( TWO*t*p0prime*costheta +
+                            SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sintheta )/r;
+          mxtrue = rho0 * ( TWO*t*p0prime*sintheta -
+                            SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*costheta )/r;
           mytrue = ZERO;
         }
 #endif
 #ifdef TEST_YZ
-        theta = (yloc == ZERO) ? halfpi : atan(zloc/yloc);
         r = SUNRsqrt(yloc*yloc+ zloc*zloc);
+        if (r == ZERO)  r = 1e-14;  // protect against division by zero
+        costheta = yloc/r;
+        sintheta = zloc/r;
         if (r < rthresh) {
           rhotrue = r * r / (RCONST(8.0) * Amp * t * t);
           mytrue = rhotrue * (yloc + zloc) / (TWO * t);
@@ -249,10 +263,10 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
           mxtrue = ZERO;
         } else {
           rhotrue = rho0;
-          mytrue = ( TWO*t*p0prime*cos(theta) +
-                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sin(theta) )/r;
-          mztrue = ( TWO*t*p0prime*sin(theta) -
-                     SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*cos(theta) )/r;
+          mytrue = rho0 * ( TWO*t*p0prime*costheta +
+                            SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*sintheta )/r;
+          mztrue = rho0 * ( TWO*t*p0prime*sintheta -
+                            SUNRsqrt(TWO*p0prime)*SUNRsqrt(r*r-TWO*t*t*p0prime)*costheta )/r;
           mxtrue = ZERO;
         }
 #endif
