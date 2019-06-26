@@ -51,6 +51,45 @@ using namespace std;
 int check_flag(const void *flagvalue, const string funcname, const int opt);
 
 
+// ARKode solver parameters class
+class ARKodeParameters {
+
+public:
+  int order;           // temporal order of accuracy
+  int dense_order;     // dense output order of accuracy (<0 => no interpolation)
+  int btable;          // specific built-in Butcher table to use (<0 => default)
+  int adapt_method;    // temporal adaptivity algorithm to use
+  int maxnef;          // max num temporal error failures (0 => default)
+  int mxhnil;          // max num tn+h=tn warnings (0 => default)
+  int mxsteps;         // max internal steps per 'evolve' call (0 => default)
+  double cflfac;       // max multiple of dt_cfl condition to use (0 => default)
+  double safety;       // temporal step size safety factor (0 => default)
+  double bias;         // temporal error bias factor (0 => default)
+  double growth;       // max temporal growth/step (0 => default)
+  int pq;              // use of method/embedding order for adaptivity (0 => default)
+  double k1;           // temporal adaptivity parameters (0 => default)
+  double k2;
+  double k3;
+  double etamx1;       // max change after first internal step (0 => default)
+  double etamxf;       // max change on a general internal step (0 => default)
+  double h0;           // initial time step size (0 => default)
+  double hmin;         // minimum time step size (0 => default)
+  double hmax;         // maximum time step size (0 => infinite)
+  double rtol;         // relative solution tolerance (0 => default)
+  double atol;         // absolute solution tolerance (0 => default)
+  
+  // constructor (with default values)
+  ARKodeParameters() :
+    order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
+    mxhnil(0), mxsteps(5000), cflfac(0.0), safety(0.0), bias(0.0),
+    growth(0.0), pq(0), k1(0.0), k2(0.0), k3(0.0), etamx1(0.0),
+    etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), rtol(1e-8), atol(1e-12)
+  {};
+
+};   // end ARKodeParameters;
+
+
+
 // user data class
 class UserData {
 
@@ -74,6 +113,8 @@ public:
   realtype yr;
   realtype zl;
   realtype zr;
+  realtype t0;
+  realtype tf;
   realtype dx;          // x-directional mesh spacing
   realtype dy;          // y-directional mesh spacing
   realtype dz;          // z-directional mesh spacing
@@ -87,6 +128,10 @@ public:
   int      zrbc;
   realtype gamma;       // ratio of specific heat capacities, cp/cv
   realtype cfl;         // fraction of maximum stable step size to use
+
+  ///// run-control parameters /////
+  int nout;             // num pauses in integration to run diagnostics/io
+  int showstats;        // flag indicating whether to display run stats to screen
   
   ///// reusable arrays for WENO flux calculations /////
   realtype *xflux;
@@ -122,26 +167,19 @@ public:
 
   ///// class operations /////
   // constructor
-  UserData(long int nx_, long int ny_, long int nz_, realtype xl_,
-           realtype xr_, realtype yl_, realtype yr_, realtype zl_, 
-           realtype zr_, int xlbc_, int xrbc_, int ylbc_, int yrbc_, 
-           int zlbc_, int zrbc_, realtype gamma_, realtype cfl_) :
-      nx(nx_), ny(ny_), nz(nz_), xl(xl_), xr(xr_), yl(yl_), yr(yr_), zl(zl_),
-      zr(zr_), xlbc(xlbc_), xrbc(xrbc_), ylbc(ylbc_), yrbc(yrbc_), zlbc(zlbc_),
-      zrbc(zrbc_), is(0), ie(0), js(0), je(0), ks(0), ke(0), nxl(0), nyl(0),
-      nzl(0), comm(MPI_COMM_WORLD), myid(0), nprocs(0), npx(0), npy(0), npz(0),
-      Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
-      Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
-      ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(gamma_), cfl(cfl_),
-      xflux(NULL), yflux(NULL), zflux(NULL)
-  {
-    dx = (xr-xl)/nx;
-    dy = (yr-yl)/ny;
-    dz = (zr-zl)/nz;
-  };
+  UserData() :
+      nx(4), ny(4), nz(4), xl(0.0), xr(1.0), yl(0.0), yr(1.0), zl(0.0),
+      zr(1.0), t0(0.0), tf(1.0), xlbc(0), xrbc(0), ylbc(0), yrbc(0),
+      zlbc(0), zrbc(0), is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1),
+      nxl(-1), nyl(-1), nzl(-1), comm(MPI_COMM_WORLD), myid(-1),
+      nprocs(-1), npx(-1), npy(-1), npz(-1), Erecv(NULL), Wrecv(NULL), Nrecv(NULL),
+      Srecv(NULL), Frecv(NULL), Brecv(NULL), Esend(NULL), Wsend(NULL), Nsend(NULL),
+      Ssend(NULL), Fsend(NULL), Bsend(NULL), ipW(-1), ipE(-1), ipS(-1), ipN(-1),
+      ipB(-1), ipF(-1), gamma(1.4), cfl(0.0), xflux(NULL), yflux(NULL),
+      zflux(NULL), nout(10), showstats(0)
+  { };
   // destructor
   ~UserData() {
-    int i;
     if (Wrecv != NULL)  delete[] Wrecv;
     if (Wsend != NULL)  delete[] Wsend;
     if (Erecv != NULL)  delete[] Erecv;
@@ -173,6 +211,11 @@ public:
       cerr << "SetupDecomp warning: parallel decomposition already set up\n";
       return 1;
     }
+
+    // set mesh sizes
+    dx = (xr-xl)/nx;
+    dy = (yr-yl)/ny;
+    dz = (zr-zl)/nz;
 
     // get suggested parallel decomposition
     retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -849,13 +892,7 @@ public:
 // Additional utility routines
 
 //    Load inputs from file
-int load_inputs(int myid, int argc, char* argv[],
-                double& xl, double& xr, double& yl, double& yr,
-                double& zl, double& zr, double& t0, double& tf,
-                double& gamma, long int& nx, long int& ny,
-                long int& nz, int& xlbc, int& xrbc, int& ylbc,
-                int& yrbc, int& zlbc, int& zrbc, double& cfl,
-                int& nout, int& showstats);
+int load_inputs(int myid, int argc, char* argv[], UserData& udata, ARKodeParameters& opts);
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
@@ -880,12 +917,5 @@ int output_solution(const N_Vector w, const int& newappend,
 //    WENO Div(flux(u)) function
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
                realtype* f_face, const UserData& udata);
-
-//    Parameter input helper function
-void* arkstep_init_from_file(int myid, const char fname[],
-                             const ARKRhsFn f, const ARKRhsFn fe,
-                             const ARKRhsFn fi, const realtype t0,
-                             const N_Vector w0, int& imex, int& dense_order,
-                             int& fxpt, double& rtol, double& atol);
 
 //---- end of file ----

@@ -25,53 +25,30 @@
 // Load problem-defining parameters from file: root process
 // reads parameters and broadcasts results to remaining
 // processes
-int load_inputs(int myid, int argc, char* argv[], double& xl,  
-                double& xr, double& yl, double& yr, double& zl, 
-                double& zr, double& t0, double& tf, double& gamma, 
-                long int& nx, long int& ny, long int& nz, int& xlbc,
-                int& xrbc, int& ylbc, int& yrbc, int& zlbc,
-                int& zrbc, double& cfl, int& nout, int& showstats)
+int load_inputs(int myid, int argc, char* argv[],
+                UserData& udata, ARKodeParameters& opts)
 {
   int retval;
-  double dbuff[10];
-  long int ibuff[11];
+  double dbuff[23];
+  long int ibuff[19];
 
   // root process handles command-line and file-based solver parameters, and packs send buffers
   if (myid == 0) {
 
-    // set default problem constants
-    xl    = RCONST(0.0);
-    xr    = RCONST(1.0);
-    yl    = RCONST(0.0);
-    yr    = RCONST(1.0);
-    zl    = RCONST(0.0);
-    zr    = RCONST(1.0);
-    t0    = RCONST(0.0);
-    tf    = RCONST(1.0);
-    gamma = RCONST(1.4);
-    cfl   = RCONST(0.0);
-    nx    = 4;
-    ny    = 4;
-    nz    = 4;
-    xlbc  = 0;
-    xrbc  = 0;
-    ylbc  = 0;
-    yrbc  = 0;
-    zlbc  = 0;
-    zrbc  = 0;
-    nout  = 10;
-    showstats = 0;
-    
     // use 'gopt' to handle parsing command-line; first define all available options
-    struct option options[24];
+    const int nopt = 44;
+    struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0, 
                 itf, igam, inx, iny, inz, ixlb, ixrb, iylb, 
-                iyrb, izlb, izrb, icfl, inout, ishow };
-    for (int i=0; i<23; i++) {
+                iyrb, izlb, izrb, icfl, inout, ishow,
+                iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
+                isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
+                iemaf, ih0, ihmin, ihmax, irtol, iatol};
+    for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
     }
-    options[23].flags = GOPT_LAST;
+    options[nopt].flags = GOPT_LAST;
     options[ifname].short_name = 'f';
     options[ifname].long_name = "infile";
     options[ihelp].short_name = 'h';
@@ -98,6 +75,27 @@ int load_inputs(int myid, int argc, char* argv[], double& xl,
     options[icfl].long_name = "cfl";
     options[inout].long_name = "nout";
     options[ishow].long_name = "showstats";
+    options[iord].long_name = "order";
+    options[idord].long_name = "dense_order";
+    options[ibt].long_name = "btable";
+    options[iadmth].long_name = "adapt_method";
+    options[imnef].long_name = "maxnef";
+    options[imhnil].long_name = "mxhnil";
+    options[imaxst].long_name = "mxsteps";
+    options[isfty].long_name = "safety";
+    options[ibias].long_name = "bias";
+    options[igrow].long_name = "growth";
+    options[ipq].long_name = "pq";
+    options[ik1].long_name = "k1";
+    options[ik2].long_name = "k2";
+    options[ik3].long_name = "k3";
+    options[iemx1].long_name = "etamx1";
+    options[iemaf].long_name = "etamxf";
+    options[ih0].long_name = "h0";
+    options[ihmin].long_name = "hmin";
+    options[ihmax].long_name = "hmax";
+    options[irtol].long_name = "rtol";
+    options[iatol].long_name = "atol";
     argc = gopt(argv, options);
     //gopt_errors(argv[0], options);
 
@@ -106,31 +104,54 @@ int load_inputs(int myid, int argc, char* argv[], double& xl,
       cout << "\nEuler3D SUNDIALS ManyVector+Multirate demonstration code\n"
            << "\nUsage: " << argv[0] << " [options]\n"
            << "   -h or --help prints this message and exits the program\n"
-           << "\nAvailable options (and the default if not provided):\n"
-           << "   --xl=<float>     (" << xl << ")\n"
-           << "   --xr=<float>     (" << xr << ")\n"
-           << "   --yl=<float>     (" << yl << ")\n"
-           << "   --yr=<float>     (" << yr << ")\n"
-           << "   --zl=<float>     (" << zl << ")\n"
-           << "   --zr=<float>     (" << zr << ")\n"
-           << "   --t0=<float>     (" << t0 << ")\n"
-           << "   --tf=<float>     (" << tf << ")\n"
-           << "   --gamma=<float>  (" << gamma << ")\n"
-           << "   --nx=<int>       (" << nx << ")\n"
-           << "   --ny=<int>       (" << ny << ")\n"
-           << "   --nz=<int>       (" << nz << ")\n"
-           << "   --xlbc=<int>     (" << xlbc << ")\n"
-           << "   --xrbc=<int>     (" << xrbc << ")\n"
-           << "   --ylbc=<int>     (" << ylbc << ")\n"
-           << "   --yrbc=<int>     (" << yrbc << ")\n"
-           << "   --zlbc=<int>     (" << zlbc << ")\n"
-           << "   --zrbc=<int>     (" << zrbc << ")\n"
-           << "   --cfl=<float>    (" << cfl << ")\n"
-           << "   --nout=<int>     (" << nout << ")\n"
+           << "\nAvailable problem specification options (and the default if not provided):\n"
+           << "   --xl=<float>     (" << udata.xl << ")\n"
+           << "   --xr=<float>     (" << udata.xr << ")\n"
+           << "   --yl=<float>     (" << udata.yl << ")\n"
+           << "   --yr=<float>     (" << udata.yr << ")\n"
+           << "   --zl=<float>     (" << udata.zl << ")\n"
+           << "   --zr=<float>     (" << udata.zr << ")\n"
+           << "   --t0=<float>     (" << udata.t0 << ")\n"
+           << "   --tf=<float>     (" << udata.tf << ")\n"
+           << "   --gamma=<float>  (" << udata.gamma << ")\n"
+           << "   --nx=<int>       (" << udata.nx << ")\n"
+           << "   --ny=<int>       (" << udata.ny << ")\n"
+           << "   --nz=<int>       (" << udata.nz << ")\n"
+           << "   --xlbc=<int>     (" << udata.xlbc << ")\n"
+           << "   --xrbc=<int>     (" << udata.xrbc << ")\n"
+           << "   --ylbc=<int>     (" << udata.ylbc << ")\n"
+           << "   --yrbc=<int>     (" << udata.yrbc << ")\n"
+           << "   --zlbc=<int>     (" << udata.zlbc << ")\n"
+           << "   --zrbc=<int>     (" << udata.zrbc << ")\n"
+           << "\nAvailable run options (and the default if not provided):\n"
+           << "   --nout=<int>     (" << udata.nout << ")\n"
            << "   --showstats      (disabled)\n"
+           << "\nAvailable time-stepping options (and the default if not provided):\n"
+           << "   --cfl=<float>    (" << udata.cfl << ")\n"
+           << "   --iord=<int>     (" << opts.order << ")\n"
+           << "   --idord=<int>    (" << opts.dense_order << ")\n"
+           << "   --ibt=<int>      (" << opts.btable << ")\n"
+           << "   --iadmth=<int>   (" << opts.adapt_method << ")\n"
+           << "   --imnef=<int>    (" << opts.maxnef << ")\n"
+           << "   --imhnil=<int>   (" << opts.mxhnil << ")\n"
+           << "   --imaxst=<int>   (" << opts.mxsteps << ")\n"
+           << "   --isfty=<float>  (" << opts.safety << ")\n"
+           << "   --ibias=<float>  (" << opts.bias << ")\n"
+           << "   --igrow=<float>  (" << opts.growth << ")\n"
+           << "   --ipq=<int>      (" << opts.pq << ")\n"
+           << "   --ik1=<float>    (" << opts.k1 << ")\n"
+           << "   --ik2=<float>    (" << opts.k2 << ")\n"
+           << "   --ik3=<float>    (" << opts.k3 << ")\n"
+           << "   --iemx1=<float>  (" << opts.etamx1 << ")\n"
+           << "   --iemaf=<float>  (" << opts.etamxf << ")\n"
+           << "   --ih0=<float>    (" << opts.h0 << ")\n"
+           << "   --ihmin=<float>  (" << opts.hmin << ")\n"
+           << "   --ihmax=<float>  (" << opts.hmax << ")\n"
+           << "   --irtol=<float>  (" << opts.rtol << ")\n"
+           << "   --iato=<float>   (" << opts.atol << ")\n"
            << "\nAlternately, all of these options may be specified in a single\n"
            << "input file (with command-line arguments taking precedence if an\n"
-           << "option is provided in both places) via:"
+           << "option is multiply-defined) via:"
            << "   -f <fname> or --infile=<fname>\n\n\n";
       return(1);
     }
@@ -147,27 +168,48 @@ int load_inputs(int myid, int argc, char* argv[], double& xl,
         retval = 0;
 
         /* read parameters */
-        retval += sscanf(line,"xl = %lf", &xl);
-        retval += sscanf(line,"xr = %lf", &xr);
-        retval += sscanf(line,"yl = %lf", &yl);
-        retval += sscanf(line,"yr = %lf", &yr);
-        retval += sscanf(line,"zl = %lf", &zl);
-        retval += sscanf(line,"zr = %lf", &zr);
-        retval += sscanf(line,"t0 = %lf", &t0);
-        retval += sscanf(line,"tf = %lf", &tf);
-        retval += sscanf(line,"gamma = %lf", &gamma);
-        retval += sscanf(line,"nx = %li", &nx);
-        retval += sscanf(line,"ny = %li", &ny);
-        retval += sscanf(line,"nz = %li", &nz);
-        retval += sscanf(line,"xlbc = %i", &xlbc);
-        retval += sscanf(line,"xrbc = %i", &xrbc);
-        retval += sscanf(line,"ylbc = %i", &ylbc);
-        retval += sscanf(line,"yrbc = %i", &yrbc);
-        retval += sscanf(line,"zlbc = %i", &zlbc);
-        retval += sscanf(line,"zrbc = %i", &zrbc);
-        retval += sscanf(line,"cfl = %lf", &cfl);
-        retval += sscanf(line,"nout = %i", &nout);
-        retval += sscanf(line,"showstats = %i", &showstats);
+        retval += sscanf(line,"xl = %lf", &udata.xl);
+        retval += sscanf(line,"xr = %lf", &udata.xr);
+        retval += sscanf(line,"yl = %lf", &udata.yl);
+        retval += sscanf(line,"yr = %lf", &udata.yr);
+        retval += sscanf(line,"zl = %lf", &udata.zl);
+        retval += sscanf(line,"zr = %lf", &udata.zr);
+        retval += sscanf(line,"t0 = %lf", &udata.t0);
+        retval += sscanf(line,"tf = %lf", &udata.tf);
+        retval += sscanf(line,"gamma = %lf", &udata.gamma);
+        retval += sscanf(line,"nx = %li", &udata.nx);
+        retval += sscanf(line,"ny = %li", &udata.ny);
+        retval += sscanf(line,"nz = %li", &udata.nz);
+        retval += sscanf(line,"xlbc = %i", &udata.xlbc);
+        retval += sscanf(line,"xrbc = %i", &udata.xrbc);
+        retval += sscanf(line,"ylbc = %i", &udata.ylbc);
+        retval += sscanf(line,"yrbc = %i", &udata.yrbc);
+        retval += sscanf(line,"zlbc = %i", &udata.zlbc);
+        retval += sscanf(line,"zrbc = %i", &udata.zrbc);
+        retval += sscanf(line,"cfl = %lf", &udata.cfl);
+        retval += sscanf(line,"nout = %i", &udata.nout);
+        retval += sscanf(line,"showstats = %i", &udata.showstats);
+        retval += sscanf(line,"order = %i", &opts.order);
+        retval += sscanf(line,"dense_order = %i", &opts.dense_order);
+        retval += sscanf(line,"btable = %i",  &opts.btable);
+        retval += sscanf(line,"adapt_method = %i", &opts.adapt_method);
+        retval += sscanf(line,"maxnef = %i", &opts.maxnef);
+        retval += sscanf(line,"mxhnil = %i", &opts.mxhnil);
+        retval += sscanf(line,"mxsteps = %i", &opts.mxsteps);
+        retval += sscanf(line,"safety = %lf", &opts.safety);
+        retval += sscanf(line,"bias = %lf", &opts.bias);
+        retval += sscanf(line,"growth = %lf", &opts.growth);
+        retval += sscanf(line,"pq = %i", &opts.pq);
+        retval += sscanf(line,"k1 = %lf", &opts.k1);
+        retval += sscanf(line,"k2 = %lf", &opts.k2);
+        retval += sscanf(line,"k3 = %lf", &opts.k3);
+        retval += sscanf(line,"etamx1 = %lf", &opts.etamx1);
+        retval += sscanf(line,"etamxf = %lf", &opts.etamxf);
+        retval += sscanf(line,"h0 = %lf", &opts.h0);
+        retval += sscanf(line,"hmin = %lf", &opts.hmin);
+        retval += sscanf(line,"hmax = %lf", &opts.hmax);
+        retval += sscanf(line,"rtol = %lf", &opts.rtol);
+        retval += sscanf(line,"atol = %lf", &opts.atol);
 
         /* if unable to read the line (and it looks suspicious) issue a warning */
         if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
@@ -178,563 +220,148 @@ int load_inputs(int myid, int argc, char* argv[], double& xl,
     }
 
     // replace any current option with a value specified on the command line
-    if (options[ixl].count)  xl = atof(options[ixl].argument);
-    if (options[ixr].count)  xr = atof(options[ixr].argument);
-    if (options[iyl].count)  yl = atof(options[iyl].argument);
-    if (options[iyr].count)  yr = atof(options[iyr].argument);
-    if (options[izl].count)  zl = atof(options[izl].argument);
-    if (options[izr].count)  zr = atof(options[izr].argument);
-    if (options[it0].count)  t0 = atof(options[it0].argument);
-    if (options[itf].count)  tf = atof(options[itf].argument);
-    if (options[igam].count)  gamma = atof(options[igam].argument);
-    if (options[inx].count)  nx = atoi(options[inx].argument);
-    if (options[iny].count)  ny = atoi(options[iny].argument);
-    if (options[inz].count)  nz = atoi(options[inz].argument);
-    if (options[ixlb].count)  xlbc = atoi(options[ixlb].argument);
-    if (options[ixrb].count)  xrbc = atoi(options[ixrb].argument);
-    if (options[iylb].count)  ylbc = atoi(options[iylb].argument);
-    if (options[iyrb].count)  yrbc = atoi(options[iyrb].argument);
-    if (options[izlb].count)  zlbc = atoi(options[izlb].argument);
-    if (options[izrb].count)  zrbc = atoi(options[izrb].argument);
-    if (options[icfl].count)  cfl = atof(options[icfl].argument);
-    if (options[inout].count)  nout = atoi(options[inout].argument);
-    if (options[ishow].count)  showstats = 1;
-    
+    if (options[ixl].count)    udata.xl          = atof(options[ixl].argument);
+    if (options[ixr].count)    udata.xr          = atof(options[ixr].argument);
+    if (options[iyl].count)    udata.yl          = atof(options[iyl].argument);
+    if (options[iyr].count)    udata.yr          = atof(options[iyr].argument);
+    if (options[izl].count)    udata.zl          = atof(options[izl].argument);
+    if (options[izr].count)    udata.zr          = atof(options[izr].argument);
+    if (options[it0].count)    udata.t0          = atof(options[it0].argument);
+    if (options[itf].count)    udata.tf          = atof(options[itf].argument);
+    if (options[igam].count)   udata.gamma       = atof(options[igam].argument);
+    if (options[inx].count)    udata.nx          = atoi(options[inx].argument);
+    if (options[iny].count)    udata.ny          = atoi(options[iny].argument);
+    if (options[inz].count)    udata.nz          = atoi(options[inz].argument);
+    if (options[ixlb].count)   udata.xlbc        = atoi(options[ixlb].argument);
+    if (options[ixrb].count)   udata.xrbc        = atoi(options[ixrb].argument);
+    if (options[iylb].count)   udata.ylbc        = atoi(options[iylb].argument);
+    if (options[iyrb].count)   udata.yrbc        = atoi(options[iyrb].argument);
+    if (options[izlb].count)   udata.zlbc        = atoi(options[izlb].argument);
+    if (options[izrb].count)   udata.zrbc        = atoi(options[izrb].argument);
+    if (options[icfl].count)   udata.cfl         = atof(options[icfl].argument);
+    if (options[inout].count)  udata.nout        = atoi(options[inout].argument);
+    if (options[ishow].count)  udata.showstats = 1;
+    if (options[iord].count)   opts.order        = atoi(options[iord].argument);
+    if (options[idord].count)  opts.dense_order  = atoi(options[idord].argument);
+    if (options[ibt].count)    opts.btable       = atoi(options[ibt].argument);
+    if (options[iadmth].count) opts.adapt_method = atoi(options[iadmth].argument);
+    if (options[imnef].count)  opts.maxnef       = atoi(options[imnef].argument);
+    if (options[imhnil].count) opts.mxhnil       = atoi(options[imhnil].argument);
+    if (options[imaxst].count) opts.mxsteps      = atoi(options[imaxst].argument);
+    if (options[isfty].count)  opts.safety       = atof(options[isfty].argument);
+    if (options[ibias].count)  opts.bias         = atof(options[ibias].argument);
+    if (options[igrow].count)  opts.growth       = atof(options[igrow].argument);
+    if (options[ipq].count)    opts.pq           = atoi(options[ipq].argument);
+    if (options[ik1].count)    opts.k1           = atof(options[ik1].argument);
+    if (options[ik2].count)    opts.k2           = atof(options[ik2].argument);
+    if (options[ik3].count)    opts.k3           = atof(options[ik3].argument);
+    if (options[iemx1].count)  opts.etamx1       = atof(options[iemx1].argument);
+    if (options[iemaf].count)  opts.etamxf       = atof(options[iemaf].argument);
+    if (options[ih0].count)    opts.h0           = atof(options[ih0].argument);
+    if (options[ihmin].count)  opts.hmin         = atof(options[ihmin].argument);
+    if (options[ihmax].count)  opts.hmax         = atof(options[ihmax].argument);
+    if (options[irtol].count)  opts.rtol         = atof(options[irtol].argument);
+    if (options[iatol].count)  opts.atol         = atof(options[iatol].argument);
+
     // pack buffers with final parameter values
-    ibuff[0]  = nx;
-    ibuff[1]  = ny;
-    ibuff[2]  = nz;
-    ibuff[3]  = xlbc;
-    ibuff[4]  = xrbc;
-    ibuff[5]  = ylbc;
-    ibuff[6]  = yrbc;
-    ibuff[7]  = zlbc;
-    ibuff[8]  = zrbc;
-    ibuff[9]  = nout;
-    ibuff[10] = showstats;
-    dbuff[0]  = xl;
-    dbuff[1]  = xr;
-    dbuff[2]  = yl;
-    dbuff[3]  = yr;
-    dbuff[4]  = zl;
-    dbuff[5]  = zr;
-    dbuff[6]  = t0;
-    dbuff[7]  = tf;
-    dbuff[8]  = gamma;
-    dbuff[9]  = cfl;
+    ibuff[0]  = udata.nx;
+    ibuff[1]  = udata.ny;
+    ibuff[2]  = udata.nz;
+    ibuff[3]  = udata.xlbc;
+    ibuff[4]  = udata.xrbc;
+    ibuff[5]  = udata.ylbc;
+    ibuff[6]  = udata.yrbc;
+    ibuff[7]  = udata.zlbc;
+    ibuff[8]  = udata.zrbc;
+    ibuff[9]  = udata.nout;
+    ibuff[10] = udata.showstats;
+    ibuff[11] = opts.order;
+    ibuff[12] = opts.dense_order;
+    ibuff[13] = opts.btable;
+    ibuff[14] = opts.adapt_method;
+    ibuff[15] = opts.maxnef;
+    ibuff[16] = opts.mxhnil;
+    ibuff[17] = opts.mxsteps;
+    ibuff[18] = opts.pq;
+
+    dbuff[0]  = udata.xl;
+    dbuff[1]  = udata.xr;
+    dbuff[2]  = udata.yl;
+    dbuff[3]  = udata.yr;
+    dbuff[4]  = udata.zl;
+    dbuff[5]  = udata.zr;
+    dbuff[6]  = udata.t0;
+    dbuff[7]  = udata.tf;
+    dbuff[8]  = udata.gamma;
+    dbuff[9]  = udata.cfl;
+    dbuff[10] = opts.safety;
+    dbuff[11] = opts.bias;
+    dbuff[12] = opts.growth;
+    dbuff[13] = opts.k1;
+    dbuff[14] = opts.k2;
+    dbuff[15] = opts.k3;
+    dbuff[16] = opts.etamx1;
+    dbuff[17] = opts.etamxf;
+    dbuff[18] = opts.h0;
+    dbuff[19] = opts.hmin;
+    dbuff[20] = opts.hmax;
+    dbuff[21] = opts.rtol;
+    dbuff[22] = opts.atol;
   }
 
   // perform broadcast and unpack results
-  retval = MPI_Bcast(dbuff, 10, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(dbuff, 23, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 11, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 19, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
-  xl    = dbuff[0];
-  xr    = dbuff[1];
-  yl    = dbuff[2];
-  yr    = dbuff[3];
-  zl    = dbuff[4];
-  zr    = dbuff[5];
-  t0    = dbuff[6];
-  tf    = dbuff[7];
-  gamma = dbuff[8];
-  cfl   = dbuff[9];
-  nx    = ibuff[0];
-  ny    = ibuff[1];
-  nz    = ibuff[2];
-  xlbc  = ibuff[3];
-  xrbc  = ibuff[4];
-  ylbc  = ibuff[5];
-  yrbc  = ibuff[6];
-  zlbc  = ibuff[7];
-  zrbc  = ibuff[8];
-  nout  = ibuff[9];
-  showstats = ibuff[10];
+  udata.nx = ibuff[0];
+  udata.ny = ibuff[1];
+  udata.nz = ibuff[2];
+  udata.xlbc = ibuff[3];
+  udata.xrbc = ibuff[4];
+  udata.ylbc = ibuff[5];
+  udata.yrbc = ibuff[6];
+  udata.zlbc = ibuff[7];
+  udata.zrbc = ibuff[8];
+  udata.nout = ibuff[9];
+  udata.showstats = ibuff[10];
+  opts.order = ibuff[11];
+  opts.dense_order = ibuff[12];
+  opts.btable = ibuff[13];
+  opts.adapt_method = ibuff[14];
+  opts.maxnef = ibuff[15];
+  opts.mxhnil = ibuff[16];
+  opts.mxsteps = ibuff[17];
+  opts.pq = ibuff[18];
+  
+  udata.xl = dbuff[0];
+  udata.xr = dbuff[1];
+  udata.yl = dbuff[2];
+  udata.yr = dbuff[3];
+  udata.zl = dbuff[4];
+  udata.zr = dbuff[5];
+  udata.t0 = dbuff[6];
+  udata.tf = dbuff[7];
+  udata.gamma = dbuff[8];
+  udata.cfl = dbuff[9];
+  opts.safety = dbuff[10];
+  opts.bias = dbuff[11];
+  opts.growth = dbuff[12];
+  opts.k1 = dbuff[13];
+  opts.k2 = dbuff[14];
+  opts.k3 = dbuff[15];
+  opts.etamx1 = dbuff[16];
+  opts.etamxf = dbuff[17];
+  opts.h0 = dbuff[18];
+  opts.hmin = dbuff[19];
+  opts.hmax = dbuff[20];
+  opts.rtol = dbuff[21];
+  opts.atol = dbuff[22];
 
   // return with success
   return(0);
-}
-
-
-// Load ARKode solver parameters from file: root process
-// reads parameters and broadcasts results to remaining
-// processes; all then perform setup
-void* arkstep_init_from_file(int myid, const char fname[],
-                             const ARKRhsFn f, const ARKRhsFn fe,
-                             const ARKRhsFn fi, const realtype t0,
-                             const N_Vector w0, int& imex, int& dense_order,
-                             int& fxpt, double& rtol, double& atol)
-{
-
-  /* declare output */
-  void *ark_mem;
-
-  /* declare available solver parameters (with default values) */
-  int order = 0;
-  int adapt_method = 0;
-  int small_nef = 0;
-  int msbp = 0;
-  int maxcor = 0;
-  int predictor = 0;
-  int maxnef = 0;
-  int maxncf = 0;
-  int mxhnil = 0;
-  int mxsteps = 0;
-  int btable = -1;
-  int pq = 0;
-  int fixedpt = 0;
-  int m_aa = -1;
-  double cflfac = 0.0;
-  double safety = 0.0;
-  double bias = 0.0;
-  double growth = 0.0;
-  double hfixed_lb = 0.0;
-  double hfixed_ub = 0.0;
-  double k1 = 0.0;
-  double k2 = 0.0;
-  double k3 = 0.0;
-  double etamx1 = 0.0;
-  double etamxf = 0.0;
-  double etacf = 0.0;
-  double crdown = 0.0;
-  double rdiv = 0.0;
-  double dgmax = 0.0;
-  double nlscoef = 0.0;
-  double h0 = 0.0;
-  double hmin = 0.0;
-  double hmax = 0.0;
-
-  /* all create send/receive buffers read solver parameters from file */
-  int ret;
-  double dbuff[21];
-  int ibuff[16];
-
-  /* root process reads solver parameters from file and packs buffers */
-  if (myid == 0) {
-
-    /* open parameter file */
-    char line[MAX_LINE_LENGTH];
-    FILE *fptr = NULL;
-    fptr = fopen(fname,"r");
-    if (check_flag((void *) fptr, "fopen (arkstep_init_from_file)", 0)) return(NULL);
-    while (fgets(line, MAX_LINE_LENGTH, fptr) != NULL) {
-
-      /* initialize return flag for line */
-      ret = 0;
-
-      /* read parameter */
-      ret += sscanf(line,"order = %i", &order);
-      ret += sscanf(line,"dense_order = %i", &dense_order);
-      ret += sscanf(line,"imex = %i", &imex);
-      ret += sscanf(line,"btable = %i",  &btable);
-      ret += sscanf(line,"adapt_method = %i", &adapt_method);
-      ret += sscanf(line,"maxnef = %i", &maxnef);
-      ret += sscanf(line,"maxncf = %i", &maxncf);
-      ret += sscanf(line,"mxhnil = %i", &mxhnil);
-      ret += sscanf(line,"mxsteps = %i", &mxsteps);
-      ret += sscanf(line,"cflfac = %lf", &cflfac);
-      ret += sscanf(line,"safety = %lf", &safety);
-      ret += sscanf(line,"bias = %lf", &bias);
-      ret += sscanf(line,"growth = %lf", &growth);
-      ret += sscanf(line,"hfixed_lb = %lf", &hfixed_lb);
-      ret += sscanf(line,"hfixed_ub = %lf", &hfixed_ub);
-      ret += sscanf(line,"pq = %i", &pq);
-      ret += sscanf(line,"k1 = %lf", &k1);
-      ret += sscanf(line,"k2 = %lf", &k2);
-      ret += sscanf(line,"k3 = %lf", &k3);
-      ret += sscanf(line,"etamx1 = %lf", &etamx1);
-      ret += sscanf(line,"etamxf = %lf", &etamxf);
-      ret += sscanf(line,"etacf = %lf", &etacf);
-      ret += sscanf(line,"small_nef = %i", &small_nef);
-      ret += sscanf(line,"crdown = %lf", &crdown);
-      ret += sscanf(line,"rdiv = %lf", &rdiv);
-      ret += sscanf(line,"dgmax = %lf", &dgmax);
-      ret += sscanf(line,"predictor = %i", &predictor);
-      ret += sscanf(line,"msbp = %i", &msbp);
-      ret += sscanf(line,"fixedpt = %i", &fixedpt);
-      ret += sscanf(line,"m_aa = %i", &m_aa);
-      ret += sscanf(line,"maxcor = %i", &maxcor);
-      ret += sscanf(line,"nlscoef = %lf", &nlscoef);
-      ret += sscanf(line,"h0 = %lf", &h0);
-      ret += sscanf(line,"hmin = %lf", &hmin);
-      ret += sscanf(line,"hmax = %lf", &hmax);
-      ret += sscanf(line,"rtol = %lf", &rtol);
-      ret += sscanf(line,"atol = %lf", &atol);
-
-      /* if unable to read the line (and it looks suspicious) issue a warning */
-      if (ret == 0 && strstr(line, "=") != NULL && line[0] != '#')
-        fprintf(stderr, "arkstep_init_from_file Warning: parameter line was not interpreted:\n%s", line);
-
-    }
-    fclose(fptr);
-
-    // pack buffers
-    ibuff[0]  = order;
-    ibuff[1]  = dense_order;
-    ibuff[2]  = imex;
-    ibuff[3]  = btable;
-    ibuff[4]  = adapt_method;
-    ibuff[5]  = maxnef;
-    ibuff[6]  = maxncf;
-    ibuff[7]  = mxhnil;
-    ibuff[8]  = mxsteps;
-    ibuff[9]  = pq;
-    ibuff[10] = small_nef;
-    ibuff[11] = predictor;
-    ibuff[12] = msbp;
-    ibuff[13] = fixedpt;
-    ibuff[14] = m_aa;
-    ibuff[15] = maxcor;
-    dbuff[0]  = cflfac;
-    dbuff[1]  = safety;
-    dbuff[2]  = bias;
-    dbuff[3]  = growth;
-    dbuff[4]  = hfixed_lb;
-    dbuff[5]  = hfixed_ub;
-    dbuff[6]  = k1;
-    dbuff[7]  = k2;
-    dbuff[8]  = k3;
-    dbuff[9]  = etamx1;
-    dbuff[10] = etamxf;
-    dbuff[11] = etacf;
-    dbuff[12] = crdown;
-    dbuff[13] = rdiv;
-    dbuff[14] = dgmax;
-    dbuff[15] = nlscoef;
-    dbuff[16] = h0;
-    dbuff[17] = hmin;
-    dbuff[18] = hmax;
-    dbuff[19] = rtol;
-    dbuff[20] = atol;
-
-  }
-
-  // perform broadcast and unpack results
-  ret = MPI_Bcast(dbuff, 21, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  if (check_flag(&ret, "MPI_Bcast (arkstep_init_from_file)", 3)) return(NULL);
-  ret = MPI_Bcast(ibuff, 16, MPI_INT, 0, MPI_COMM_WORLD);
-  if (check_flag(&ret, "MPI_Bcast (arkstep_init_from_file)", 3)) return(NULL);
-
-  // unpack buffers
-  order        = ibuff[0];
-  dense_order  = ibuff[1];
-  imex         = ibuff[2];
-  btable       = ibuff[3];
-  adapt_method = ibuff[4];
-  maxnef       = ibuff[5];
-  maxncf       = ibuff[6];
-  mxhnil       = ibuff[7];
-  mxsteps      = ibuff[8];
-  pq           = ibuff[9];
-  small_nef    = ibuff[10];
-  predictor    = ibuff[11];
-  msbp         = ibuff[12];
-  fixedpt      = ibuff[13];
-  m_aa         = ibuff[14];
-  maxcor       = ibuff[15];
-  cflfac       = dbuff[0];
-  safety       = dbuff[1];
-  bias         = dbuff[2];
-  growth       = dbuff[3];
-  hfixed_lb    = dbuff[4];
-  hfixed_ub    = dbuff[5];
-  k1           = dbuff[6];
-  k2           = dbuff[7];
-  k3           = dbuff[8];
-  etamx1       = dbuff[9];
-  etamxf       = dbuff[10];
-  etacf        = dbuff[11];
-  crdown       = dbuff[12];
-  rdiv         = dbuff[13];
-  dgmax        = dbuff[14];
-  nlscoef      = dbuff[15];
-  h0           = dbuff[16];
-  hmin         = dbuff[17];
-  hmax         = dbuff[18];
-  rtol         = dbuff[19];
-  atol         = dbuff[20];
-
-
-  /*** check for allowable inputs ***/
-
-  /* check that w0 is not NULL */
-  if (w0 == NULL) {
-    fprintf(stderr, "arkstep_init_from_file error: cannot initialize problem with w0 == NULL!\n");
-    return NULL;
-  }
-
-  /* ensure that "imex" agrees with user-supplied rhs functions */
-  if ((imex == 2) && (fe == NULL || fi == NULL)) {
-    fprintf(stderr, "arkstep_init_from_file error: imex problem but fe or fi is NULL!\n");
-    return NULL;
-  }
-  if ((imex == 0 || imex == 1) && (f == NULL)) {
-    fprintf(stderr, "arkstep_init_from_file error: implicit or explicit problem but f is NULL!\n");
-    return NULL;
-  }
-
-
-
-  /*** set outputs to be used by problem ***/
-  fxpt = 0;
-  if (fixedpt) {
-    if (m_aa == 0) fxpt = -1;
-    else           fxpt = m_aa;
-  }
-
-
-  /*** Call ARKode routines to initialize integrator and set options ***/
-
-  /* initialize the integrator memory  */
-  switch (imex) {
-  case 0:         /* purely implicit */
-    ark_mem = ARKStepCreate(NULL, f, t0, w0);  break;
-  case 1:         /* purely explicit */
-    ark_mem = ARKStepCreate(f, NULL, t0, w0);  break;
-  default:        /* imex */
-    ark_mem = ARKStepCreate(fe, fi, t0, w0);   break;
-  }
-  if (ark_mem == NULL) {
-    fprintf(stderr, "arkstep_init_from_file error in ARKStepCreate\n");
-    return NULL;
-  }
-
-  /* set RK order, or specify individual Butcher table -- "order" overrides "btable" */
-  if (order != 0) {
-    ret = ARKStepSetOrder(ark_mem, order);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetOrder = %i\n",ret);
-      return NULL;
-    }
-  } else if (btable != -1) {
-    if (imex == 1) {          /* explicit */
-      ret = ARKStepSetTableNum(ark_mem, -1, btable);
-      if (ret != 0) {
-        fprintf(stderr,"arkstep_init_from_file error in ARKStepSetTableNum = %i\n",ret);
-        return NULL;
-      }
-    } else if (imex == 0) {   /* implicit */
-      ret = ARKStepSetTableNum(ark_mem, btable, -1);
-      if (ret != 0) {
-        fprintf(stderr,"arkstep_init_from_file error in ARKStepSetTableNum = %i\n",ret);
-        return NULL;
-      }
-    } else if (imex == 2) {   /* ImEx */
-      int btable2;
-      if (btable == 2)  btable2 = 104;
-      if (btable == 4)  btable2 = 109;
-      if (btable == 9)  btable2 = 111;
-      if (btable == 13) btable2 = 112;
-      if (btable == 14) btable2 = 113;
-      ret = ARKStepSetTableNum(ark_mem, btable2, btable);
-      if (ret != 0) {
-        fprintf(stderr,"arkstep_init_from_file error in ARKStepSetTableNum = %i\n",ret);
-        return NULL;
-      }
-    }
-  }
-
-  /* set dense output order */
-  ret = ARKStepSetDenseOrder(ark_mem, dense_order);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetDenseOrder = %i\n",ret);
-    return NULL;
-  }
-
-  /* set cfl stability fraction */
-  if (imex != 0) {
-    ret = ARKStepSetCFLFraction(ark_mem, cflfac);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetCFLFraction = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set safety factor */
-  ret = ARKStepSetSafetyFactor(ark_mem, safety);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetSafetyFactor = %i\n",ret);
-    return NULL;
-  }
-
-  /* set error bias */
-  ret = ARKStepSetErrorBias(ark_mem, bias);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetErrorBias = %i\n",ret);
-    return NULL;
-  }
-
-  /* set step growth factor */
-  ret = ARKStepSetMaxGrowth(ark_mem, growth);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxGrowth = %i\n",ret);
-    return NULL;
-  }
-
-  /* set fixed step size bounds */
-  ret = ARKStepSetFixedStepBounds(ark_mem, hfixed_lb, hfixed_ub);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetFixedStepBounds = %i\n",ret);
-    return NULL;
-  }
-
-  /* set time step adaptivity method */
-  realtype adapt_params[] = {k1, k2, k3};
-  int idefault = 1;
-  if (fabs(k1)+fabs(k2)+fabs(k3) > 0.0)  idefault=0;
-  ret = ARKStepSetAdaptivityMethod(ark_mem, adapt_method, idefault, pq, adapt_params);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetAdaptivityMethod = %i\n",ret);
-    return NULL;
-  }
-
-  /* set first step growth factor */
-  ret = ARKStepSetMaxFirstGrowth(ark_mem, etamx1);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxFirstGrowth = %i\n",ret);
-    return NULL;
-  }
-
-  /* set error failure growth factor */
-  ret = ARKStepSetMaxEFailGrowth(ark_mem, etamxf);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxEFailGrowth = %i\n",ret);
-    return NULL;
-  }
-
-  /* set number of fails before using above threshold */
-  ret = ARKStepSetSmallNumEFails(ark_mem, small_nef);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetSmallNumEFails = %i\n",ret);
-    return NULL;
-  }
-
-  /* set convergence failure growth factor */
-  if (imex != 1) {
-    ret = ARKStepSetMaxCFailGrowth(ark_mem, etacf);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxCFailGrowth = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set nonlinear method convergence rate constant */
-  if (imex != 1) {
-    ret = ARKStepSetNonlinCRDown(ark_mem, crdown);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetNonlinCRDown = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set nonlinear method divergence constant */
-  if (imex != 1) {
-    ret = ARKStepSetNonlinRDiv(ark_mem, rdiv);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetNonlinRDiv = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set linear solver setup constants */
-  if (imex != 1) {
-    ret = ARKStepSetDeltaGammaMax(ark_mem, dgmax);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetDeltaGammaMax = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set linear solver setup constants */
-  if (imex != 1) {
-    ret = ARKStepSetMaxStepsBetweenLSet(ark_mem, msbp);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxStepsBetweenLSet = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set predictor method */
-  if (imex != 1) {
-    ret = ARKStepSetPredictorMethod(ark_mem, predictor);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetPredictorMethod = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set maximum nonlinear iterations */
-  if (imex != 1) {
-    ret = ARKStepSetMaxNonlinIters(ark_mem, maxcor);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxNonlinIters = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set nonlinear solver tolerance coefficient */
-  if (imex != 1) {
-    ret = ARKStepSetNonlinConvCoef(ark_mem, nlscoef);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxNonlinIters = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set initial time step size */
-  ret = ARKStepSetInitStep(ark_mem, h0);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetInitStep = %i\n",ret);
-    return NULL;
-  }
-
-  /* set minimum time step size */
-  ret = ARKStepSetMinStep(ark_mem, hmin);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMinStep = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum time step size */
-  ret = ARKStepSetMaxStep(ark_mem, hmax);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxStep = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum allowed error test failures */
-  ret = ARKStepSetMaxErrTestFails(ark_mem, maxnef);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxErrTestFails = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum allowed convergence failures */
-  if (imex != 1) {
-    ret = ARKStepSetMaxConvFails(ark_mem, maxncf);
-    if (ret != 0) {
-      fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxConvFails = %i\n",ret);
-      return NULL;
-    }
-  }
-
-  /* set maximum allowed hnil warnings */
-  ret = ARKStepSetMaxHnilWarns(ark_mem, mxhnil);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxHnilWarns = %i\n",ret);
-    return NULL;
-  }
-
-  /* set maximum allowed steps */
-  ret = ARKStepSetMaxNumSteps(ark_mem, mxsteps);
-  if (ret != 0) {
-    fprintf(stderr,"arkstep_init_from_file error in ARKStepSetMaxNumSteps = %i\n",ret);
-    return NULL;
-  }
-
-  return ark_mem;
 }
 
 

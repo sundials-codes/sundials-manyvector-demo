@@ -1,0 +1,63 @@
+# Input parameter file for 3D compressible Euler demo code.
+#
+# This file should be provided to the executable with the "-f" flag,
+# e.g. 
+#     <executable> -f <input_file>
+#
+# Any of these parameters may also be specified on the command line,
+# e.g.
+#     <executable> --nx=100 --ny=100 --nz=400
+#
+# If an option is specified multiple times (e.g., in input file and on
+# command line), then the command-line option takes precedence.
+#
+#
+#### Problem Specification ####
+xl = -1.0           # spatial domain: [xl,xr] x [yl,yr] x [zl,zr]
+xr =  1.0
+yl = -1.0
+yr =  1.0
+zl = -1.0
+zr =  1.0
+t0 =  0.0           # temporal domain: (t0, tf]
+tf =  0.045
+gamma = 2.0         # ratio of gas specific heats
+nx = 4              # global spatial grid: nx * ny * nz
+ny = 4
+nz = 4
+xlbc = 1            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
+xrbc = 1            #    0 = periodic  (opposite periodic faces must match)
+ylbc = 1            #    1 = homogeneous Neumann
+yrbc = 1            #    2 = homogeneous Dirichlet
+zlbc = 1
+zrbc = 1
+#
+#
+#### Run Options ####
+nout = 10           # number of solution outputs
+showstats = 1       # enable (1) / disable (0) diagnostic solution output
+#
+#
+#### ARKStep Options ####
+order = 4           # temporal order of accuracy
+dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
+btable = -1         # specific built-in Butcher table to use (<0 => default)
+adapt_method = 0    # temporal adaptivity algorithm to use
+maxnef = 0          # max num temporal error failures (0 => default)
+mxhnil = 0          # max num tn+h=tn warnings (0 => default)
+mxsteps = 0         # max internal steps per 'evolve' call (0 => default)
+safety = 0          # temporal step size safety factor (0 => default)
+cfl  = 0.0          # max CFL fraction: cfl (disabled if set to zero)
+bias = 0            # temporal error bias factor (0 => default)
+growth = 0          # max temporal growth/step (0 => default)
+pq = 0              # use of method/embedding order for adaptivity (0 => default)
+k1 = 0              # temporal adaptivity parameters (0 => default)
+k2 = 0
+k3 = 0
+etamx1 = 0          # max change after first internal step (0 => default)
+etamxf = 0          # max change on a general internal step (0 => default)
+h0 = 0.0            # initial time step size (0 => default)
+hmin = 0.0          # minimum time step size (0 => default)
+hmax = 0.0          # maximum time step size (0 => infinite)
+rtol = 1e-8         # relative solution tolerance (0 => default)
+atol = 1e-12        # absolute solution tolerance (0 => default)
