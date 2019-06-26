@@ -24,7 +24,7 @@ ifeq ($(USEOMP),0)
 endif
 
 # shortcuts for include and library paths, etc.
-INCS = -I./include $(SUNINCDIRS) ${KLUINCDIRS}
+INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS}
 
 SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_arkode \
