@@ -59,6 +59,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
   realtype dTout = (udata.tf-udata.t0)/(udata.nout);
+  realtype tinout = MPI_Wtime() - tstart;
 
   // set up udata structure
   retval = udata.SetupDecomp();
@@ -83,11 +84,14 @@ int main(int argc, char* argv[]) {
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
   }
-  if (udata.showstats)
+  if (udata.showstats) {
+    retval = MPI_Barrier(udata.comm);
+    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
     printf("      proc %4i: %li x %li x %li\n", udata.myid, udata.nxl, udata.nyl, udata.nzl);
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-
+    retval = MPI_Barrier(udata.comm);
+    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  }
+  
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
   if (outproc)
@@ -199,6 +203,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   
+  double iostart = MPI_Wtime();
   // Each processor outputs domain/subdomain information
   char outname[100];
   sprintf(outname, "output-euler3D_subdomain.%07i.txt", udata.myid);
@@ -216,6 +221,7 @@ int main(int argc, char* argv[]) {
   // output diagnostic information (if applicable)
   retval = output_diagnostics(udata.t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+  tinout += MPI_Wtime() - iostart;
 
   // compute setup time
   double tsetup = MPI_Wtime() - tstart;
@@ -249,6 +255,7 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
+    iostart = MPI_Wtime();
     // output statistics to stdout
     if (udata.showstats) {
       retval = print_stats(t, w, 1, udata);
@@ -262,10 +269,14 @@ int main(int argc, char* argv[]) {
     // output results to disk
     retval = output_solution(w, 0, udata);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    tinout += MPI_Wtime() - iostart;
+    
   }
   if (udata.showstats) {
+    iostart = MPI_Wtime();
     retval = print_stats(t, w, 2, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    tinout += MPI_Wtime() - iostart;
   }
   if (outproc) fclose(DFID);
 
@@ -290,6 +301,7 @@ int main(int argc, char* argv[]) {
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
     cout << "   Total setup time = " << tsetup << "\n";
+    cout << "   Total I/O time = " << tinout << "\n";
     cout << "   Total simulation time = " << tsimul << "\n";
   }
 
