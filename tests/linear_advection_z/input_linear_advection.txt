@@ -22,8 +22,8 @@ zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
 tf = 1.0
 gamma = 1.4         # ratio of gas specific heats
-nx = 4              # global spatial grid: nx * ny * nz
-ny = 4
+nx = 3              # global spatial grid: nx * ny * nz
+ny = 3
 nz = 128
 xlbc = 0            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 0            #    0 = periodic  (opposite periodic faces must match)

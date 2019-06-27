@@ -24,7 +24,7 @@ tf =  0.045
 gamma = 2.0         # ratio of gas specific heats
 nx = 100            # global spatial grid: nx * ny * nz
 ny = 100
-nz = 4
+nz = 3
 xlbc = 1            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 1            #    0 = periodic  (opposite periodic faces must match)
 ylbc = 1            #    1 = homogeneous Neumann
