@@ -50,8 +50,8 @@ running `make` above.
 
 ## (Current) Documentation
 
-This test simulates a 3D nonlinear inviscid compressible Euler
-equation, 
+This code simulates a 3D nonlinear inviscid compressible Euler
+equation with tracers, 
 <p align="center"><img src="/tex/d9863f826c2348e733804a7429c419ad.svg?invert_in_darkmode&sanitize=true" align=middle width=148.6959507pt height=16.438356pt/></p>
 for independent variables
 <p align="center"><img src="/tex/b1fb667c457471aa9a6fe9b8a16c5c51.svg?invert_in_darkmode&sanitize=true" align=middle width=227.07922545pt height=17.031940199999998pt/></p>
@@ -70,12 +70,14 @@ under the restriction that if any boundary is set to "periodic" then
 the opposite face must also indicate a periodic condition.
 
 Here, the 'solution' is given by
-<img src="/tex/27160d5a22a8a7276b9c9ee8e285f26a.svg?invert_in_darkmode&sanitize=true" align=middle width=418.92522045pt height=35.5436301pt/>,
-that corresponds to the density, x,y,z-momentum, and the total energy
-per unit volume.  The fluxes are given by 
-<p align="center"><img src="/tex/edde56579807923c3cd19bd5843fec36.svg?invert_in_darkmode&sanitize=true" align=middle width=384.32648264999995pt height=23.5253469pt/></p>
-<p align="center"><img src="/tex/b06018efc55bb0d7f41c8280c3044cb7.svg?invert_in_darkmode&sanitize=true" align=middle width=382.5153948pt height=23.9085792pt/></p>
-<p align="center"><img src="/tex/f83cbef467a49d5ff0921ac1612ce3ca.svg?invert_in_darkmode&sanitize=true" align=middle width=389.33422275pt height=23.5253469pt/></p>
+<img src="/tex/28187201df21690b7d306712905d18e4.svg?invert_in_darkmode&sanitize=true" align=middle width=468.60549779999997pt height=35.5436301pt/>,
+that corresponds to the density, x,y,z-momentum, total energy
+per unit volume, and any number of chemical 'tracers'
+<img src="/tex/b8b6bd2b662b75b8e135f6da0bd323ce.svg?invert_in_darkmode&sanitize=true" align=middle width=79.96356884999999pt height=27.91243950000002pt/> that are advected along with the
+fluid.  The fluxes are given by
+<p align="center"><img src="/tex/3a03e5f8f13d64219de34f4e89ece974.svg?invert_in_darkmode&sanitize=true" align=middle width=425.4109365pt height=23.5253469pt/></p>
+<p align="center"><img src="/tex/6de6c35f4b2af691b7c615d7455c9eb9.svg?invert_in_darkmode&sanitize=true" align=middle width=423.2250824999999pt height=23.9085792pt/></p>
+<p align="center"><img src="/tex/9ab5c11c75414d0f6469ee8b93a5d46b.svg?invert_in_darkmode&sanitize=true" align=middle width=429.71667914999995pt height=23.5253469pt/></p>
 The external force <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal
 gas equation of state gives 
 <p align="center"><img src="/tex/272a02648ae7ce4db259539aa98655dc.svg?invert_in_darkmode&sanitize=true" align=middle width=218.4856146pt height=36.09514755pt/></p>
@@ -107,7 +109,7 @@ units these would be:
 
 * [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
-Note: the above follows the description in section 7.3.1-7.3.3 of
+Note: the fluid portion of the above description follows section 7.3.1-7.3.3 of
 https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
 This program solves the problem using a finite volume spatial
@@ -116,21 +118,32 @@ semi-discretization over a uniform grid of dimensions
 reconstruction. The spatial domain uses a 3D domain decomposition
 approach for parallelism over `nprocs` MPI processes, with layout
 `npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create` 
-utility routine.  The minimum dimension size is 3, so to run a
+utility routine.  The minimum size for any dimension is 3, so to run a
 two-dimensional test in the yz-plane, one could specify `nx=3` and
 `ny=nz=200` -- when run in parallel, only 'active' spatial dimensions
 (those with extent greater than 3) will be parallelized.  Each fluid
-field is stored in its own parallel `N_Vector` object; these are
-combined together to form the full "solution" vector <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/> using the
+field (<img src="/tex/6dec54c48a0438a5fcde6053bdb9d712.svg?invert_in_darkmode&sanitize=true" align=middle width=8.49888434999999pt height=14.15524440000002pt/>, <img src="/tex/f8eec81a1374c2e08228fb574a0e5fdf.svg?invert_in_darkmode&sanitize=true" align=middle width=21.88747274999999pt height=14.15524440000002pt/>, <img src="/tex/e4c6c96061743e44c44edafd6e06abe7.svg?invert_in_darkmode&sanitize=true" align=middle width=21.512706599999987pt height=14.15524440000002pt/>, <img src="/tex/b9034568c7237b47ca94b79611bd9fd9.svg?invert_in_darkmode&sanitize=true" align=middle width=21.18545879999999pt height=14.15524440000002pt/> and <img src="/tex/71c0437a67c94e48f18cc11d0c17a38c.svg?invert_in_darkmode&sanitize=true" align=middle width=12.61992929999999pt height=14.15524440000002pt/>) is stored in its own
+parallel `N_Vector` object.  Chemical tracers at a given spatial
+location are collocated into a single serial `N_Vector` object.  The
+five fluid vectors and the array of tracer vectors are combined
+together to form the full "solution" vector <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/> using the
 `MPIManyVector` `N_Vector` module.  The resulting initial-value
 problem is solved using a temporally-adaptive explicit Runge Kutta
 method from ARKode's ARKStep module.  The solution is output to disk
 and solution statistics are optionally output to the screen at
-specified frequencies, and run statistics are printed at the end. 
+specified frequencies, and run statistics are printed at the end.
 
 Individual test problems may be uniquely specified through an input
 file and auxiliarly source code file(s) that should be linked with
-this main routine at compile time.
+this main routine at compile time.  By default, all codes are built
+with no chemical tracers; however, this may be controlled at
+compilation time using the `NVAR` preprocessor directive,
+corresponding to the number of unknowns at any spatial location.
+Hence, the [default] minimum value for `NVAR` is 5, so for a
+calculation with 4 chemical tracers the code should be compiled with
+the preprocessor flag `-DNVAR=9`.  An example of this is provided in
+the `Makefile` when building `compile_test.exe`, and may be emulated
+for user-defined problems.
 
 Example input files are provided in the `inputs/` folder -- these are
 internally documented to discuss all possible input parameters (in
