@@ -29,6 +29,11 @@
  we convert between primitive and conserved variables for the
  initial conditions and accuracy results.
 
+ Note3: the "analytical" solution below requires enforcement of 
+ these values on the physical boundary; we instead just use 
+ homogeneous Neumann boundaries, so the computed error is 
+ expected to be larger near the boundaries.
+
 ---------------------------------------------------------------*/
 
 // Header files
