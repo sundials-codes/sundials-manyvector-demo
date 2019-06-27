@@ -1,5 +1,4 @@
-# Remaining items for "completion" of initial demonstration code (not
-  necessarily in order of priority):
+# Remaining items for "completion" of initial demonstration code (not necessarily in order of priority):
 
 1. Fluid tests:
 
