@@ -121,29 +121,23 @@ for tstep in range(nt):
     rhosurf  = 'rho_surface.'   + repr(tstep).zfill(4) + '.png'
     etsurf   = 'et_surface.'    + repr(tstep).zfill(4) + '.png'
     vstr     = 'velocity.'      + repr(tstep).zfill(4) + '.png'
-    vtrue    = 'velocity_true.' + repr(tstep).zfill(4) + '.png'
     rhocont  = 'rho_contour.'   + repr(tstep).zfill(4) + '.png'
-    rhotr    = 'rho_true.'      + repr(tstep).zfill(4) + '.png'
     etcont   = 'et_contour.'    + repr(tstep).zfill(4) + '.png'
     rho1dout = 'rho1d.'         + repr(tstep).zfill(4) + '.png'
-    rho1derr = 'rho1d_error.'   + repr(tstep).zfill(4) + '.png'
     my1dout  = 'my1d.'          + repr(tstep).zfill(4) + '.png'
-    my1derr  = 'my1d_error.'    + repr(tstep).zfill(4) + '.png'
     mz1dout  = 'my1d.'          + repr(tstep).zfill(4) + '.png'
-    mz1derr  = 'my1d_error.'    + repr(tstep).zfill(4) + '.png'
     sp1dout  = 'speed1d.'       + repr(tstep).zfill(4) + '.png'
-    sp1derr  = 'speed1d_error.' + repr(tstep).zfill(4) + '.png'
 
     # set y and z meshgrid objects
-    Z,Y = np.meshgrid(zgrid,ygrid)
+    Y,Z = np.meshgrid(ygrid,zgrid)
 
     # surface plots
     numfigs += 1
     fig = plt.figure(numfigs)
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Z, Y, rho[nx//2,:,:,tstep], rstride=1, cstride=1, 
+    ax.plot_surface(Y, Z, rho[nx//2,:,:,tstep], rstride=1, cstride=1, 
                     cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
-    ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
+    ax.set_xlabel('y'); ax.set_ylabel('z'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
     ax.view_init(elevation,angle)
     plt.title(r'$\rho(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
     plt.savefig(rhosurf)
@@ -151,53 +145,45 @@ for tstep in range(nt):
     numfigs += 1
     fig = plt.figure(numfigs)
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Z, Y, et[nx//2,:,:,tstep], rstride=1, cstride=1, 
+    ax.plot_surface(Y, Z, et[nx//2,:,:,tstep], rstride=1, cstride=1, 
                     cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
-    ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxet[0], minmaxet[1]))
+    ax.set_xlabel('y'); ax.set_ylabel('z'); ax.set_zlim((minmaxet[0], minmaxet[1]))
     ax.view_init(elevation,angle)
     plt.title(r'$e_t(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
     plt.savefig(etsurf)
     
     # stream plots
     numfigs += 1
-    fig = plt.figure(numfigs)
-    ax = fig.add_subplot(111)
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
     lw = speed / speed.max()
-    ax.streamplot(Z, Y, U, V, color='b', linewidth=lw)
-    ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_aspect('equal')
-    plt.title(r'$\mathbf{v}(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-    plt.savefig(vstr)
-            
-    numfigs += 1
-    fig = plt.figure(numfigs)
-    ax = fig.add_subplot(111)
+    ax1.streamplot(Y, Z, U, V, color='b', linewidth=lw)
+    ax1.set_xlabel('y'); ax1.set_ylabel('z'); ax1.set_aspect('equal')
+    ax2 = fig.add_subplot(122)
     lw = speedtrue / speedtrue.max()
-    ax.streamplot(Z, Y, Utrue, Vtrue, color='k', linewidth=lw)
-    ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_aspect('equal')
-    plt.title(r'$\mathbf{v}_{true}(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-    plt.savefig(vtrue)
+    ax2.streamplot(Y, Z, Utrue, Vtrue, color='k', linewidth=lw)
+    ax2.set_xlabel('y'); ax.set_ylabel('z'); ax.set_aspect('equal')
+    plt.suptitle(r'$\mathbf{v}(x,y)$ (left) vs $\mathbf{v}_{true}(x,y)$ (right) at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+    plt.savefig(vstr)
             
     # contour plots
     # numfigs += 1
-    # fig = plt.figure(numfigs)
-    # plt.contourf(Z, Y, rho[nx//2,:,:,tstep])
-    # plt.colorbar();  plt.xlabel('z'); plt.ylabel('y'); plt.axis('equal')
-    # plt.title(r'$\rho(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+    # fig = plt.figure(numfigs,figsize=(12,4))
+    # ax1 = fig.add_subplot(121)
+    # ax1.contourf(Y, Z, rho[nx//2,:,:,tstep])
+    # plt.colorbar();  ax1.set_xlabel('y'); ax1.set_ylabel('z'); ax1.set_axis('equal')
+    # ax2 = fig.add_subplot(122)
+    # ax2.contourf(Y, Z, rhotrue)
+    # ax2.colorbar();  ax2.set_xlabel('y'); ax2.set_ylabel('z'); ax2.set_axis('equal')
+    # plt.suptitle(r'$\rho(y,z)$ (left) vs $\rho_{true}(y,z)$ (right) at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
     # plt.savefig(rhocont)
             
     # numfigs += 1
     # fig = plt.figure(numfigs)
-    # plt.contourf(Z, Y, et[nx//2,:,:,tstep])
-    # plt.colorbar();  plt.xlabel('z'); plt.ylabel('y'); plt.axis('equal')
+    # plt.contourf(Y, Z, et[nx//2,:,:,tstep])
+    # plt.colorbar();  plt.xlabel('y'); plt.ylabel('z'); plt.axis('equal')
     # plt.title(r'$e_t(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
     # plt.savefig(etcont)
-    
-    # numfigs += 1
-    # fig = plt.figure(numfigs)
-    # plt.contourf(Z, Y, rhotrue)
-    # plt.colorbar();  plt.xlabel('z'); plt.ylabel('y'); plt.axis('equal')
-    # plt.title(r'$\rho_{true}(y,z)$ at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-    # plt.savefig(rhotr)
 
     # line/error plots
     rho1d = rho[nx//2,:,nz//2,tstep]
@@ -210,70 +196,57 @@ for tstep in range(nt):
     sptrue1d  = speedtrue[:,nz//2]
 
     numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.plot(ygrid,rho1d,'b--',ygrid,rhotrue1d,'k-')
-    plt.legend(('computed','analytical'))
-    plt.xlabel('y'); plt.ylabel(r'$\rho(y)$')
-    plt.title(r'$\rho$ slices at output ' + tstr + ', mesh = ' + nystr)
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(ygrid,rho1d,'b--',ygrid,rhotrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('y'); ax1.set_ylabel(r'$\rho(y)$')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(ygrid,np.abs(rho1d-rhotrue1d)+1e-16)
+    ax2.set_xlabel('y'); ax2.set_ylabel(r'$|\rho-\rho_{true}|$')
+    plt.suptitle(r'$\rho(y)$ and error at output ' + tstr + ', mesh = ' + nystr)
     plt.savefig(rho1dout)
-
-    numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.semilogy(ygrid,np.abs(rho1d-rhotrue1d)+1e-16)
-    plt.xlabel('y'); plt.ylabel('error')
-    plt.title(r'$|\rho-\rho_{true}|$ slice at output ' + tstr + ', mesh = ' + nystr)
-    plt.savefig(rho1derr)
     
     numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.plot(ygrid,my1d,'b--',ygrid,mytrue1d,'k-')
-    plt.legend(('computed','analytical'))
-    plt.xlabel('y'); plt.ylabel(r'$m_y(y)$')
-    plt.title(r'$m_y$ slices at output ' + tstr + ', mesh = ' + nystr)
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(ygrid,my1d,'b--',ygrid,mytrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('y'); ax1.set_ylabel(r'$m_y(y)$')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(ygrid,np.abs(my1d-mytrue1d)+1e-16)
+    ax2.set_xlabel('y'); ax2.set_ylabel(r'$|m_y-m_{y,true}|$')
+    plt.suptitle(r'$m_y(y)$ and error at output ' + tstr + ', mesh = ' + nystr)
     plt.savefig(my1dout)
-
-    numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.semilogy(ygrid,np.abs(my1d-mytrue1d)+1e-16)
-    plt.xlabel('y'); plt.ylabel('error')
-    plt.title(r'$|m_y-m_{y,true}|$ slice at output ' + tstr + ', mesh = ' + nystr)
-    plt.savefig(my1derr)
     
     numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.plot(ygrid,mz1d,'b--',ygrid,mztrue1d,'k-')
-    plt.legend(('computed','analytical'))
-    plt.xlabel('y'); plt.ylabel(r'$m_z(y)$')
-    plt.title(r'$m_z$ slices at output ' + tstr + ', mesh = ' + nystr)
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(ygrid,mz1d,'b--',ygrid,mztrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('y'); ax1.set_ylabel(r'$m_z(y)$')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(ygrid,np.abs(mz1d-mztrue1d)+1e-16)
+    ax2.set_xlabel('y'); ax2.set_ylabel(r'$|m_z-m_{z,true}|$')
+    plt.suptitle(r'$m_z(y)$ and error at output ' + tstr + ', mesh = ' + nystr)
     plt.savefig(mz1dout)
 
     numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.semilogy(ygrid,np.abs(mz1d-mztrue1d)+1e-16)
-    plt.xlabel('y'); plt.ylabel('error')
-    plt.title(r'$|m_z-m_{z,true}|$ slice at output ' + tstr + ', mesh = ' + nystr)
-    plt.savefig(mz1derr)
-    
-    numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.plot(ygrid,sp1d,'b--',ygrid,sptrue1d,'k-')
-    plt.legend(('computed','analytical'))
-    plt.xlabel('y'); plt.ylabel('speed(y)')
-    plt.title(r'speed slices at output ' + tstr + ', mesh = ' + nystr)
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(ygrid,sp1d,'b--',ygrid,sptrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('y'); ax1.set_ylabel('s(y)')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(ygrid,np.abs(sp1d-sptrue1d)+1e-16)
+    ax2.set_xlabel('y'); ax2.set_ylabel(r'$|s-s_{true}|$')
+    plt.suptitle(r'$s(y)$ and error at output ' + tstr + ', mesh = ' + nystr)
     plt.savefig(sp1dout)
-
-    numfigs += 1
-    fig = plt.figure(numfigs)
-    plt.semilogy(ygrid,np.abs(sp1d-sptrue1d)+1e-16)
-    plt.xlabel('y'); plt.ylabel('error')
-    plt.title(r'$|speed-speed_{true}|$ slice at output ' + tstr + ', mesh = ' + nystr)
-    plt.savefig(sp1derr)
     
     if (showplots):
       plt.show()
     for i in range(1,numfigs+1):
       plt.figure(i), plt.close()
     
-        
   
 ##### end of script #####

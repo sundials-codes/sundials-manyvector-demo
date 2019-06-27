@@ -97,6 +97,7 @@ if (et.min() == et.max()):
 
 # generate plots of solution
 for tstep in range(nt):
+    numfigs = 0
     
     print('time step', tstep+1, 'out of', nt)
 
@@ -108,118 +109,145 @@ for tstep in range(nt):
     nxstr = repr(nx)
     nystr = repr(ny)
 
+    # extract 2D velocity fields (computed and true)
+    U = mx[:,:,nz//2,tstep]/rho[:,:,nz//2,tstep]
+    Utrue = mxtrue/rhotrue
+    V = my[:,:,nz//2,tstep]/rho[:,:,nz//2,tstep]
+    Vtrue = mztrue/rhotrue
+    speed = np.sqrt(U**2 + V**2)
+    speedtrue = np.sqrt(Utrue**2 + Vtrue**2)
+    
     # set filenames for graphics
-    rhosurf = 'rho_surface.' + repr(tstep).zfill(4) + '.png'
-    rhocont = 'rho_contour.' + repr(tstep).zfill(4) + '.png'
-    rhotr   = 'rho_true.'    + repr(tstep).zfill(4) + '.png'
-    mxsurf  = 'mx_surface.'  + repr(tstep).zfill(4) + '.png'
-    mxcont  = 'mx_contour.'  + repr(tstep).zfill(4) + '.png'
-    mxtr    = 'mx_true.'     + repr(tstep).zfill(4) + '.png'
-    mysurf  = 'my_surface.'  + repr(tstep).zfill(4) + '.png'
-    mycont  = 'my_contour.'  + repr(tstep).zfill(4) + '.png'
-    mytr    = 'my_true.'     + repr(tstep).zfill(4) + '.png'
-    etsurf  = 'et_surface.'  + repr(tstep).zfill(4) + '.png'
-    etcont  = 'et_contour.'  + repr(tstep).zfill(4) + '.png'
+    rhosurf  = 'rho_surface.'   + repr(tstep).zfill(4) + '.png'
+    etsurf   = 'et_surface.'    + repr(tstep).zfill(4) + '.png'
+    vstr     = 'velocity.'      + repr(tstep).zfill(4) + '.png'
+    rhocont  = 'rho_contour.'   + repr(tstep).zfill(4) + '.png'
+    etcont   = 'et_contour.'    + repr(tstep).zfill(4) + '.png'
+    rho1dout = 'rho1d.'         + repr(tstep).zfill(4) + '.png'
+    mx1dout  = 'mx1d.'          + repr(tstep).zfill(4) + '.png'
+    my1dout  = 'my1d.'          + repr(tstep).zfill(4) + '.png'
+    sp1dout  = 'speed1d.'       + repr(tstep).zfill(4) + '.png'
 
     # set x and z meshgrid objects
-    Y,X = np.meshgrid(ygrid,xgrid)
+    X,Y = np.meshgrid(xgrid,ygrid)
 
-    # plot current solution as surfaces, and save to disk
-    fig = plt.figure(1)
+    # surface plots
+    numfigs += 1
+    fig = plt.figure(numfigs)
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Y, X, rho[:,:,nz//2,tstep], rstride=1, cstride=1, 
+    ax.plot_surface(X, Y, rho[:,:,nz//2,tstep], rstride=1, cstride=1, 
                     cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
-    ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
+    ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
     ax.view_init(elevation,angle);
     plt.title(r'$\rho(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
     plt.savefig(rhosurf)
             
-    fig = plt.figure(2)
+    numfigs += 1
+    fig = plt.figure(numfigs)
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Y, X, mx[:,:,nz//2,tstep], rstride=1, cstride=1, 
+    ax.plot_surface(X, Y, et[:,:,nz//2,tstep], rstride=1, cstride=1, 
                     cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
-    ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxmx[0], minmaxmx[1]))
-    ax.view_init(elevation,angle);
-    plt.title(r'$m_x(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(mxsurf)
-            
-    fig = plt.figure(3)
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Y, X, my[:,:,nz//2,tstep], rstride=1, cstride=1, 
-                    cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
-    ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxmy[0], minmaxmy[1]))
-    ax.view_init(elevation,angle);
-    plt.title(r'$m_y(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(mysurf)
-            
-    fig = plt.figure(4)
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(Y, X, et[:,:,nz//2,tstep], rstride=1, cstride=1, 
-                    cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
-    ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxet[0], minmaxet[1]))
+    ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlim((minmaxet[0], minmaxet[1]))
     ax.view_init(elevation,angle);
     plt.title(r'$e_t(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
     plt.savefig(etsurf)
     
-    # plot current solution as contours, and save to disk
-    fig = plt.figure(5)
-    plt.contourf(Y, X, rho[:,:,nz//2,tstep])
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$\rho(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(rhocont)
+    # stream plots
+    numfigs += 1
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    lw = speed / speed.max()
+    ax1.streamplot(X, Y, U, V, color='b', linewidth=lw)
+    ax1.set_xlabel('x'); ax1.set_ylabel('y'); ax1.set_aspect('equal')
+    ax2 = fig.add_subplot(122)
+    lw = speedtrue / speedtrue.max()
+    ax2.streamplot(X, Y, Utrue, Vtrue, color='k', linewidth=lw)
+    ax2.set_xlabel('z'); ax2.set_ylabel('x'); ax2.set_aspect('equal')
+    plt.suptitle(r'$\mathbf{v}(x,y)$ (left) vs $\mathbf{v}_{true}(x,y)$ (right) at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+    plt.savefig(vstr)
             
-    fig = plt.figure(6)
-    plt.contourf(Y, X, mx[:,:,nz//2,tstep])
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$m_x(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(mxcont)
-            
-    fig = plt.figure(7)
-    plt.contourf(Y, X, my[:,:,nz//2,tstep])
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$m_y(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(mycont)
-            
-    fig = plt.figure(8)
-    plt.contourf(Y, X, et[:,:,nz//2,tstep])
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$e_t(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(etcont)
+    # contour plots
+    # numfigs += 1
+    # fig = plt.figure(numfigs,figsize=(12,4))
+    # ax1 = fig.add_subplot(121)
+    # ax1.contourf(X, Y, rho[:,:,nz//2,tstep])
+    # ax1.colorbar();  ax1.set_xlabel('x'); ax1.set_ylabel('y'); ax1.set_axis('equal')
+    # ax2 = fig.add_subplot(122)
+    # ax2.contourf(X, Y, rhotrue)
+    # ax2.colorbar();  ax2.set_xlabel('x'); ax2.set_ylabel('y'); ax2.set_axis('equal')
+    # plt.suptitle(r'$\rho(x,y)$ (left) vs $\rho_{true}(x,y)$ (right) at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+    # plt.savefig(rhotr)
     
-    # plot true solution as contours, and save to disk
-    fig = plt.figure(9)
-    plt.contourf(Y, X, rhotrue)
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$\rho_{true}(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(rhotr)
-            
-    fig = plt.figure(10)
-    plt.contourf(Y, X, mxtrue)
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$m_{x,true}(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(mxtr)
-            
-    fig = plt.figure(11)
-    plt.contourf(Y, X, mytrue)
-    plt.colorbar();  plt.xlabel('y'); plt.ylabel('x')
-    plt.title(r'$m_{y,true}(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-    plt.savefig(mytr)
-            
+    # numfigs += 1
+    # fig = plt.figure(numfigs)
+    # plt.contourf(X, Y, et[:,:,nz//2,tstep])
+    # plt.colorbar();  plt.xlabel('x'); plt.ylabel('y'); plt.axis('equal')
+    # plt.title(r'$e_t(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+    # plt.savefig(etcont)
+
+    
+    # line/error plots
+    rho1d = rho[:,ny//2,nz//2,tstep]
+    mx1d  = mx[:,ny//2,nz//2,tstep]
+    my1d  = mz[:,ny//2,nz//2,tstep]
+    sp1d  = speed[:,ny//2]
+    rhotrue1d = rhotrue[:,ny//2]
+    mxtrue1d  = mxtrue[:,ny//2]
+    mytrue1d  = mztrue[:,ny//2]
+    sptrue1d  = speedtrue[:,ny//2]
+
+    numfigs += 1
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(xgrid,rho1d,'b--',xgrid,rhotrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('x'); ax1.set_ylabel(r'$\rho(x)$')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(xgrid,np.abs(rho1d-rhotrue1d)+1e-16)
+    ax1.set_xlabel('x'); ax1.set_ylabel(r'$|\rho-\rho_{true}|$')
+    plt.suptitle(r'$\rho(x)$ and error at output ' + tstr + ', mesh = ' + nxstr)
+    plt.savefig(rho1dout)
+    
+    numfigs += 1
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(xgrid,mx1d,'b--',xgrid,mxtrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('x'); ax1.set_ylabel(r'$m_x(x)$')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(xgrid,np.abs(mx1d-mxtrue1d)+1e-16)
+    ax2.set_xlabel('x'); ax2.set_ylabel(r'$|m_x-m_{x,true}|$')
+    plt.suptitle(r'$m_x(x)$ and error at output ' + tstr + ', mesh = ' + nxstr)
+    plt.savefig(mx1dout)
+    
+    numfigs += 1
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(xgrid,my1d,'b--',xgrid,mytrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('x'); ax1.set_ylabel(r'$m_y(x)$')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(xgrid,np.abs(my1d-mytrue1d)+1e-16)
+    ax2.set_xlabel('x'); ax2.set_ylabel(r'$|m_y-m_{y,true}|$')
+    plt.suptitle(r'$m_y(x)$ and error at output ' + tstr + ', mesh = ' + nxstr)
+    plt.savefig(my1dout)
+
+    numfigs += 1
+    fig = plt.figure(numfigs,figsize=(12,4))
+    ax1 = fig.add_subplot(121)
+    ax1.plot(xgrid,sp1d,'b--',xgrid,sptrue1d,'k-')
+    ax1.legend(('computed','analytical'))
+    ax1.set_xlabel('x'); ax1.set_ylabel('s(x)')
+    ax2 = fig.add_subplot(122)
+    ax2.semilogy(xgrid,np.abs(sp1d-sptrue1d)+1e-16)
+    ax2.set_xlabel('x'); ax2.set_ylabel(r'$|s-s_{true}|$')
+    plt.suptitle(r'$s(x)$ and error at output ' + tstr + ', mesh = ' + nxstr)
+    plt.savefig(sp1dout)
+    
     if (showplots):
       plt.show()
-    plt.figure(1), plt.close()
-    plt.figure(2), plt.close()
-    plt.figure(3), plt.close()
-    plt.figure(4), plt.close()
-    plt.figure(5), plt.close()
-    plt.figure(6), plt.close()
-    plt.figure(7), plt.close()
-    plt.figure(8), plt.close()
-
-    plt.figure(9),  plt.close()
-    plt.figure(10), plt.close()
-    plt.figure(11), plt.close()
-    
+    for i in range(1,numfigs+1):
+      plt.figure(i), plt.close()
         
   
 ##### end of script #####
