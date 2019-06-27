@@ -162,8 +162,8 @@ for tstep in range(nt):
     ax2 = fig.add_subplot(122)
     lw = speedtrue / speedtrue.max()
     ax2.streamplot(Y, Z, Utrue, Vtrue, color='k', linewidth=lw)
-    ax2.set_xlabel('y'); ax.set_ylabel('z'); ax.set_aspect('equal')
-    plt.suptitle(r'$\mathbf{v}(x,y)$ (left) vs $\mathbf{v}_{true}(x,y)$ (right) at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+    ax2.set_xlabel('y'); ax2.set_ylabel('z'); ax2.set_aspect('equal')
+    plt.suptitle(r'$\mathbf{v}(y,z)$ (left) vs $\mathbf{v}_{true}(y,z)$ (right) at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
     plt.savefig(vstr)
             
     # contour plots
