@@ -5,7 +5,7 @@ Remaining items for "completion" of initial demonstration code:
   b. SOD shock tube [1D] -- see Greenough & Rider JCP 2004  [done]
   c. Hurricane-like flow evolution with critical rotation [2D] (has
      exact solution) -- see Pan et al Num. Math. Theor. Meth. Appl. 2017,
-     section 3.2.1-1  [in progress]
+     section 3.2.1-1  [done]
   d. Rayleigh-Taylor instability [2D] -- see Liska & Wendroff SISC
      2003, or Pan et al Num. Math. Theor. Meth. Appl. 2017, section
      3.3  [yet to begin]
