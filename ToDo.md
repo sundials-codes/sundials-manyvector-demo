@@ -35,24 +35,24 @@
 3. Chemical species:
 
    a. Add support for "nc" chemical species to be advected along with
-     fluid (at fluid time scale); these should be initially stored in
-     `N_Vector_Serial` on each process, and grouped along with
-     `MPIManyVector`.  Include in this serial `N_Vector` a temperature 
-     "correction" field, that begins each slow step with zero-valued
-     initial condition, and that donates all energy back to fluid at
-     each fluid RHS call.
+      fluid (at fluid time scale); these should be initially stored in
+      `N_Vector_Serial` on each process, and grouped along with
+      `MPIManyVector`.  Include in this serial `N_Vector` a temperature 
+      "correction" field, that begins each slow step with zero-valued
+      initial condition, and that donates all energy back to fluid at
+      each fluid RHS call.
 
-  b. Add reaction network based on DIRK solver and dense/band direct
-     solver.  Test this on its own by creating/evolving/freeing an
-     ARKStep solver at each fluid time step, in a simple
-     operator-split fashion. 
+   b. Add reaction network based on DIRK solver and dense/band direct
+      solver.  Test this on its own by creating/evolving/freeing an
+      ARKStep solver at each fluid time step, in a simple
+      operator-split fashion. 
 
-  c. Couple chemistry to fluid via MRIStep module.
+   c. Couple chemistry to fluid via MRIStep module.
 
-  d. Convert chemical reaction network and inner DIRK solver to reside
-     on GPU.  This will initially retain control structures on CPU,
-     but do 'number crunching' for RHS, Jacobian and linear solves on
-     GPU.
+   d. Convert chemical reaction network and inner DIRK solver to reside
+      on GPU.  This will initially retain control structures on CPU,
+      but do 'number crunching' for RHS, Jacobian and linear solves on
+      GPU.
 
 4. Viscosity: add fluid viscosity, treated implicitly with ARK method
    at slow time scale.  Precondition/solve the corresponding linear
