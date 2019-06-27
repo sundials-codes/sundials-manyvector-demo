@@ -109,7 +109,7 @@ def load_data():
             # check that files have correct number of time steps
             if( (np.shape(rho_data)[0] != nt) or (np.shape(mx_data)[0] != nt) or (np.shape(my_data)[0] != nt) or
                 (np.shape(mz_data)[0] != nt) or (np.shape(et_data)[0] != nt) ):
-                sys.exit('error: an output for subdomain ' + isub + ' has an incorrect number of time steps')
+                sys.exit('error: an output for subdomain ' + repr(isub) + ' has an incorrect number of time steps')
             istart = subdomains[isub,0]
             iend = subdomains[isub,1]
             jstart = subdomains[isub,2]
