@@ -1,18 +1,22 @@
-# SUNDIALS Multirate+ManyVector Demo
+# SUNDIALS ManyVector+Multirate Demo
 
-[Note: this project is in active development; do not expect anything
-to run (or even compile) at present.]
+[Note: this project is in active development; do not expect
+executables to run correctly (or even compile) at present.]
 
 This is a SUNDIALS-based demonstration application to assess and
 demonstrate the large-scale parallel performance of new capabilities
 that have been added to SUNDIALS in recent years.  Namely: 
 
-1. ARKode's new multirate integration module, MRIStep, allowing
+1. SUNDIALS' new MPIManyVector module, that allows extreme flexibility
+   in how a solution "vector" is staged on computational resources.
+
+2. ARKode's new multirate integration module, MRIStep, allowing
    high-order accurate calculations that subcycle "fast" processes
    within "slow" ones. 
 
-2. SUNDIALS' new MPIManyVector module, that allows extreme flexibility
-   in how a solution "vector" is staged on computational resources.
+3. (eventually) SUNDIALS' new flexible linear solver interfaces, to
+   enable streamlined use of scalable linear solver libraries (e.g.,
+   *hypre*, PETSc and Trilinos).
 
 Steps showing the process to download this demo code, install the
 relevant dependencies, and build the demo in a Linux or OS X
@@ -21,13 +25,13 @@ C and C++ compilers.  All dependencies (SUNDIALS and KLU) for the demo
 are installed in-place using [Spack](https://github.com/spack/spack).
 
 ```bash
-> git clone https://github.com/drreynolds/sundials-manyvector-demo.git
-> cd sundials-manyvector-demo
-> git clone https://github.com/spack/spack.git .spack
-> .spack/bin/spack install sundials +int64 +klu +mpi ~examples-f77 ~examples-install ~examples-c ~CVODE ~CVODES ~IDA ~IDAS ~KINSOL
-> .spack/bin/spack view symlink libs sundials
-> .spack/bin/spack view symlink mpi mpi
-> make
+   git clone https://github.com/drreynolds/sundials-manyvector-demo.git
+   cd sundials-manyvector-demo
+   git clone https://github.com/spack/spack.git .spack
+   .spack/bin/spack install sundials +int64 +klu +mpi ~examples-f77 ~examples-install ~examples-c ~CVODE ~CVODES ~IDA ~IDAS ~KINSOL
+   .spack/bin/spack view symlink libs sundials
+   .spack/bin/spack view symlink mpi mpi
+   make
 ```
 
 The above steps will build all codes in 'production' mode, with
@@ -136,24 +140,33 @@ This program solves the problem using a finite volume spatial
 semi-discretization over a uniform grid of dimensions
 `nx` x `ny` x `nz`, with fluxes calculated using a 5th-order WENO
 reconstruction. The spatial domain uses a 3D domain decomposition
-approach for parallelism over nprocs MPI processes, with layout
+approach for parallelism over `nprocs` MPI processes, with layout
 `npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create` 
-utility routine.  Each field is stored in its own parallel `N_Vector`
-object; these are combined together to form the full "solution" vector
-$w$ using the `MPIManyVector` `N_Vector` module.  The resulting
-initial-value problem is solved using a temporally-adaptive explicit
-Runge Kutta method from ARKode's ARKStep module.  The solution is
-output to disk and solution statistics are optionally output to the
-screen at specified frequencies, and run statistics are printed at the
-end. 
+utility routine.  The minimum dimension size is 3, so to run a
+two-dimensional test in the yz-plane, one could specify `nx=3` and
+`ny=nz=200` -- when run in parallel, only 'active' spatial dimensions
+(those with extent greater than 3) will be parallelized.  Each fluid
+field is stored in its own parallel `N_Vector` object; these are
+combined together to form the full "solution" vector $w$ using the
+`MPIManyVector` `N_Vector` module.  The resulting initial-value
+problem is solved using a temporally-adaptive explicit Runge Kutta
+method from ARKode's ARKStep module.  The solution is output to disk
+and solution statistics are optionally output to the screen at
+specified frequencies, and run statistics are printed at the end. 
 
 Individual test problems may be uniquely specified through an input
-file and an auxiliarly source code file that should be linked with
-this main routine at compile time. 
+file and auxiliarly source code file(s) that should be linked with
+this main routine at compile time.
 
-The default input file name is `input_euler3D.txt`, however alternate
-input file names may be specified on the command line (the first
-argument following the executable name).  This input file contains:
+Example input files are provided in the `inputs/` folder -- these are
+internally documented to discuss all possible input parameters (in
+case some have been added since this `README` was last updated).  To
+specify an input file to the executable, the input filename should be
+provided using the `-f` flag, e.g.
+```bash
+   <executable> -f <input_file>
+```
+This input file contains parameters to set up the physical problem:
 
 * spatial domain, $\Omega$ -- `xl`, `xr`, `yl`, `yr`, `zl`, `zr`
 
@@ -164,17 +177,30 @@ argument following the executable name).  This input file contains:
 * spatial discretization dimensions -- `nx`, `ny`, `nz`
 
 * boundary condition types -- `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc`, `zrbc`
-  
+
+parameters to control the execution of the code:
+
 * desired cfl fraction -- `cfl` (if set to zero, then the time step is
   chosen purely using temporal adaptivity).
 
 * number of desired solution outputs -- `nout`
 
-Additionally, this file contains the parameter `showstats`, a nonzero
-value enables optional output of RMS averages for each field at the
-same frequency as the solution is output to disk. 
+* a flag to enable optional output of RMS averages for each field at
+  the frequency spefied via `nout` -- `showstats`
 
-The auxiliary source code file must contain three functions.  Each of
+as well as parameters to control how time integration is performed
+(these are passed directly to ARKode).  For further information on the
+ARKode solver parameters and the meaning of individual values, see the
+ARKode documentation,
+http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html.
+
+Additionally, any input parameters may also be specified on the
+command line, e.g.
+```bash
+   <executable> --nx=100 --ny=100 --nz=400
+```
+
+The auxiliary source code files must contain three functions.  Each of
 these must return an integer flag indicating success (0) or failure
 (nonzero). The initial condition function $w_0(X)$ must have the
 signature: 
@@ -207,16 +233,12 @@ communication, or the results from `UserData::ExchangeStart` /
 `UserData::ExchangeEnd`), and `output_diagnostics` will be called at
 the same frequency as the solution is output to disk.
 
-A second input file, `solve_params.txt` specifies all ARKode time
-integration-related parameters that may be used to control the
-simulation without recompilation.  Both the problem-specific input
-file (nominally `input_euler3D.txt`) and `solve_params.txt` are
-internally documented; however, for further information on the ARKode
-solver parameters and the meaning of individual values, see the ARKode
-documentation,
-http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html.
+To supply these auxiliary source code file(s), add this to the
+`Makefile` in a similar manner as the existing test problems are built
+(e.g. `hurricane_yz.exe`).
 
 
 
 ## Authors
 [Daniel R. Reynolds](http://faculty.smu.edu/reynolds)
+
