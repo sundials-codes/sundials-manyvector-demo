@@ -189,7 +189,7 @@ for tstep in range(nt):
     # line/error plots
     rho1d = rho[:,ny//2,nz//2,tstep]
     mx1d  = mx[:,ny//2,nz//2,tstep]
-    my1d  = mz[:,ny//2,nz//2,tstep]
+    my1d  = my[:,ny//2,nz//2,tstep]
     sp1d  = speed[:,ny//2]
     rhotrue1d = rhotrue[:,ny//2]
     mxtrue1d  = mxtrue[:,ny//2]
