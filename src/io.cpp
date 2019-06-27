@@ -403,7 +403,7 @@ int print_stats(const realtype& t, const N_Vector w,
 {
   realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
-  long int v, i, j, k;
+  long int v, i, j, k, idx;
   int retval;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
@@ -420,24 +420,40 @@ int print_stats(const realtype& t, const N_Vector w,
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
-          rmsvals[0] += SUNRpowerI(rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[1] += SUNRpowerI( mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[2] += SUNRpowerI( my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[3] += SUNRpowerI( mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
-          rmsvals[4] += SUNRpowerI( et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)], 2);
+          idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+          rmsvals[0] += SUNRpowerI(rho[idx], 2);
+          rmsvals[1] += SUNRpowerI( mx[idx], 2);
+          rmsvals[2] += SUNRpowerI( my[idx], 2);
+          rmsvals[3] += SUNRpowerI( mz[idx], 2);
+          rmsvals[4] += SUNRpowerI( et[idx], 2);
+          if (udata.nchem > 0) {
+            realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
+            if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+            for (v=0; v<udata.nchem; v++)
+              rmsvals[5+v] += SUNRpowerI( chem[v], 2);
+          }
         }
     retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
     for (v=0; v<NVAR; v++)  totrms[v] = SUNRsqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
   }
   if (!outproc)  return(0);
-  if (firstlast == 0)
-    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms\n";
-  if (firstlast != 1)
-    cout << "   -----------------------------------------------------------------------\n";
-  if (firstlast<2)
-    printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f\n", t,
+  if (firstlast == 0) {
+    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms";
+    for (v=0; v<udata.nchem; v++)  cout << "  ||c" << v << "||_rms";
+    cout << endl;
+  }
+  if (firstlast != 1) {
+    cout << "   -----------------------------------------------------------------------";
+    for (v=0; v<udata.nchem; v++)  cout << "-----------";
+    cout << endl;
+  }
+  if (firstlast<2) {
+    printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f", t,
            totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
+    for (v=0; v<udata.nchem; v++)  printf("  %10.6f", totrms[5+v]);
+    printf("\n");
+  }
   return(0);
 }
 
@@ -449,8 +465,8 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
 {
   // reusable variables
   char outtype[2];
-  char outname[5][100];
-  FILE *FID;
+  char outname[NVAR][100];
+  FILE *FID[NVAR];
   realtype *W;
   long int i, v;
   long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
@@ -468,17 +484,36 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   sprintf(outname[2], "output-euler3D_my.%07i.txt",  udata.myid);  // y-momentum
   sprintf(outname[3], "output-euler3D_mz.%07i.txt",  udata.myid);  // z-momentum
   sprintf(outname[4], "output-euler3D_et.%07i.txt",  udata.myid);  // total energy
-
-  // Output fields to disk
+  for (v=0; v<udata.nchem; v++)
+    sprintf(outname[5+v], "output-euler3D_c%03i.%07i.txt",(int) v,udata.myid);  // tracers
+  
+  // Output fluid fields to disk
   for (v=0; v<5; v++) {
-    FID = fopen(outname[v],outtype);                     // file ptr
+    FID[v] = fopen(outname[v],outtype);                  // file ptr
     W = N_VGetSubvectorArrayPointer_MPIManyVector(w,v);  // data array
     if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-    for (i=0; i<N; i++) fprintf(FID," %.16e", W[i]);     // output
-    fprintf(FID,"\n");                                   // newline
-    fclose(FID);                                         // close file
+    for (i=0; i<N; i++) fprintf(FID[v]," %.16e", W[i]);  // output
+    fprintf(FID[v],"\n");                                // newline
+    fclose(FID[v]);                                      // close file
   }
 
+  // Output tracer fields to disk
+  if (udata.nchem > 0) {
+    for (v=0; v<udata.nchem; v++)                        // open file ptrs
+      FID[v] = fopen(outname[5+v],outtype);
+    for (i=0; i<N; i++) {                                // loop over subdomain
+      W = NULL;
+      W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+i);
+      if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
+      for (v=0; v<udata.nchem; v++)                      // output tracers at this location
+        fprintf(FID[v]," %.16e", W[v]);
+    }
+    for (v=0; v<udata.nchem; v++) {                      // add newlines and close files
+      fprintf(FID[v],"\n");
+      fclose(FID[v]);
+    }
+  }
+  
   // return with success
   return(0);
 }

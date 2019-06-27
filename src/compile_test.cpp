@@ -15,8 +15,14 @@
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
+  // verify that NVAR has been set up properly
+  if (NVAR != 7) {
+    cerr << "initial_conditions error: incorrect NVAR (check Makefile settings)";
+    return -1;
+  }
+  
   // iterate over subdomain, setting initial condition
-  long int i, j, k;
+  long int i, j, k, idx;
   realtype xloc, yloc, zloc;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
@@ -34,20 +40,33 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(4.0);
-        mx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(0.5);
-        my[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(0.2);
-        mz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(0.1);
-        et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = RCONST(2.0);
+
+        // fluid initial conditions
+        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        rho[idx] = RCONST(4.0);
+        mx[idx]  = RCONST(0.5);
+        my[idx]  = RCONST(0.2);
+        mz[idx]  = RCONST(0.1);
+        et[idx]  = RCONST(2.0);
+
+        // tracer initial conditions
+        realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
+        chem[0] = (xloc < HALF) ? ZERO : ONE;
+        chem[1] = (xloc < HALF) ? ONE : ZERO;
+
       }
+
   return 0;
 }
 
 // External forcing terms
 int external_forces(const realtype& t, N_Vector G, const UserData& udata)
 {
-  // iterate over subdomain, applying external forces
-  long int i, j, k;
+  // initialize all external forces to zero
+  N_VConst(ZERO, G);
+  
+  // iterate over subdomain, applying nonzero external forces
+  long int i, j, k, idx;
   realtype xloc, yloc, zloc;
   realtype *Grho = N_VGetSubvectorArrayPointer_MPIManyVector(G,0);
   if (check_flag((void *) Grho, "N_VGetSubvectorArrayPointer (external_forces)", 0)) return -1;
@@ -65,11 +84,12 @@ int external_forces(const realtype& t, N_Vector G, const UserData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        Grho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmy[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Get[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        Grho[idx] = ZERO;
+        Gmx[idx]  = ZERO;
+        Gmy[idx]  = ZERO;
+        Gmz[idx]  = ZERO;
+        Get[idx]  = ZERO;
       }
   return 0;
 }

@@ -50,8 +50,8 @@ running `make` above.
 
 ## (Current) Documentation
 
-This test simulates a 3D nonlinear inviscid compressible Euler
-equation, 
+This code simulates a 3D nonlinear inviscid compressible Euler
+equation with tracers, 
 $$
   w_t = -\nabla\cdot F(w) + G
 $$
@@ -78,18 +78,20 @@ under the restriction that if any boundary is set to "periodic" then
 the opposite face must also indicate a periodic condition.
 
 Here, the 'solution' is given by
-$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t\end{bmatrix}^T
-= \begin{bmatrix} \rho & m_x & m_y & m_z & e_t\end{bmatrix}^T$,
-that corresponds to the density, x,y,z-momentum, and the total energy
-per unit volume.  The fluxes are given by 
+$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T
+= \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c}\end{bmatrix}^T$,
+that corresponds to the density, x,y,z-momentum, total energy
+per unit volume, and any number of chemical 'tracers'
+$\mathbf{c}\in\mathbb{R}^{nchem}$ that are advected along with the
+fluid.  The fluxes are given by
 $$
-  F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p)\end{bmatrix}^T
+  F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p) & \mathbf{c} v_x \end{bmatrix}^T
 $$
 $$
-  F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p)\end{bmatrix}^T
+  F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p) & \mathbf{c} v_y \end{bmatrix}^T
 $$
 $$
-  F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p)\end{bmatrix}^T.
+  F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.
 $$
 The external force $G(X,t)$ is test-problem-dependent, and the ideal
 gas equation of state gives 
@@ -133,7 +135,7 @@ units these would be:
 
 * [et] = kg / m / s$^2$
 
-Note: the above follows the description in section 7.3.1-7.3.3 of
+Note: the fluid portion of the above description follows section 7.3.1-7.3.3 of
 https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
 This program solves the problem using a finite volume spatial
@@ -142,21 +144,32 @@ semi-discretization over a uniform grid of dimensions
 reconstruction. The spatial domain uses a 3D domain decomposition
 approach for parallelism over `nprocs` MPI processes, with layout
 `npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create` 
-utility routine.  The minimum dimension size is 3, so to run a
+utility routine.  The minimum size for any dimension is 3, so to run a
 two-dimensional test in the yz-plane, one could specify `nx=3` and
 `ny=nz=200` -- when run in parallel, only 'active' spatial dimensions
 (those with extent greater than 3) will be parallelized.  Each fluid
-field is stored in its own parallel `N_Vector` object; these are
-combined together to form the full "solution" vector $w$ using the
+field ($\rho$, $m_x$, $m_y$, $m_z$ and $e_t$) is stored in its own
+parallel `N_Vector` object.  Chemical tracers at a given spatial
+location are collocated into a single serial `N_Vector` object.  The
+five fluid vectors and the array of tracer vectors are combined
+together to form the full "solution" vector $w$ using the
 `MPIManyVector` `N_Vector` module.  The resulting initial-value
 problem is solved using a temporally-adaptive explicit Runge Kutta
 method from ARKode's ARKStep module.  The solution is output to disk
 and solution statistics are optionally output to the screen at
-specified frequencies, and run statistics are printed at the end. 
+specified frequencies, and run statistics are printed at the end.
 
 Individual test problems may be uniquely specified through an input
 file and auxiliarly source code file(s) that should be linked with
-this main routine at compile time.
+this main routine at compile time.  By default, all codes are built
+with no chemical tracers; however, this may be controlled at
+compilation time using the `NVAR` preprocessor directive,
+corresponding to the number of unknowns at any spatial location.
+Hence, the [default] minimum value for `NVAR` is 5, so for a
+calculation with 4 chemical tracers the code should be compiled with
+the preprocessor flag `-DNVAR=9`.  An example of this is provided in
+the `Makefile` when building `compile_test.exe`, and may be emulated
+for user-defined problems.
 
 Example input files are provided in the `inputs/` folder -- these are
 internally documented to discuss all possible input parameters (in

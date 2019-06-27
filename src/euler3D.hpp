@@ -19,20 +19,29 @@
 #include <arkode/arkode_arkstep.h>
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_parallel.h>
+#include <nvector/nvector_serial.h>
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
 #include <mpi.h>
+#include <exception>
 
 using namespace std;
 
-// total number of variables per spatial location
+// define default value for total number of variables per spatial location (if undefined)
+#ifndef NVAR
 #define NVAR 5
+#endif
+
+// ensure that NVAR is no smaller than 5
+#if NVAR < 5
+#error *** Illegal NVAR value (must be at least 5) ***
+#endif
 
 // accessor macro between (i,j,k) location and 1D data array location
 #define IDX(i,j,k,nx,ny,nz) ( (i) + (nx)*((j) + (ny)*(k)) )
 
 // accessor macro between (v,i,j,k) location and 1D data array location
-#define BUFIDX(v,i,j,k,nx,ny,nz) ( (v) + NVAR*((i) + (nx)*((j) + (ny)*(k))) )
+#define BUFIDX(v,i,j,k,nx,ny,nz) ( (v) + (NVAR)*((i) + (nx)*((j) + (ny)*(k))) )
 
 // reused constants
 #define ZERO    RCONST(0.0)
@@ -126,6 +135,7 @@ public:
   int      yrbc;        //      2 = homogeneous Dirichlet
   int      zlbc;
   int      zrbc;
+  int      nchem;       // number of tracers/chemical species
   realtype gamma;       // ratio of specific heat capacities, cp/cv
   realtype cfl;         // fraction of maximum stable step size to use
 
@@ -177,7 +187,9 @@ public:
       Ssend(NULL), Fsend(NULL), Bsend(NULL), ipW(-1), ipE(-1), ipS(-1), ipN(-1),
       ipB(-1), ipF(-1), gamma(1.4), cfl(0.0), xflux(NULL), yflux(NULL),
       zflux(NULL), nout(10), showstats(0)
-  { };
+  {
+    nchem = (NVAR) - 5;
+  };
   // destructor
   ~UserData() {
     if (Wrecv != NULL)  delete[] Wrecv;
@@ -278,14 +290,14 @@ public:
     npz = dims[2];
 
     // allocate temporary arrays for storing directional fluxes
-    xflux = new realtype[NVAR*(nxl+1)*nyl*nzl];
-    yflux = new realtype[NVAR*nxl*(nyl+1)*nzl];
-    zflux = new realtype[NVAR*nxl*nyl*(nzl+1)];
+    xflux = new realtype[(NVAR)*(nxl+1)*nyl*nzl];
+    yflux = new realtype[(NVAR)*nxl*(nyl+1)*nzl];
+    zflux = new realtype[(NVAR)*nxl*nyl*(nzl+1)];
     
     // for all faces where neighbors exist: determine neighbor process indices;
     // for all faces: allocate exchange buffers (external boundaries fill with ghost values)
-    Wrecv = new realtype[NVAR*3*nyl*nzl];
-    Wsend = new realtype[NVAR*3*nyl*nzl];
+    Wrecv = new realtype[(NVAR)*3*nyl*nzl];
+    Wsend = new realtype[(NVAR)*3*nyl*nzl];
     ipW = MPI_PROC_NULL;
     if ((coords[0] > 0) || (xlbc == 0)) {
       nbcoords[0] = coords[0]-1;
@@ -295,8 +307,8 @@ public:
       if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
     }
 
-    Erecv = new realtype[NVAR*3*nyl*nzl];
-    Esend = new realtype[NVAR*3*nyl*nzl];
+    Erecv = new realtype[(NVAR)*3*nyl*nzl];
+    Esend = new realtype[(NVAR)*3*nyl*nzl];
     ipE = MPI_PROC_NULL;
     if ((coords[0] < dims[0]-1) || (xrbc == 0)) {
       nbcoords[0] = coords[0]+1;
@@ -306,8 +318,8 @@ public:
       if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
     }
 
-    Srecv = new realtype[NVAR*nxl*3*nzl];
-    Ssend = new realtype[NVAR*nxl*3*nzl];
+    Srecv = new realtype[(NVAR)*nxl*3*nzl];
+    Ssend = new realtype[(NVAR)*nxl*3*nzl];
     ipS = MPI_PROC_NULL;
     if ((coords[1] > 0) || (ylbc == 0)) {
       nbcoords[0] = coords[0];
@@ -317,8 +329,8 @@ public:
       if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
     }
 
-    Nrecv = new realtype[NVAR*nxl*3*nzl];
-    Nsend = new realtype[NVAR*nxl*3*nzl];
+    Nrecv = new realtype[(NVAR)*nxl*3*nzl];
+    Nsend = new realtype[(NVAR)*nxl*3*nzl];
     ipN = MPI_PROC_NULL;
     if ((coords[1] < dims[1]-1) || (yrbc == 0)) {
       nbcoords[0] = coords[0];
@@ -328,8 +340,8 @@ public:
       if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
     }
 
-    Brecv = new realtype[NVAR*nxl*nyl*3];
-    Bsend = new realtype[NVAR*nxl*nyl*3];
+    Brecv = new realtype[(NVAR)*nxl*nyl*3];
+    Bsend = new realtype[(NVAR)*nxl*nyl*3];
     ipB = MPI_PROC_NULL;
     if ((coords[2] > 0) || (zlbc == 0)) {
       nbcoords[0] = coords[0];
@@ -339,8 +351,8 @@ public:
       if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
     }
 
-    Frecv = new realtype[NVAR*nxl*nyl*3];
-    Fsend = new realtype[NVAR*nxl*nyl*3];
+    Frecv = new realtype[(NVAR)*nxl*nyl*3];
+    Fsend = new realtype[(NVAR)*nxl*nyl*3];
     ipF = MPI_PROC_NULL;
     if ((coords[2] < dims[2]-1) || (zrbc == 0)) {
       nbcoords[0] = coords[0];
@@ -359,7 +371,7 @@ public:
     // local variables
     int retval, v, i, j, k;
 
-    // access data array
+    // access data arrays
     realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
     if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
     realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -370,43 +382,44 @@ public:
     if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
     realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
     if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
-
+    realtype *chem;
+    
     // initialize all requests in array
     for (i=0; i<12; i++)  req[i] = MPI_REQUEST_NULL;
 
     // open an Irecv buffer for each neighbor
     if (ipW != MPI_PROC_NULL) {
-      retval = MPI_Irecv(Wrecv, NVAR*3*nyl*nzl, MPI_SUNREALTYPE, ipW,
+      retval = MPI_Irecv(Wrecv, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipW,
                          1, comm, req);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipE != MPI_PROC_NULL) {
-      retval = MPI_Irecv(Erecv, NVAR*3*nyl*nzl, MPI_SUNREALTYPE, ipE,
+      retval = MPI_Irecv(Erecv, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipE,
                          0, comm, req+1);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipS != MPI_PROC_NULL) {
-      retval = MPI_Irecv(Srecv, NVAR*nxl*3*nzl, MPI_SUNREALTYPE, ipS,
+      retval = MPI_Irecv(Srecv, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipS,
                          3, comm, req+2);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipN != MPI_PROC_NULL) {
-      retval = MPI_Irecv(Nrecv, NVAR*nxl*3*nzl, MPI_SUNREALTYPE, ipN,
+      retval = MPI_Irecv(Nrecv, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipN,
                          2, comm, req+3);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipB != MPI_PROC_NULL) {
-      retval = MPI_Irecv(Brecv, NVAR*nxl*nyl*3, MPI_SUNREALTYPE, ipB,
+      retval = MPI_Irecv(Brecv, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipB,
                          5, comm, req+4);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipF != MPI_PROC_NULL) {
-      retval = MPI_Irecv(Frecv, NVAR*nxl*nyl*3, MPI_SUNREALTYPE, ipF,
+      retval = MPI_Irecv(Frecv, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipF,
                          4, comm, req+5);
       if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -425,8 +438,16 @@ public:
             Wsend[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(i,j,k,nxl,nyl,nzl)];
           for (i=0; i<3; i++) 
             Wsend[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(i,j,k,nxl,nyl,nzl)];
+          if (nchem>0) {
+            for (i=0; i<3; i++) {
+              chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k,nxl,nyl,nzl));
+              if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+              for (v=0; v<nchem; v++)
+                Wsend[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = chem[v];
+            }
+          }
         }
-      retval = MPI_Isend(Wsend, NVAR*3*nyl*nzl, MPI_SUNREALTYPE, ipW, 0,
+      retval = MPI_Isend(Wsend, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipW, 0,
                          comm, req+6);
       if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -444,8 +465,16 @@ public:
             Esend[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
           for (i=0; i<3; i++)
             Esend[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+          if (nchem>0) {
+            for (i=0; i<3; i++) {
+              chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(nxl-3+i,j,k,nxl,nyl,nzl));
+              if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+              for (v=0; v<nchem; v++)
+                Esend[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = chem[v];
+            }
+          }
         }
-      retval = MPI_Isend(Esend, NVAR*3*nyl*nzl, MPI_SUNREALTYPE, ipE, 1,
+      retval = MPI_Isend(Esend, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipE, 1,
                          comm, req+7);
       if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -463,8 +492,16 @@ public:
             Ssend[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,j,k,nxl,nyl,nzl)];
           for (i=0; i<nxl; i++) 
             Ssend[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,j,k,nxl,nyl,nzl)];
+          if (nchem>0) {
+            for (i=0; i<nxl; i++) {
+              chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k,nxl,nyl,nzl));
+              if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+              for (v=0; v<nchem; v++)
+                Ssend[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = chem[v];
+            }
+          }
         }
-      retval = MPI_Isend(Ssend, NVAR*nxl*3*nzl, MPI_SUNREALTYPE, ipS, 2,
+      retval = MPI_Isend(Ssend, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipS, 2,
                          comm, req+8);
       if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -482,8 +519,16 @@ public:
             Nsend[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
           for (i=0; i<nxl; i++) 
             Nsend[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+          if (nchem>0) {
+            for (i=0; i<nxl; i++) {
+              chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,nyl-3+j,k,nxl,nyl,nzl));
+              if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+              for (v=0; v<nchem; v++)
+                Nsend[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = chem[v];
+            }
+          }
         }
-      retval = MPI_Isend(Nsend, NVAR*nxl*3*nzl, MPI_SUNREALTYPE, ipN, 3,
+      retval = MPI_Isend(Nsend, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipN, 3,
                          comm, req+9);
       if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -501,8 +546,16 @@ public:
             Bsend[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,k,nxl,nyl,nzl)];
           for (i=0; i<nxl; i++) 
             Bsend[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,k,nxl,nyl,nzl)];
+          if (nchem>0) {
+            for (i=0; i<nxl; i++) {
+              chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k,nxl,nyl,nzl));
+              if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+              for (v=0; v<nchem; v++)
+                Bsend[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = chem[v];
+            }
+          }
         }
-      retval = MPI_Isend(Bsend, NVAR*nxl*nyl*3, MPI_SUNREALTYPE, ipB, 4,
+      retval = MPI_Isend(Bsend, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipB, 4,
                          comm, req+10);
       if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -520,8 +573,16 @@ public:
             Fsend[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
           for (i=0; i<nxl; i++) 
             Fsend[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+          if (nchem>0) {
+            for (i=0; i<nxl; i++) {
+              chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,nzl-3+k,nxl,nyl,nzl));
+              if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+              for (v=0; v<nchem; v++)
+                Fsend[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = chem[v];
+            }
+          }
         }
-      retval = MPI_Isend(Fsend, NVAR*nxl*nyl*3, MPI_SUNREALTYPE, ipF, 5,
+      retval = MPI_Isend(Fsend, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipF, 5,
                          comm, req+11);
       if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
     }
@@ -544,6 +605,14 @@ public:
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(2-i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(2-i,j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<3; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(2-i,j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Wrecv[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = chem[v];
+              }
+            }
           }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -558,6 +627,14 @@ public:
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = -mz[ IDX(2-i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -et[ IDX(2-i,j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<3; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(2-i,j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Wrecv[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = -chem[v];
+              }
+            }
           }
       }
     }
@@ -577,6 +654,14 @@ public:
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<3; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(nxl-3+i,j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Erecv[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = chem[v];
+              }
+            }
           }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -591,6 +676,14 @@ public:
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = -mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<3; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(nxl-3+i,j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Erecv[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = -chem[v];
+              }
+            }
           }
       }
     }
@@ -610,6 +703,14 @@ public:
               Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Srecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,2-j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,2-j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Srecv[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = chem[v];
+              }
+            }
           }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -624,6 +725,14 @@ public:
               Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = -mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Srecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = -et[ IDX(i,2-j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,2-j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Srecv[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = -chem[v];
+              }
+            }
           }
       }
     }
@@ -643,6 +752,14 @@ public:
               Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Nrecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,nyl-3+j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Nrecv[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = chem[v];
+              }
+            }
           }
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
@@ -657,6 +774,14 @@ public:
               Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = -mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Nrecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = -et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,nyl-3+j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Nrecv[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = -chem[v];
+              }
+            }
           }
       }
     }
@@ -676,6 +801,14 @@ public:
               Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,2-k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,2-k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,2-k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Brecv[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = chem[v];
+              }
+            }
           }
       } else {          // homogeneous Dirichlet
         for (k=0; k<3; k++)
@@ -690,6 +823,14 @@ public:
               Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[ IDX(i,j,2-k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = -et[ IDX(i,j,2-k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,2-k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Brecv[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = -chem[v];
+              }
+            }
           }
       }
     }
@@ -709,6 +850,14 @@ public:
               Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,nzl-3+k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Frecv[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = chem[v];
+              }
+            }
           }
       } else {          // homogeneous Dirichlet
         for (k=0; k<3; k++)
@@ -723,6 +872,14 @@ public:
               Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = -et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,nzl-3+k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Frecv[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = -chem[v];
+              }
+            }
           }
       }
     }
@@ -751,35 +908,59 @@ public:
   inline void pack1D_x(realtype (&w1d)[6][NVAR], const realtype* rho,
                        const realtype* mx, const realtype* my,
                        const realtype* mz, const realtype* et,
-                       const long int& i, const long int& j, const long int& k) const
+                       const N_Vector w, const long int& i,
+                       const long int& j, const long int& k) const
   {
     for (int l=0; l<6; l++)  w1d[l][0] = rho[IDX(i-3+l,j,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][1] = mx[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][2] = my[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][3] = mz[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][4] = et[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
+    if (nchem>0) {
+      for (int l=0; l<6; l++) {
+        realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i-3+l,j,k,nxl,nyl,nzl));
+        if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_x)", 0)) throw std::exception();
+        for (int v=0; v<nchem; v++)  w1d[l][5+v] = chem[v];
+      }
+    }
   }
   inline void pack1D_y(realtype (&w1d)[6][NVAR], const realtype* rho,
                        const realtype* mx, const realtype* my,
                        const realtype* mz, const realtype* et,
-                       const long int& i, const long int& j, const long int& k) const
+                       const N_Vector w, const long int& i,
+                       const long int& j, const long int& k) const
   {
     for (int l=0; l<6; l++)  w1d[l][0] = rho[IDX(i,j-3+l,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][1] = mx[ IDX(i,j-3+l,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][2] = my[ IDX(i,j-3+l,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][3] = mz[ IDX(i,j-3+l,k,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][4] = et[ IDX(i,j-3+l,k,nxl,nyl,nzl)];
+    if (nchem>0) {
+      for (int l=0; l<6; l++) {
+        realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j-3+l,k,nxl,nyl,nzl));
+        if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_y)", 0)) throw std::exception();
+        for (int v=0; v<nchem; v++)  w1d[l][5+v] = chem[v];
+      }
+    }
   }
   inline void pack1D_z(realtype (&w1d)[6][NVAR], const realtype* rho,
                        const realtype* mx, const realtype* my,
                        const realtype* mz, const realtype* et,
-                       const long int& i, const long int& j, const long int& k) const
+                       const N_Vector w, const long int& i,
+                       const long int& j, const long int& k) const
   {
     for (int l=0; l<6; l++)  w1d[l][0] = rho[IDX(i,j,k-3+l,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][1] = mx[ IDX(i,j,k-3+l,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][2] = my[ IDX(i,j,k-3+l,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][3] = mz[ IDX(i,j,k-3+l,nxl,nyl,nzl)];
     for (int l=0; l<6; l++)  w1d[l][4] = et[ IDX(i,j,k-3+l,nxl,nyl,nzl)];
+    if (nchem>0) {
+      for (int l=0; l<6; l++) {
+        realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k-3+l,nxl,nyl,nzl));
+        if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_z)", 0)) throw std::exception();
+        for (int v=0; v<nchem; v++)  w1d[l][5+v] = chem[v];
+      }
+    }
   }
 
   // Utility routines to pack 1-dimensional data for locations near the
@@ -789,7 +970,8 @@ public:
   inline void pack1D_x_bdry(realtype (&w1d)[6][NVAR], const realtype* rho,
                             const realtype* mx, const realtype* my,
                             const realtype* mz, const realtype* et,
-                            const long int& i, const long int& j, const long int& k) const
+                            const N_Vector w, const long int& i,
+                            const long int& j, const long int& k) const
   {
     for (int l=0; l<3; l++) 
       w1d[l][0] = (i<(3-l)) ? Wrecv[BUFIDX(0,i+l,j,k,3,nyl,nzl)] : rho[IDX(i-3+l,j,k,nxl,nyl,nzl)];
@@ -811,11 +993,32 @@ public:
       w1d[l+3][3] = (i>(nxl-l-1)) ? Erecv[BUFIDX(3,i-nxl+l,j,k,3,nyl,nzl)] : mz[ IDX(i+l,j,k,nxl,nyl,nzl)];
     for (int l=0; l<3; l++) 
       w1d[l+3][4] = (i>(nxl-l-1)) ? Erecv[BUFIDX(4,i-nxl+l,j,k,3,nyl,nzl)] : et[ IDX(i+l,j,k,nxl,nyl,nzl)];
+    if (nchem>0) {
+      for (int l=0; l<3; l++) {
+        if (i<(3-l)) {
+          for (int v=0; v<nchem; v++)   w1d[l][5+v] = Wrecv[BUFIDX(5+v,i+l,j,k,3,nyl,nzl)];
+        } else {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i-3+l,j,k,nxl,nyl,nzl));
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_x_bdry)", 0)) throw std::exception();
+          for (int v=0; v<nchem; v++)   w1d[l][5+v] = chem[v];
+        }
+      }
+      for (int l=0; l<3; l++) {
+        if (i>(nxl-l-1)) {
+          for (int v=0; v<nchem; v++)   w1d[l+3][5+v] = Erecv[BUFIDX(5+v,i-nxl+l,j,k,3,nyl,nzl)];
+        } else {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i+l,j,k,nxl,nyl,nzl));
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_x_bdry)", 0)) throw std::exception();
+          for (int v=0; v<nchem; v++)   w1d[l+3][5+v] = chem[v];
+        }
+      }
+    }
   }
   inline void pack1D_y_bdry(realtype (&w1d)[6][NVAR], const realtype* rho,
                             const realtype* mx, const realtype* my,
                             const realtype* mz, const realtype* et,
-                            const long int& i, const long int& j, const long int& k) const
+                            const N_Vector w, const long int& i,
+                            const long int& j, const long int& k) const
   {
     for (int l=0; l<3; l++)
       w1d[l][0] = (j<(3-l)) ? Srecv[BUFIDX(0,j+l,i,k,3,nxl,nzl)] : rho[IDX(i,j-3+l,k,nxl,nyl,nzl)];
@@ -837,11 +1040,32 @@ public:
       w1d[l+3][3] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(3,j-nyl+l,i,k,3,nxl,nzl)] : mz[ IDX(i,j+l,k,nxl,nyl,nzl)];
     for (int l=0; l<3; l++)
       w1d[l+3][4] = (j>(nyl-l-1)) ? Nrecv[BUFIDX(4,j-nyl+l,i,k,3,nxl,nzl)] : et[ IDX(i,j+l,k,nxl,nyl,nzl)];
+    if (nchem>0) {
+      for (int l=0; l<3; l++) {
+        if (j<(3-l)) {
+          for (int v=0; v<nchem; v++)  w1d[l][5+v] = Srecv[BUFIDX(5+v,j+l,i,k,3,nxl,nzl)];
+        } else {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j+l,k,nxl,nyl,nzl));
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_y_bdry)", 0)) throw std::exception();
+          for (int v=0; v<nchem; v++)  w1d[l][5+v] = chem[v];
+        }
+      }
+      for (int l=0; l<3; l++) {
+        if (j>(nyl-l-1)) {
+          for (int v=0; v<nchem; v++)  w1d[l+3][4] = Nrecv[BUFIDX(4,j-nyl+l,i,k,3,nxl,nzl)];
+        } else {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j+l,k,nxl,nyl,nzl));
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_y_bdry)", 0)) throw std::exception();
+          for (int v=0; v<nchem; v++)  w1d[l+3][4] = chem[v];
+        }
+      }
+    }
   }
   inline void pack1D_z_bdry(realtype (&w1d)[6][NVAR], const realtype* rho,
                             const realtype* mx, const realtype* my,
                             const realtype* mz, const realtype* et,
-                            const long int& i, const long int& j, const long int& k) const
+                            const N_Vector w, const long int& i,
+                            const long int& j, const long int& k) const
   {
     for (int l=0; l<3; l++)
       w1d[l][0] = (k<(3-l)) ? Brecv[BUFIDX(0,k+l,i,j,3,nxl,nyl)] : rho[IDX(i,j,k-3+l,nxl,nyl,nzl)];
@@ -863,6 +1087,26 @@ public:
       w1d[l+3][3] = (k>(nzl-l-1)) ? Frecv[BUFIDX(3,k-nzl+l,i,j,3,nxl,nyl)] : mz[ IDX(i,j,k+l,nxl,nyl,nzl)];
     for (int l=0; l<3; l++)
       w1d[l+3][4] = (k>(nzl-l-1)) ? Frecv[BUFIDX(4,k-nzl+l,i,j,3,nxl,nyl)] : et[ IDX(i,j,k+l,nxl,nyl,nzl)];
+    if (nchem>0) {
+      for (int l=0; l<3; l++) {
+        if (k<(3-l)) {
+          for (int v=0; v<nchem; v++)  w1d[l][5+v] = Brecv[BUFIDX(5+v,k+l,i,j,3,nxl,nyl)];
+        } else {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k-3+l,nxl,nyl,nzl));
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_z_bdry)", 0)) throw std::exception();
+          for (int v=0; v<nchem; v++)  w1d[l][5+v] = chem[v];
+        }
+      }
+      for (int l=0; l<3; l++) {
+        if (k>(nzl-l-1)) {
+          for (int v=0; v<nchem; v++)  w1d[l+3][5+v] = Frecv[BUFIDX(5+v,k-nzl+l,i,j,3,nxl,nyl)];
+        } else {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k+l,nxl,nyl,nzl));
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_z_bdry)", 0)) throw std::exception();
+          for (int v=0; v<nchem; v++)  w1d[l+3][5+v] = chem[v];
+        }
+      }
+    }
   }
 
   // Equation of state -- compute and return pressure,

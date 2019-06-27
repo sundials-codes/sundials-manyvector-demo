@@ -61,6 +61,12 @@
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
+  // verify that NVAR has been set up properly
+  if (NVAR != 5) {
+    cerr << "initial_conditions error: incorrect NVAR (check Makefile settings)";
+    return -1;
+  }
+  
   // iterate over subdomain, setting initial condition
   long int i, j, k;
   realtype xloc, yloc, zloc;

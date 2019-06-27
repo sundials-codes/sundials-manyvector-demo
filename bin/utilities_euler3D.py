@@ -35,25 +35,26 @@ def load_subdomain_info(nprocs):
     ny = np.int(subd[1])
     nz = np.int(subd[2])
     subdomains[0,:] = subd[3:9]  # [is,ie,js,je,ks,ke]
-    domain[0,:] = subd[9:11]     # [xl,xr]
-    domain[1,:] = subd[11:13]    # [yl,yr]
-    domain[2,:] = subd[13:15]    # [zl,zr]
-    domain[3,:] = subd[15:17]    # [t0,tf]
-    dTout = np.float(subd[17])
+    nchem = np.int(subd[9])
+    domain[0,:] = subd[10:12]     # [xl,xr]
+    domain[1,:] = subd[12:14]    # [yl,yr]
+    domain[2,:] = subd[14:16]    # [zl,zr]
+    domain[3,:] = subd[16:18]    # [t0,tf]
+    dTout = np.float(subd[18])
     for i in range(1,nprocs):
         sname = 'output-euler3D_subdomain.' + repr(i).zfill(7) + '.txt'
         subd = np.loadtxt(sname)
         if ((subd[0] != nx) or (subd[1] != ny) or (subd[2] != nz)):
             sys.exit("error: subdomain files incompatible (clean up and re-run test)")
         subdomains[i,:] = subd[3:9]
-    return [nx, ny, nz, subdomains, domain, dTout]
+    return [nx, ny, nz, nchem, subdomains, domain, dTout]
 
 # load solution data into multi-dimensional arrays
 def load_data():
 
     # load metadata
     nprocs = get_MPI_tasks()
-    nx, ny, nz, subdomains, domain, dTout = load_subdomain_info(nprocs)
+    nx, ny, nz, nchem, subdomains, domain, dTout = load_subdomain_info(nprocs)
     
     # load first processor's data, and determine total number of time steps
     rho_data = np.loadtxt('output-euler3D_rho.0000000.txt', dtype=np.double)

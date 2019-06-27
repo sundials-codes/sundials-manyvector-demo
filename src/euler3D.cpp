@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem parameters
-  long int N, Ntot, i;
+  long int N, Ntot, Nsubvecs, i;
 
   // general problem variables
   int retval;                    // reusable error-checking flag
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
   int fixedpt;                   // flag denoting use of fixed-point nonlinear solver
   int myid;                      // MPI process ID
   N_Vector w = NULL;             // empty vectors for storing overall solution
-  N_Vector wsub[NVAR];
+  N_Vector *wsubvecs;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
 
   // initialize MPI
@@ -81,6 +81,7 @@ int main(int argc, char* argv[]) {
          << udata.zlbc << ", " << udata.zrbc << "]\n";
     cout << "   gamma: " << udata.gamma << "\n";
     cout << "   cfl fraction: " << udata.cfl << "\n";
+    cout << "   tracers/chemical species: " << udata.nchem << "\n";
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
   }
@@ -100,12 +101,19 @@ int main(int argc, char* argv[]) {
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
-  for (i=0; i<NVAR; i++) {
-    wsub[i] = NULL;
-    wsub[i] = N_VNew_Parallel(udata.comm, N, Ntot);
-    if (check_flag((void *) wsub[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
+  Nsubvecs = 5 + udata.nchem*N;
+  wsubvecs = new N_Vector[Nsubvecs];
+  for (i=0; i<5; i++) {
+    wsubvecs[i] = NULL;
+    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
   }
-  w = N_VNew_MPIManyVector(NVAR, wsub);  // combined solution vector
+  for (i=5; i<Nsubvecs; i++) {
+    wsubvecs[i] = NULL;
+    wsubvecs[i] = N_VNew_Serial(udata.nchem);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+  }
+  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // set initial conditions
@@ -208,10 +216,10 @@ int main(int argc, char* argv[]) {
   char outname[100];
   sprintf(outname, "output-euler3D_subdomain.%07i.txt", udata.myid);
   FILE *UFID = fopen(outname,"w");
-  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
-	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie,
-          udata.js, udata.je, udata.ks, udata.ke, udata.xl, udata.xr,
-          udata.yl, udata.yr, udata.zl, udata.zr, udata.t0, udata.tf, dTout);
+  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %i  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
+	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie, udata.js, udata.je, 
+          udata.ks, udata.ke, udata.nchem, udata.xl, udata.xr, udata.yl, 
+          udata.yr, udata.zl, udata.zr, udata.t0, udata.tf, dTout);
   fclose(UFID);
 
   // Output initial conditions to disk
@@ -307,8 +315,9 @@ int main(int argc, char* argv[]) {
 
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution vectors
-  for (i=0; i<NVAR; i++)
-    N_VDestroy(wsub[i]);
+  for (i=0; i<Nsubvecs; i++)
+    N_VDestroy(wsubvecs[i]);
+  delete[] wsubvecs;
   ARKStepFree(&arkode_mem);    // Free integrator memory
   MPI_Finalize();              // Finalize MPI
   return 0;
@@ -349,7 +358,8 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   if (check_flag((void *) mzdot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
   realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
   if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
-
+  realtype *chemdot;
+  
   // Exchange boundary data with neighbors
   int retval = udata->ExchangeStart(w);
   if (check_flag(&retval, "ExchangeStart (f)", 1)) return -1;
@@ -378,17 +388,17 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if (check_flag(&retval, "legal_state (f)", 1)) return -1;
 
         // pack 1D x-directional array of variable shortcuts
-        udata->pack1D_x(w1d, rho, mx, my, mz, et, i, j, k);
+        udata->pack1D_x(w1d, rho, mx, my, mz, et, w, i, j, k);
         // compute flux at lower x-directional face
         face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i,j,k,nxl+1,nyl,nzl)]), *udata);
 
         // pack 1D y-directional array of variable shortcuts
-        udata->pack1D_y(w1d, rho, mx, my, mz, et, i, j, k);
+        udata->pack1D_y(w1d, rho, mx, my, mz, et, w, i, j, k);
         // compute flux at lower y-directional face
         face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j,k,nxl,nyl+1,nzl)]), *udata);
 
         // pack 1D z-directional array of variable shortcuts
-        udata->pack1D_z(w1d, rho, mx, my, mz, et, i, j, k);
+        udata->pack1D_z(w1d, rho, mx, my, mz, et, w, i, j, k);
         // compute flux at lower z-directional face
         face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
 
@@ -413,32 +423,32 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if (check_flag(&retval, "legal_state (f)", 1)) return -1;
 
         // x-directional fluxes at "lower" face
-        udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, i, j, k);
+        udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
         face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i,j,k,nxl+1,nyl,nzl)]), *udata);
 
         // x-directional fluxes at "upper" boundary face
         if (i == nxl-1) {
-          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, nxl, j, k);
+          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, nxl, j, k);
           face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,nxl,j,k,nxl+1,nyl,nzl)]), *udata);
         }
 
         // y-directional fluxes at "lower" face
-        udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, i, j, k);
+        udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
         face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j,k,nxl,nyl+1,nzl)]), *udata);
 
         // y-directional fluxes at "upper" boundary face
         if (j == nyl-1) {
-          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, i, nyl, k);
+          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, nyl, k);
           face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,nyl,k,nxl,nyl+1,nzl)]), *udata);
         }
 
         // z-directional fluxes at "lower" face
-        udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, i, j, k);
+        udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
         face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
 
         // z-directional fluxes at "upper" boundary face
         if (k == nzl-1) {
-          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, i, j, nzl);
+          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, nzl);
           face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,nzl,nxl,nyl,nzl+1)]), *udata);
         }
 
@@ -478,6 +488,20 @@ static int f(realtype t, N_Vector w, N_Vector wdot, void *user_data)
                                             - udata->yflux[BUFIDX(4,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
                                           + ( udata->zflux[BUFIDX(4,i,  j,  k+1,nxl,  nyl,  nzl+1)]
                                             - udata->zflux[BUFIDX(4,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+
+        /*
+        if (udata->nchem > 0) {
+          chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k,nxl,nyl,nzl));
+          if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (f)", 0)) return -1;
+          for (v=0; v<udata->nchem; v++)
+            chemdot[v] -= ( ( udata->xflux[BUFIDX(5+v,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                            - udata->xflux[BUFIDX(5+v,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                          + ( udata->yflux[BUFIDX(5+v,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                            - udata->yflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                          + ( udata->zflux[BUFIDX(5+v,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                            - udata->zflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        }
+        */
       }
 
 
@@ -520,8 +544,6 @@ static int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
 
   // compute maximum stable step size
   *dt_stab = (udata->cfl) * min(min(udata->dx, udata->dy), udata->dz) / alpha;
-
-  //printf("stab: alpha = %g, dt_stab = %g\n", alpha, *dt_stab);
 
   // return with success
   return(0);
@@ -598,6 +620,8 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
 
 
 
+// ADD: COMPUTE FLUXES FOR TRACERS/CHEMICALS
+
 // given a 6-point stencil of solution values,
 //   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
 // and the flux direction idir, compute the face-centered flux (dw)
@@ -619,8 +643,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   int i, j;
   realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
     beta1, beta2, beta3, w1, w2, w3, f1, f2, f3;
-  realtype RV[NVAR][NVAR], LV[NVAR][NVAR], p[6], flux[6][NVAR], fproj[5][NVAR],
-    fs[5][NVAR], fp[NVAR], fm[NVAR];
+  realtype RV[5][5], LV[5][5], p[6], flux[6][NVAR], fproj[5][NVAR], fs[5][NVAR], ff[NVAR];
   const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
   const realtype dm[3] = {RCONST(0.1), RCONST(0.6), RCONST(0.3)};
   const realtype cm[3][3] = {{RCONST(1.833333333333333333333333333333333333333),    // 11/6
@@ -666,14 +689,14 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   w = RCONST(0.5)*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
   H = RCONST(0.5)*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
 
-  // compute eigenvectors at face:
+  // compute eigenvectors at face (note: eigenvectors for tracers are just identity)
   qsq = u*u + v*v + w*w;
   gamm = udata.gamma-ONE;
   csnd = gamm*(H - RCONST(0.5)*qsq);
   cinv = ONE/csnd;
   cisq = cinv*cinv;
-  for (i=0; i<NVAR; i++)
-    for (j=0; j<NVAR; j++) {
+  for (i=0; i<5; i++)
+    for (j=0; j<5; j++) {
       RV[i][j] = ZERO;
       LV[i][j] = ZERO;
     }
@@ -726,6 +749,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   LV[4][3] = -HALF*w*gamm*cinv;
   LV[4][4] = HALF*gamm*cinv;
 
+  
   // compute fluxes and max wave speed over stencil
   alpha = ZERO;
   for (i=0; i<6; i++) {
@@ -735,7 +759,9 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     flux[i][2] = u*w1d[i][2];                     // rho*vx*vy = my*u
     flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
     flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
-    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // c = sqrt(gamma*p/rho)
+    for (j=0; j<udata.nchem; j++)
+      flux[i][5+j] = u*w1d[i][5+j];               // cj*u, j=0,...,nchem-1
+    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // csnd = sqrt(gamma*p/rho)
     alpha = max(alpha, abs(u)+csnd);
   }
 
@@ -743,17 +769,20 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 
   //   compute right-shifted Lax-Friedrichs flux over left portion of patch
   for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
+    for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j][i] + alpha*w1d[j][i]);
 
-  // compute projected flux
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
+  // compute projected flux (only project fluid fields; copy tracer fields over directly)
+  for (j=0; j<5; j++) {
+    for (i=0; i<5; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
+    for (i=0; i<udata.nchem; i++)
+      fproj[j][5+i] = fs[j][5+i];
+  }
 
   //   compute WENO signed fluxes
-  for (i=0; i<NVAR; i++) {
+  for (i=0; i<(NVAR); i++) {
     // smoothness indicators
     beta1 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
           + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
@@ -769,25 +798,28 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     f1 = cp[0][0]*fproj[2][i] + cp[0][1]*fproj[3][i] + cp[0][2]*fproj[4][i];
     f2 = cp[1][0]*fproj[1][i] + cp[1][1]*fproj[2][i] + cp[1][2]*fproj[3][i];
     f3 = cp[2][0]*fproj[0][i] + cp[2][1]*fproj[1][i] + cp[2][2]*fproj[2][i];
-    // resulting signed flux
-    fp[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
+    // resulting signed flux at face
+    ff[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
   // fm(x_{i+1/2}):
   
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
   for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
+    for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
 
-  // compute projected flux
-  for (j=0; j<5; j++)
-    for (i=0; i<NVAR; i++)
+  // compute projected flux (only project fluid fields; copy tracer fields over directly)
+  for (j=0; j<5; j++) {
+    for (i=0; i<5; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
+    for (i=0; i<udata.nchem; i++)
+      fproj[j][5+i] = fs[j][5+i];
+  }
 
   //   compute WENO signed fluxes
-  for (i=0; i<NVAR; i++) {
+  for (i=0; i<(NVAR); i++) {
     // smoothness indicators
     beta1 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
           + FOURTH*pow(RCONST(3.0)*fproj[2][i] - RCONST(4.0)*fproj[3][i] + fproj[4][i],2);
@@ -803,15 +835,16 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     f1 = cm[0][0]*fproj[2][i] + cm[0][1]*fproj[3][i] + cm[0][2]*fproj[4][i];
     f2 = cm[1][0]*fproj[1][i] + cm[1][1]*fproj[2][i] + cm[1][2]*fproj[3][i];
     f3 = cm[2][0]*fproj[0][i] + cm[2][1]*fproj[1][i] + cm[2][2]*fproj[2][i];
-    // resulting signed flux
-    fm[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
+    // resulting signed flux (add to ff)
+    ff[i] += (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
   // combine signed fluxes into output, converting back to conserved variables
-  for (i=0; i<NVAR; i++)
-    f_face[i] = RV[i][0]*(fm[0] + fp[0]) + RV[i][1]*(fm[1] + fp[1])
-              + RV[i][2]*(fm[2] + fp[2]) + RV[i][3]*(fm[3] + fp[3])
-              + RV[i][4]*(fm[4] + fp[4]);
+  for (i=0; i<5; i++)
+    f_face[i] = RV[i][0]*ff[0] + RV[i][1]*ff[1] + RV[i][2]*ff[2]
+              + RV[i][3]*ff[3] + RV[i][4]*ff[4];
+  for (i=0; i<udata.nchem; i++)
+    f_face[5+i] = ff[5+i];
 
   // convert fluxes to direction-independent version
   if (idir > 0) 

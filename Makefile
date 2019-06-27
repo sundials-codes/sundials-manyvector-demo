@@ -6,6 +6,16 @@
 #  For details, see the LICENSE file.
 ###################################################################
 #  ManyVector+MRIStep demonstration application Makefile
+#
+#  Note: any program that requires tracers/chemical species
+#  **must** specify the total number of variables per spatial
+#  location (NVAR) as a preprocessor directive.  This number
+#  must be no smaller than 5 (rho, mx, my, mz, et); e.g., to
+#  add two tracers per spatial location add the preprocessor
+#  directive  "-DNVAR=7".  To ensure that this value is
+#  consistent for an entire executable, it must be supplied to
+#  the compilation of all object files -- this is handled
+#  correctly in "compile_test.exe" below.
 ###################################################################
 
 # read Machine-specific Makefile (if applicable)
@@ -37,8 +47,9 @@ LIBS = ${SUNDLIBS} ${KLULIBS} -lm
 
 LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
 
-# common object files on which all executables depend
-COMMONSRC = euler3D.o io.o gopt.o
+# common source/object files on which all executables depend
+COMMONSRC = euler3D.cpp io.cpp gopt.c
+COMMONOBJ = euler3D.o io.o gopt.o
 
 # listing of all test routines
 TESTS = compile_test.exe \
@@ -63,31 +74,11 @@ VPATH = src
 # target to build all test executables
 all : ${TESTS}
 
-# build rules for specific tests
-linear_advection_x.exe : src/linear_advection.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-linear_advection_y.exe : src/linear_advection.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-linear_advection_z.exe : src/linear_advection.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-sod_x.exe : src/sod.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-sod_y.exe : src/sod.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-sod_z.exe : src/sod.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-hurricane_xy.exe : src/hurricane.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DTEST_XY ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-hurricane_yz.exe : src/hurricane.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DTEST_YZ ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-hurricane_zx.exe : src/hurricane.cpp ${COMMONSRC}
-	${CXX} ${CXXFLAGS} -DTEST_ZX ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
-
 # general build rules
 gopt.o : gopt.c gopt.h
 	${CXX} ${CXXFLAGS} -c $<
 
-%.exe : %.o ${COMMONSRC}
+%.exe : %.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 .cpp.o : include/euler3D.hpp
@@ -101,5 +92,41 @@ clean : outclean
 
 realclean : clean
 	\rm -rf *.exe *.dSYM *~
+
+
+# build rules for specific tests
+compile_test.exe : src/compile_test.cpp ${COMMONSRC}
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DNVAR=7 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
+
+linear_advection_x.exe : src/linear_advection.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+linear_advection_y.exe : src/linear_advection.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+linear_advection_z.exe : src/linear_advection.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+sod_x.exe : src/sod.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+sod_y.exe : src/sod.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+sod_z.exe : src/sod.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+hurricane_xy.exe : src/hurricane.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DTEST_XY ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+hurricane_yz.exe : src/hurricane.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DTEST_YZ ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+hurricane_zx.exe : src/hurricane.cpp ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DTEST_ZX ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+
 
 ####### End of Makefile #######
