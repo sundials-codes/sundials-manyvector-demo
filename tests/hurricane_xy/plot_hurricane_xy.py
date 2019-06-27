@@ -113,7 +113,7 @@ for tstep in range(nt):
     U = mx[:,:,nz//2,tstep]/rho[:,:,nz//2,tstep]
     Utrue = mxtrue/rhotrue
     V = my[:,:,nz//2,tstep]/rho[:,:,nz//2,tstep]
-    Vtrue = mztrue/rhotrue
+    Vtrue = mytrue/rhotrue
     speed = np.sqrt(U**2 + V**2)
     speedtrue = np.sqrt(Utrue**2 + Vtrue**2)
     
@@ -193,7 +193,7 @@ for tstep in range(nt):
     sp1d  = speed[:,ny//2]
     rhotrue1d = rhotrue[:,ny//2]
     mxtrue1d  = mxtrue[:,ny//2]
-    mytrue1d  = mztrue[:,ny//2]
+    mytrue1d  = mytrue[:,ny//2]
     sptrue1d  = speedtrue[:,ny//2]
 
     numfigs += 1
