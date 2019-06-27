@@ -201,8 +201,9 @@ public:
   int SetupDecomp()
   {
     // local variables
-    int retval, periods[3], coords[3], nbcoords[3];
-    int dims[] = {0, 0, 0};
+    int i, retval, truedims, periods[3], coords[3], nbcoords[3];
+    int dims_suggested[] = {0, 0, 0};
+    int dims[] = {1, 1, 1};
 
     // check that this has not been called before
     if (Erecv != NULL || Wrecv != NULL || Srecv != NULL ||
@@ -217,12 +218,28 @@ public:
     dy = (yr-yl)/ny;
     dz = (zr-zl)/nz;
 
+    // determine "true" problem dimensionality; since the minimum domain size in any
+    // given direction is 3, only parallelize dimensions with more than 3 unknowns
+    truedims = 0;
+    truedims += (nx > 3) ? 1 : 0;
+    truedims += (ny > 3) ? 1 : 0;
+    truedims += (nz > 3) ? 1 : 0;
+    
     // get suggested parallel decomposition
     retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     if (check_flag(&retval, "MPI_Comm_size (UserData::SetupDecomp)", 3)) return -1;
-    retval = MPI_Dims_create(nprocs, 3, dims);
+    retval = MPI_Dims_create(nprocs, truedims, dims_suggested);
     if (check_flag(&retval, "MPI_Dims_create (UserData::SetupDecomp)", 3)) return -1;
 
+    // adjust dims to match actual problem dimensions
+    i=0;
+    if (nx > 3) 
+      dims[0] = dims_suggested[i++];
+    if (ny > 3) 
+      dims[1] = dims_suggested[i++];
+    if (nz > 3) 
+      dims[2] = dims_suggested[i++];
+    
     // set up 3D Cartesian communicator
     if ((xlbc*xrbc == 0) && (xlbc+xrbc != 0)) {
       cerr << "SetupDecomp error: only one x-boundary is periodic\n";
