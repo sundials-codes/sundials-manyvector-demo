@@ -48,8 +48,8 @@ LIBS = ${SUNDLIBS} ${KLULIBS} -lm
 LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
 
 # common source/object files on which all executables depend
-COMMONSRC = euler3D.cpp io.cpp gopt.c
-COMMONOBJ = euler3D.o io.o gopt.o
+COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.c
+COMMONOBJ = euler3D.o utilities.o io.o gopt.o
 
 # listing of all test routines
 TESTS = compile_test.exe \
@@ -72,7 +72,7 @@ TESTS = compile_test.exe \
 VPATH = src
 
 # target to build all test executables
-all : ${TESTS}
+all : ${TESTS} buildclean
 
 # general build rules
 gopt.o : gopt.c gopt.h
@@ -84,14 +84,17 @@ gopt.o : gopt.c gopt.h
 .cpp.o : include/euler3D.hpp
 	${CXX} -c ${CXXFLAGS} ${OMPFLAGS} ${INCS} $< -o $@
 
+buildclean : 
+	\rm -rf *.o
+
 outclean :
 	\rm -rf diags*.txt output*.txt xslice*.png yslice*.png zslice*.png __pycache__
 
-clean : outclean
-	\rm -rf *.o *.orig
+clean : outclean buildclean
+	\rm -rf *.orig *~ 
 
 realclean : clean
-	\rm -rf *.exe *.dSYM *~
+	\rm -rf *.exe *.dSYM
 
 
 # build rules for specific tests

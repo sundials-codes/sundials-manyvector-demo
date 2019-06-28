@@ -9,6 +9,10 @@
  UserData class.
 ---------------------------------------------------------------*/
 
+// only include this file once (if included multiple times)
+#ifndef __EULER3D_HPP__
+#define __EULER3D_HPP__
+
 // Header files
 #include <stdio.h>
 #include <iostream>
@@ -43,6 +47,7 @@ using namespace std;
 // accessor macro between (v,i,j,k) location and 1D data array location
 #define BUFIDX(v,i,j,k,nx,ny,nz) ( (v) + (NVAR)*((i) + (nx)*((j) + (ny)*(k))) )
 
+
 // reused constants
 #define ZERO    RCONST(0.0)
 #define HALF    RCONST(0.5)
@@ -56,7 +61,7 @@ using namespace std;
 #define ELEVEN  RCONST(11.0)
 
 
-// Utility routine to check function return values
+// Utility routine to check function return values:
 int check_flag(const void *flagvalue, const string funcname, const int opt);
 
 
@@ -1179,4 +1184,11 @@ int output_solution(const N_Vector w, const int& newappend,
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
                realtype* f_face, const UserData& udata);
 
+//    Routine to compute the Euler ODE RHS function f(t,y).
+int fEuler(realtype t, N_Vector w, N_Vector wdot, void* user_data);
+
+//    CFL stable time step calculation routine
+int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data);
+  
+#endif
 //---- end of file ----
