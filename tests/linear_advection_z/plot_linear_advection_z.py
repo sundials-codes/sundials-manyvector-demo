@@ -23,7 +23,7 @@ else:
 
 
 # load solution data
-nx, ny, nz, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et = load_data()
+nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem = load_data()
 
 # set gas constant, problem setup constants
 gamma = 1.4

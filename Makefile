@@ -52,8 +52,10 @@ COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.c
 COMMONOBJ = euler3D.o utilities.o io.o gopt.o
 
 # listing of all test routines
-TESTS = compile_test.exe \
-        communication_test.exe \
+TESTS = compile_test_fluid.exe \
+        compile_test_tracers.exe \
+        communication_test_fluid.exe \
+        communication_test_tracers.exe \
         linear_advection_x.exe \
         linear_advection_y.exe \
         linear_advection_z.exe \
@@ -99,14 +101,24 @@ realclean : clean
 
 
 # build rules for specific tests
-compile_test.exe : compile_test.cpp ${COMMONSRC}
+compile_test_fluid.exe : compile_test.cpp ${COMMONSRC}
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
+
+compile_test_tracers.exe : compile_test.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=7 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-communication_test.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+communication_test_fluid.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
 	\rm -rf *.o
-	${CXX} ${CXXFLAGS} -DNVAR=12 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
+
+communication_test_tracers.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
 linear_advection_x.exe : linear_advection.cpp ${COMMONOBJ}

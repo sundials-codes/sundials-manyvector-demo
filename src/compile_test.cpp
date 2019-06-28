@@ -15,14 +15,8 @@
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
-  // verify that NVAR has been set up properly
-  if (NVAR != 7) {
-    cerr << "initial_conditions error: incorrect NVAR (check Makefile settings)";
-    return -1;
-  }
-  
   // iterate over subdomain, setting initial condition
-  long int i, j, k, idx;
+  long int v, i, j, k, idx;
   realtype xloc, yloc, zloc;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
@@ -34,6 +28,11 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  long int chemstripes[udata.nchem][2];
+  for (v=0; v<udata.nchem; v++) {
+    chemstripes[v][0] = v*udata.nx/udata.nchem;       // index lower bound for this stripe
+    chemstripes[v][1] = (v+1)*udata.nx/udata.nchem;   // index upper bound for this stripe
+  }
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
@@ -45,26 +44,28 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         rho[idx] = RCONST(4.0);
         mx[idx]  = RCONST(0.5);
-        my[idx]  = RCONST(0.2);
+        my[idx]  = RCONST(0.3);
         mz[idx]  = RCONST(0.1);
         et[idx]  = RCONST(2.0);
 
         // tracer initial conditions
-        realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
-        chem[0] = (xloc < HALF) ? ZERO : ONE;
-        chem[1] = (xloc < HALF) ? ONE : ZERO;
-
+        if (udata.nchem > 0) {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
+          for (v=0; v<udata.nchem; v++) {
+            chem[v] = ZERO;
+            if ((udata.is+i >= chemstripes[v][0]) && (udata.is+i < chemstripes[v][1]))
+              chem[v] = ONE;
+          }
+        }
       }
 
   return 0;
 }
 
-// External forcing terms
+// External forcing terms -- note that G was previously zeroed out,
+// so only nonzero terms need to be added
 int external_forces(const realtype& t, N_Vector G, const UserData& udata)
 {
-  // initialize all external forces to zero
-  N_VConst(ZERO, G);
-  
   // iterate over subdomain, applying nonzero external forces
   long int i, j, k, idx;
   realtype xloc, yloc, zloc;
@@ -97,7 +98,7 @@ int external_forces(const realtype& t, N_Vector G, const UserData& udata)
 // Diagnostics output for this test
 int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata)
 {
-  return(check_conservation(t, w, udata));
+  return(0);
 }
 
 //---- end of file ----

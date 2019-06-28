@@ -73,7 +73,7 @@ def analytical_solution(t,nx,ny):
 
 
 # load solution data
-nx, ny, nz, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et = load_data()
+nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem = load_data()
 
 # output general information to screen
 print('Generating plots for data set:')

@@ -11,6 +11,7 @@
 // Header files
 #include <euler3D.hpp>
 
+#define STSIZE 6  
 
 // Routine to compute the Euler ODE RHS function f(t,y).
 int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
@@ -56,8 +57,8 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   long int nxl = udata->nxl;
   long int nyl = udata->nyl;
   long int nzl = udata->nzl;
-  realtype w1d[6][NVAR];
-  long int v, i, j, k;
+  realtype w1d[STSIZE][NVAR];
+  long int v, i, j, k, idx;
 
   // compute face-centered fluxes over subdomain interior
   for (k=3; k<nzl-2; k++)
@@ -66,9 +67,8 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
         // return with failure on non-positive density, energy or pressure
         // (only check this first time)
-        retval = udata->legal_state(rho[IDX(i,j,k,nxl,nyl,nzl)], mx[IDX(i,j,k,nxl,nyl,nzl)],
-                                    my[ IDX(i,j,k,nxl,nyl,nzl)], mz[IDX(i,j,k,nxl,nyl,nzl)],
-                                    et[ IDX(i,j,k,nxl,nyl,nzl)]);
+        idx = IDX(i,j,k,nxl,nyl,nzl);
+        retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
         if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
 
         // pack 1D x-directional array of variable shortcuts
@@ -101,9 +101,8 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if ( (k>2) && (k<nzl-2) && (j>2) && (j<nyl-2) && (i>2) && (i<nxl-2) ) continue;
 
         // return with failure on non-positive density, energy or pressure
-        retval = udata->legal_state(rho[IDX(i,j,k,nxl,nyl,nzl)], mx[IDX(i,j,k,nxl,nyl,nzl)],
-                                    my[ IDX(i,j,k,nxl,nyl,nzl)], mz[IDX(i,j,k,nxl,nyl,nzl)],
-                                    et[ IDX(i,j,k,nxl,nyl,nzl)]);
+        idx = IDX(i,j,k,nxl,nyl,nzl);
+        retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
         if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
 
         // x-directional fluxes at "lower" face
@@ -142,52 +141,39 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<nzl; k++)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
-        rhodot[IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(0,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                                            - udata->xflux[BUFIDX(0,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                                          + ( udata->yflux[BUFIDX(0,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                                            - udata->yflux[BUFIDX(0,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                                          + ( udata->zflux[BUFIDX(0,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                                            - udata->zflux[BUFIDX(0,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mxdot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(1,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                                            - udata->xflux[BUFIDX(1,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                                          + ( udata->yflux[BUFIDX(1,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                                            - udata->yflux[BUFIDX(1,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                                          + ( udata->zflux[BUFIDX(1,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                                            - udata->zflux[BUFIDX(1,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mydot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(2,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                                            - udata->xflux[BUFIDX(2,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                                          + ( udata->yflux[BUFIDX(2,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                                            - udata->yflux[BUFIDX(2,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                                          + ( udata->zflux[BUFIDX(2,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                                            - udata->zflux[BUFIDX(2,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mzdot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(3,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                                            - udata->xflux[BUFIDX(3,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                                          + ( udata->yflux[BUFIDX(3,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                                            - udata->yflux[BUFIDX(3,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                                          + ( udata->zflux[BUFIDX(3,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                                            - udata->zflux[BUFIDX(3,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        etdot[ IDX(i,j,k,nxl,nyl,nzl)] -= ( ( udata->xflux[BUFIDX(4,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                                            - udata->xflux[BUFIDX(4,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                                          + ( udata->yflux[BUFIDX(4,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                                            - udata->yflux[BUFIDX(4,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                                          + ( udata->zflux[BUFIDX(4,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                                            - udata->zflux[BUFIDX(4,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        idx = IDX(i,j,k,nxl,nyl,nzl);
+        rhodot[idx] -= ( ( udata->xflux[BUFIDX(0,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(0,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(0,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(0,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(0,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(0,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mxdot[idx]  -= ( ( udata->xflux[BUFIDX(1,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(1,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(1,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(1,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(1,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(1,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mydot[idx]  -= ( ( udata->xflux[BUFIDX(2,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(2,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(2,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(2,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(2,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(2,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mzdot[idx]  -= ( ( udata->xflux[BUFIDX(3,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(3,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(3,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(3,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(3,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(3,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        etdot[idx]  -= ( ( udata->xflux[BUFIDX(4,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(4,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(4,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(4,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(4,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(4,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
 
-        /*
-        if (udata->nchem > 0) {
-          chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,k,nxl,nyl,nzl));
-          if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
-          for (v=0; v<udata->nchem; v++)
-            chemdot[v] -= ( ( udata->xflux[BUFIDX(5+v,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                            - udata->xflux[BUFIDX(5+v,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                          + ( udata->yflux[BUFIDX(5+v,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                            - udata->yflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                          + ( udata->zflux[BUFIDX(5+v,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                            - udata->zflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
         }
-        */
-      }
-
 
   // return with success
   return 0;
@@ -196,7 +182,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
 // given a 6-point stencil of solution values,
 //   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
-// and the flux direction idir, compute the face-centered flux (dw)
+// and the flux direction idir, compute the face-centered flux (f_flux)
 // at the center of the stencil, x_{j+1/2}.
 //
 // The input "idir" handles the directionality for the 1D calculation
@@ -215,7 +201,8 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   int i, j;
   realtype rhosqrL, rhosqrR, rhosqrbar, u, v, w, H, qsq, csnd, cinv, cisq, gamm, alpha,
     beta1, beta2, beta3, w1, w2, w3, f1, f2, f3;
-  realtype RV[5][5], LV[5][5], p[6], flux[6][NVAR], fproj[5][NVAR], fs[5][NVAR], ff[NVAR];
+  realtype RV[5][5], LV[5][5], p[STSIZE], flux[STSIZE][NVAR],
+    fproj[STSIZE-1][NVAR], fs[STSIZE-1][NVAR], ff[NVAR];
   const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
   const realtype dm[3] = {RCONST(0.1), RCONST(0.6), RCONST(0.3)};
   const realtype cm[3][3] = {{RCONST(1.833333333333333333333333333333333333333),    // 11/6
@@ -241,10 +228,12 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 
   // convert state to direction-independent version
   if (idir > 0)
-    for (i=0; i<6; i++) swap(w1d[i][1], w1d[i][1+idir]);
+    for (i=0; i<(STSIZE); i++)
+      swap(w1d[i][1], w1d[i][1+idir]);
 
   // compute pressures over stencil
-  for (i=0; i<6; i++)  p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
+  for (i=0; i<(STSIZE); i++)
+    p[i] = udata.eos(w1d[i][0], w1d[i][1], w1d[i][2], w1d[i][3], w1d[i][4]);
 
   // compute Roe-average state at face:
   //   wbar = [sqrt(rho), sqrt(rho)*vx, sqrt(rho)*vy, sqrt(rho)*vz, (e+p)/sqrt(rho)]
@@ -324,33 +313,33 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   
   // compute fluxes and max wave speed over stencil
   alpha = ZERO;
-  for (i=0; i<6; i++) {
-    u = w1d[i][1]/w1d[i][0];
-    flux[i][0] = w1d[i][1];                       // mx
-    flux[i][1] = u*w1d[i][1] + p[i];              // rho*vx*vx + p = mx*u + p
-    flux[i][2] = u*w1d[i][2];                     // rho*vx*vy = my*u
-    flux[i][3] = u*w1d[i][3];                     // rho*vx*vz = mz*u
-    flux[i][4] = u*(w1d[i][4] + p[i]);            // vx*(et + p) = u*(et + p)
-    for (j=0; j<udata.nchem; j++)
-      flux[i][5+j] = u*w1d[i][5+j];               // cj*u, j=0,...,nchem-1
-    csnd = SUNRsqrt(udata.gamma*p[i]/w1d[i][0]);  // csnd = sqrt(gamma*p/rho)
+  for (j=0; j<(STSIZE); j++) {
+    u = w1d[j][1]/w1d[j][0];                      // u = vx = mx/rho
+    flux[j][0] = w1d[j][1];                       // f_rho = rho*u = mx
+    flux[j][1] = u*w1d[j][1] + p[i];              // f_mx = rho*u*u + p = mx*u + p
+    flux[j][2] = u*w1d[j][2];                     // f_my = rho*v*u = my*u
+    flux[j][3] = u*w1d[j][3];                     // f_mz = rho*w*u = mz*u
+    flux[j][4] = u*(w1d[j][4] + p[i]);            // f_et = u*(et + p)
+    for (i=0; i<udata.nchem; i++)
+      flux[j][5+i] = u*w1d[j][5+i];               // f_cj = cj*u, j=0,...,nchem-1
+    csnd = SUNRsqrt(udata.gamma*p[j]/w1d[j][0]);  // csnd = sqrt(gamma*p/rho)
     alpha = max(alpha, abs(u)+csnd);
   }
 
+  
   // fp(x_{i+1/2}):
 
   //   compute right-shifted Lax-Friedrichs flux over left portion of patch
-  for (j=0; j<5; j++)
+  for (j=0; j<(STSIZE-1); j++) 
     for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j][i] + alpha*w1d[j][i]);
-
-  // compute projected flux (only project fluid fields; copy tracer fields over directly)
-  for (j=0; j<5; j++) {
+  
+  // compute projected flux for fluid fields (copy tracer fluxes)
+  for (j=0; j<(STSIZE-1); j++) {
     for (i=0; i<5; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
-    for (i=0; i<udata.nchem; i++)
-      fproj[j][5+i] = fs[j][5+i];
+    for (i=0; i<udata.nchem; i++)  fproj[j][5+i] = fs[j][5+i];
   }
 
   //   compute WENO signed fluxes
@@ -377,17 +366,16 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   // fm(x_{i+1/2}):
   
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
-  for (j=0; j<5; j++)
+  for (j=0; j<(STSIZE-1); j++) 
     for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
 
-  // compute projected flux (only project fluid fields; copy tracer fields over directly)
-  for (j=0; j<5; j++) {
+  // compute projected flux for fluid fields (copy tracer fluxes)
+  for (j=0; j<(STSIZE-1); j++) {
     for (i=0; i<5; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
                   + LV[i][3]*fs[j][3] + LV[i][4]*fs[j][4];
-    for (i=0; i<udata.nchem; i++)
-      fproj[j][5+i] = fs[j][5+i];
+    for (i=0; i<udata.nchem; i++)  fproj[j][5+i] = fs[j][5+i];
   }
 
   //   compute WENO signed fluxes
@@ -415,8 +403,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   for (i=0; i<5; i++)
     f_face[i] = RV[i][0]*ff[0] + RV[i][1]*ff[1] + RV[i][2]*ff[2]
               + RV[i][3]*ff[3] + RV[i][4]*ff[4];
-  for (i=0; i<udata.nchem; i++)
-    f_face[5+i] = ff[5+i];
+  for (i=0; i<udata.nchem; i++)  f_face[5+i] = ff[5+i];
 
   // convert fluxes to direction-independent version
   if (idir > 0) 

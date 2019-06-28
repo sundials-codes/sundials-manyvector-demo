@@ -22,6 +22,7 @@
 #include <math.h>
 #include <arkode/arkode_arkstep.h>
 #include <nvector/nvector_mpimanyvector.h>
+#include <nvector/nvector_manyvector.h>
 #include <nvector/nvector_parallel.h>
 #include <nvector/nvector_serial.h>
 #include <sundials/sundials_types.h>
@@ -294,6 +295,20 @@ public:
     npy = dims[1];
     npz = dims[2];
 
+    // ensure that each dimension has a local extent at least 3
+    if (nxl < 3) {
+      cerr << "SetupDecomp error: task " << myid << " has nxl = " << nxl << " < 3\n";
+      return(-1);
+    }
+    if (nyl < 3) {
+      cerr << "SetupDecomp error: task " << myid << " has nyl = " << nyl << " < 3\n";
+      return(-1);
+    }
+    if (nzl < 3) {
+      cerr << "SetupDecomp error: task " << myid << " has nzl = " << nzl << " < 3\n";
+      return(-1);
+    }
+    
     // allocate temporary arrays for storing directional fluxes
     xflux = new realtype[(NVAR)*(nxl+1)*nyl*nzl];
     yflux = new realtype[(NVAR)*nxl*(nyl+1)*nzl];
@@ -1007,6 +1022,7 @@ public:
           if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_x_bdry)", 0)) throw std::exception();
           for (int v=0; v<nchem; v++)   w1d[l][5+v] = chem[v];
         }
+        for (int v=0; v<nchem; v++)  w1d[l][5+v] = ZERO;
       }
       for (int l=0; l<3; l++) {
         if (i>(nxl-l-1)) {
@@ -1050,18 +1066,18 @@ public:
         if (j<(3-l)) {
           for (int v=0; v<nchem; v++)  w1d[l][5+v] = Srecv[BUFIDX(5+v,j+l,i,k,3,nxl,nzl)];
         } else {
-          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j+l,k,nxl,nyl,nzl));
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j-3+l,k,nxl,nyl,nzl));
           if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_y_bdry)", 0)) throw std::exception();
           for (int v=0; v<nchem; v++)  w1d[l][5+v] = chem[v];
         }
       }
       for (int l=0; l<3; l++) {
         if (j>(nyl-l-1)) {
-          for (int v=0; v<nchem; v++)  w1d[l+3][4] = Nrecv[BUFIDX(4,j-nyl+l,i,k,3,nxl,nzl)];
+          for (int v=0; v<nchem; v++)  w1d[l+3][5+v] = Nrecv[BUFIDX(5+v,j-nyl+l,i,k,3,nxl,nzl)];
         } else {
           realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j+l,k,nxl,nyl,nzl));
           if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_y_bdry)", 0)) throw std::exception();
-          for (int v=0; v<nchem; v++)  w1d[l+3][4] = chem[v];
+          for (int v=0; v<nchem; v++)  w1d[l+3][5+v] = chem[v];
         }
       }
     }
@@ -1175,6 +1191,9 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 //    Print solution statistics
 int print_stats(const realtype& t, const N_Vector w,
                 const int& firstlast, const UserData& udata);
+
+//    Output information on domain and this subdomain
+int output_subdomain_information(const UserData& udata, const realtype& dTout);
 
 //    Output current solution
 int output_solution(const N_Vector w, const int& newappend,

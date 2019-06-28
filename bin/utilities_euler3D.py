@@ -16,7 +16,7 @@ import numpy as np
 def get_MPI_tasks():
     nprocs=1
     for i in range(10000):
-        sname = 'output-euler3D_subdomain.' + repr(i).zfill(7) + '.txt'
+        sname = 'output-subdomain.' + repr(i).zfill(7) + '.txt'
         try:
             f = open(sname,'r')
             f.close()
@@ -29,7 +29,7 @@ def get_MPI_tasks():
 def load_subdomain_info(nprocs):
     subdomains = np.zeros((nprocs,6), dtype=np.int)
     domain = np.zeros((4,2), dtype=np.float)
-    sname = 'output-euler3D_subdomain.0000000.txt'
+    sname = 'output-subdomain.0000000.txt'
     subd = np.loadtxt(sname)
     nx = np.int(subd[0])
     ny = np.int(subd[1])
@@ -42,7 +42,7 @@ def load_subdomain_info(nprocs):
     domain[3,:] = subd[16:18]    # [t0,tf]
     dTout = np.float(subd[18])
     for i in range(1,nprocs):
-        sname = 'output-euler3D_subdomain.' + repr(i).zfill(7) + '.txt'
+        sname = 'output-subdomain.' + repr(i).zfill(7) + '.txt'
         subd = np.loadtxt(sname)
         if ((subd[0] != nx) or (subd[1] != ny) or (subd[2] != nz)):
             sys.exit("error: subdomain files incompatible (clean up and re-run test)")
@@ -57,15 +57,30 @@ def load_data():
     nx, ny, nz, nchem, subdomains, domain, dTout = load_subdomain_info(nprocs)
     
     # load first processor's data, and determine total number of time steps
-    rho_data = np.loadtxt('output-euler3D_rho.0000000.txt', dtype=np.double)
-    mx_data  = np.loadtxt('output-euler3D_mx.0000000.txt',  dtype=np.double)
-    my_data  = np.loadtxt('output-euler3D_my.0000000.txt',  dtype=np.double)
-    mz_data  = np.loadtxt('output-euler3D_mz.0000000.txt',  dtype=np.double)
-    et_data  = np.loadtxt('output-euler3D_et.0000000.txt',  dtype=np.double)
+    rho_data = np.loadtxt('output-rho.0000000.txt', dtype=np.double)
+    mx_data  = np.loadtxt('output-mx.0000000.txt',  dtype=np.double)
+    my_data  = np.loadtxt('output-my.0000000.txt',  dtype=np.double)
+    mz_data  = np.loadtxt('output-mz.0000000.txt',  dtype=np.double)
+    et_data  = np.loadtxt('output-et.0000000.txt',  dtype=np.double)
+    chem_data = []
+    if (nchem < 11):
+        cwidth = 1
+    elif (nchem < 101):
+        cwidth = 2
+    elif (nchem < 1001):
+        cwidth = 3
+    elif (nchem < 10001):
+        cwidth = 4
+    for ichem in range(nchem):
+        fname = 'output-c' + repr(ichem).zfill(cwidth) + '.0000000.txt'
+        chem_data.append(np.loadtxt(fname,  dtype=np.double))
     nt = np.shape(rho_data)[0]
     if ( (np.shape(mx_data)[0] != nt) or (np.shape(my_data)[0] != nt) or
          (np.shape(mz_data)[0] != nt) or (np.shape(et_data)[0] != nt) ):
         sys.exit('error: an output for subdomain 0 has an incorrect number of time steps')
+    for ichem in range(nchem):
+        if (np.shape(chem_data[ichem])[0] != nt):
+            sys.exit('error: an output for subdomain 0 has an incorrect number of time steps')
 
     # create space-time mesh arrays
     xgrid = np.linspace(domain[0,0], domain[0,1], nx)
@@ -76,58 +91,72 @@ def load_data():
         tgrid[it] = it*dTout
     
     # create empty array for all solution data
-    rho = np.zeros((nx,ny,nz,nt), order='F')
-    mx  = np.zeros((nx,ny,nz,nt), order='F')
-    my  = np.zeros((nx,ny,nz,nt), order='F')
-    mz  = np.zeros((nx,ny,nz,nt), order='F')
-    et  = np.zeros((nx,ny,nz,nt), order='F')
-
-    # insert first processor's data into results array
-    istart = subdomains[0,0]
-    iend = subdomains[0,1]
-    jstart = subdomains[0,2]
-    jend = subdomains[0,3]
-    kstart = subdomains[0,4]
-    kend = subdomains[0,5]
-    nxl = iend-istart+1
-    nyl = jend-jstart+1
-    nzl = kend-kstart+1
-    for i in range(nt):
-        rho[istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-        mx[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape( mx_data[i,:], (nxl,nyl,nzl), order='F')
-        my[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape( my_data[i,:], (nxl,nyl,nzl), order='F')
-        mz[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape( mz_data[i,:], (nxl,nyl,nzl), order='F')
-        et[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape( et_data[i,:], (nxl,nyl,nzl), order='F')
+    rho  = np.zeros((nx,ny,nz,nt), order='F')
+    mx   = np.zeros((nx,ny,nz,nt), order='F')
+    my   = np.zeros((nx,ny,nz,nt), order='F')
+    mz   = np.zeros((nx,ny,nz,nt), order='F')
+    et   = np.zeros((nx,ny,nz,nt), order='F')
+    chem = np.zeros((nx,ny,nz,nchem,nt), order='F')
     
+    # insert first processor's data into results array
+    ist = subdomains[0,0]
+    ind = subdomains[0,1]
+    jst = subdomains[0,2]
+    jnd = subdomains[0,3]
+    kst = subdomains[0,4]
+    knd = subdomains[0,5]
+    nxl = ind-ist+1
+    nyl = jnd-jst+1
+    nzl = knd-kst+1
+    for i in range(nt):
+        rho[ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
+        mx[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mx_data[i,:], (nxl,nyl,nzl), order='F')
+        my[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( my_data[i,:], (nxl,nyl,nzl), order='F')
+        mz[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mz_data[i,:], (nxl,nyl,nzl), order='F')
+        et[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( et_data[i,:], (nxl,nyl,nzl), order='F')
+        for ichem in range(nchem):
+            chem[ist:ind+1,jst:jnd+1,kst:knd+1,ichem,i] = np.reshape(
+                chem_data[ichem][i,:], (nxl,nyl,nzl), order='F')
+        
     # iterate over remaining data files, inserting into output
     if (nprocs > 1):
         for isub in range(1,nprocs):
-            rho_data = np.loadtxt('output-euler3D_rho.' + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            mx_data  = np.loadtxt('output-euler3D_mx.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            my_data  = np.loadtxt('output-euler3D_my.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            mz_data  = np.loadtxt('output-euler3D_mz.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            et_data  = np.loadtxt('output-euler3D_et.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
+            rho_data = np.loadtxt('output-rho.' + repr(isub).zfill(7) + '.txt', dtype=np.double)
+            mx_data  = np.loadtxt('output-mx.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
+            my_data  = np.loadtxt('output-my.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
+            mz_data  = np.loadtxt('output-mz.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
+            et_data  = np.loadtxt('output-et.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
+            for ichem in range(nchem):
+                fname = 'output-c' + repr(ichem).zfill(cwidth) + '.' + repr(isub).zfill(7) + '.txt'
+                chem_data[ichem] = np.loadtxt(fname,  dtype=np.double)
             # check that files have correct number of time steps
             if( (np.shape(rho_data)[0] != nt) or (np.shape(mx_data)[0] != nt) or (np.shape(my_data)[0] != nt) or
                 (np.shape(mz_data)[0] != nt) or (np.shape(et_data)[0] != nt) ):
                 sys.exit('error: an output for subdomain ' + repr(isub) + ' has an incorrect number of time steps')
-            istart = subdomains[isub,0]
-            iend = subdomains[isub,1]
-            jstart = subdomains[isub,2]
-            jend = subdomains[isub,3]
-            kstart = subdomains[isub,4]
-            kend = subdomains[isub,5]
-            nxl = iend-istart+1
-            nyl = jend-jstart+1
-            nzl = kend-kstart+1
-            for i in range(nt):
-                rho[istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-                mx[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(mx_data[i,:], (nxl,nyl,nzl), order='F')
-                my[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(my_data[i,:], (nxl,nyl,nzl), order='F')
-                mz[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(mz_data[i,:], (nxl,nyl,nzl), order='F')
-                et[ istart:iend+1,jstart:jend+1,kstart:kend+1,i] = np.reshape(et_data[i,:], (nxl,nyl,nzl), order='F')
+            for ichem in range(nchem):
+                if (np.shape(chem_data[ichem])[0] != nt):
+                    sys.exit('error: an output for subdomain ' + repr(isub) + ' has an incorrect number of time steps')
 
-    return [nx, ny, nz, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et]
+            ist = subdomains[isub,0]
+            ind = subdomains[isub,1]
+            jst = subdomains[isub,2]
+            jnd = subdomains[isub,3]
+            kst = subdomains[isub,4]
+            knd = subdomains[isub,5]
+            nxl = ind-ist+1
+            nyl = jnd-jst+1
+            nzl = knd-kst+1
+            for i in range(nt):
+                rho[ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
+                mx[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mx_data[i,:], (nxl,nyl,nzl), order='F')
+                my[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( my_data[i,:], (nxl,nyl,nzl), order='F')
+                mz[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mz_data[i,:], (nxl,nyl,nzl), order='F')
+                et[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( et_data[i,:], (nxl,nyl,nzl), order='F')
+                for ichem in range(nchem):
+                    chem[ist:ind+1,jst:jnd+1,kst:knd+1,ichem,i] = np.reshape(
+                        chem_data[ichem][i,:], (nxl,nyl,nzl), order='F')
+
+    return [nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem]
 
 
 

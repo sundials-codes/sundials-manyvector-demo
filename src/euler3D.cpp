@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // Initial problem output
+  // Output problem setup information
   bool outproc = (udata.myid == 0);
   if (outproc) {
     cout << "\n3D compressible inviscid Euler test problem:\n";
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
 
   // initialize the integrator memory  
   arkode_mem = ARKStepCreate(fEuler, NULL, udata.t0, w);
-  if (check_flag(arkode_mem, "ARKStepCreate (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
   
   // setup the ARKStep integrator based on inputs
 
@@ -203,36 +203,37 @@ int main(int argc, char* argv[]) {
     retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
     if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  
-  double iostart = MPI_Wtime();
-  // Each processor outputs domain/subdomain information
-  char outname[100];
-  sprintf(outname, "output-euler3D_subdomain.%07i.txt", udata.myid);
-  FILE *UFID = fopen(outname,"w");
-  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %i  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
-	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie, udata.js, udata.je, 
-          udata.ks, udata.ke, udata.nchem, udata.xl, udata.xr, udata.yl, 
-          udata.yr, udata.zl, udata.zr, udata.t0, udata.tf, dTout);
-  fclose(UFID);
 
-  // Output initial conditions to disk
+  // Initial batch of outputs
+  double iostart = MPI_Wtime();
+  //    Output domain/subdomain information
+  retval = output_subdomain_information(udata, dTout);
+  if (check_flag(&retval, "output_subdomain_information (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    Output initial conditions to disk
   retval = output_solution(w, 1, udata);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // output diagnostic information (if applicable)
+  //    Optionally output total mass/energy
+  if (udata.showstats) {
+    retval = check_conservation(udata.t0, w, udata);
+    if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+  
+  //    Output problem-specific diagnostic information
   retval = output_diagnostics(udata.t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   tinout += MPI_Wtime() - iostart;
-
-  // compute setup time
-  double tsetup = MPI_Wtime() - tstart;
-  tstart = MPI_Wtime();
 
   // If (dense_order == -1), use tstop mode
   if (opts.dense_order == -1)
     idense = 0;
   else   // otherwise tell integrator to use dense output
     idense = 1;
+
+  // compute overall setup time
+  double tsetup = MPI_Wtime() - tstart;
+  tstart = MPI_Wtime();
 
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
@@ -306,6 +307,12 @@ int main(int argc, char* argv[]) {
     cout << "   Total simulation time = " << tsimul << "\n";
   }
 
+  // Output mass/energy conservation error
+  if (udata.showstats) {
+    retval = check_conservation(t, w, udata);
+    if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+  
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution vectors
   for (i=0; i<Nsubvecs; i++)

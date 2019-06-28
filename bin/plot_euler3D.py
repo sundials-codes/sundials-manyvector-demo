@@ -10,7 +10,6 @@
 
 # imports
 import numpy as np
-from pylab import *
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 import matplotlib.pyplot as plt
@@ -42,14 +41,15 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
         yslice = False
     
     # load solution data
-    nx, ny, nz, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et = load_data()
+    nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem = load_data()
 
     # output general information to screen
     print('Generating plots for data set:')
-    print('  nx: ', nx)
-    print('  ny: ', ny)
-    print('  nz: ', nz)
-    print('  nt: ', nt)
+    print('  nx:    ', nx)
+    print('  ny:    ', ny)
+    print('  nz:    ', nz)
+    print('  nchem: ', nchem)
+    print('  nt:    ', nt)
     if (xslice):
         print('  x-directional slice plots enabled')
     if (yslice):
@@ -73,14 +73,30 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
     minmaxet  = [0.9*et.min(), 1.1*et.max()]
     if (et.min() == et.max()):
         minmaxet = [et.min()-0.1, et.max()+0.1]
+    minmaxchem = np.zeros((nchem,2), dtype=float)
+    for ichem in range(nchem):
+        minmaxchem[ichem]  = [0.9*chem[:,:,:,ichem,:].min(), 1.1*chem[:,:,:,ichem,:].max()]
+        if (minmaxchem[ichem,0] == minmaxchem[ichem,1]):
+            minmaxchem[ichem]  = [0.9*minmaxchem[ichem,0], 1.1*minmaxchem[ichem,1]]
 
+    # determine character widths for chemistry field names
+    if (nchem < 11):
+        cwidth = 1
+    elif (nchem < 101):
+        cwidth = 2
+    elif (nchem < 1001):
+        cwidth = 3
+    elif (nchem < 10001):
+        cwidth = 4
+            
     # generate 'slice' plots of solution
     for tstep in range(nt):
-
+        numfigs = 0
+        
         print('time step', tstep+1, 'out of', nt)
             
         # set string constants for current time, mesh sizes
-        tstr  = repr(tgrid[tstep])
+        tstr  = "%.4f" %(tgrid[tstep])
         nxstr = repr(nx)
         nystr = repr(ny)
         nzstr = repr(nz)
@@ -88,202 +104,242 @@ def plot_slices(elevation=15, angle=20, slices='all', showplots=False):
         # plot x-slices
         if (xslice):
                 
-            rhoname = 'xslice-euler3D_rho.' + repr(tstep).zfill(4) + '.png'
-            mxname  = 'xslice-euler3D_mx.'  + repr(tstep).zfill(4) + '.png'
-            myname  = 'xslice-euler3D_my.'  + repr(tstep).zfill(4) + '.png'
-            mzname  = 'xslice-euler3D_mz.'  + repr(tstep).zfill(4) + '.png'
-            etname  = 'xslice-euler3D_et.'  + repr(tstep).zfill(4) + '.png'
-                
+            rhoname = 'xslice-rho.' + repr(tstep).zfill(4) + '.png'
+            mxname  = 'xslice-mx.'  + repr(tstep).zfill(4) + '.png'
+            myname  = 'xslice-my.'  + repr(tstep).zfill(4) + '.png'
+            mzname  = 'xslice-mz.'  + repr(tstep).zfill(4) + '.png'
+            etname  = 'xslice-et.'  + repr(tstep).zfill(4) + '.png'
+            chemname = [];
+            for ichem in range(nchem):
+                chemname.append('xslice-c' + repr(ichem).zfill(cwidth) +'.'  + repr(tstep).zfill(4) + '.png')
+
             # set y and z meshgrid objects
             Z,Y = np.meshgrid(zgrid,ygrid)
                 
             # plot slices of current solution as surfaces, and save to disk
-            fig = plt.figure(1)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, Y, rho[nx//2,:,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
             ax.view_init(elevation,angle);
-            title(r'$\rho(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-            savefig(rhoname)
+            plt.title(r'$\rho(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+            plt.savefig(rhoname)
             
-            fig = plt.figure(2)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, Y, mx[nx//2,:,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxmx[0], minmaxmx[1]))
             ax.view_init(elevation,angle);
-            title(r'$m_x(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-            savefig(mxname)
+            plt.title(r'$m_x(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+            plt.savefig(mxname)
             
-            fig = plt.figure(3)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, Y, my[nx//2,:,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxmy[0], minmaxmy[1]))
             ax.view_init(elevation,angle);
-            title(r'$m_y(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-            savefig(myname)
+            plt.title(r'$m_y(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+            plt.savefig(myname)
             
-            fig = plt.figure(4)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, Y, mz[nx//2,:,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxmz[0], minmaxmz[1]))
             ax.view_init(elevation,angle);
-            title(r'$m_z(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-            savefig(mzname)
+            plt.title(r'$m_z(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+            plt.savefig(mzname)
             
-            fig = plt.figure(5)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, Y, et[nx//2,:,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('y'); ax.set_zlim((minmaxet[0], minmaxet[1]))
             ax.view_init(elevation,angle);
-            title(r'$e_t(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
-            savefig(etname)
-            
-            if (showplots):
-                plt.show()
-            plt.figure(1), plt.close()
-            plt.figure(2), plt.close()
-            plt.figure(3), plt.close()
-            plt.figure(4), plt.close()
-            plt.figure(5), plt.close()
-            
+            plt.title(r'$e_t(y,z)$ slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+            plt.savefig(etname)
 
+            for ichem in range(nchem):
+                numfigs += 1
+                fig = plt.figure(numfigs)
+                ax = fig.add_subplot(111, projection='3d')
+                ax.plot_surface(Z, Y, chem[nx//2,:,:,ichem,tstep], rstride=1, cstride=1, 
+                                cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
+                ax.set_xlabel('z'); ax.set_ylabel('y')
+                ax.set_zlim((minmaxchem[ichem,0], minmaxchem[ichem,1]))
+                ax.view_init(elevation,angle);
+                plt.title(r'c' + repr(ichem) + '(y,z) slice at output ' + tstr + ', mesh = ' + nystr + 'x' + nzstr)
+                plt.savefig(chemname[ichem])
+            
         # plot y-slices
         if (yslice):
                 
-            rhoname = 'yslice-euler3D_rho.' + repr(tstep).zfill(4) + '.png'
-            mxname  = 'yslice-euler3D_mx.'  + repr(tstep).zfill(4) + '.png'
-            myname  = 'yslice-euler3D_my.'  + repr(tstep).zfill(4) + '.png'
-            mzname  = 'yslice-euler3D_mz.'  + repr(tstep).zfill(4) + '.png'
-            etname  = 'yslice-euler3D_et.'  + repr(tstep).zfill(4) + '.png'
+            rhoname = 'yslice-rho.' + repr(tstep).zfill(4) + '.png'
+            mxname  = 'yslice-mx.'  + repr(tstep).zfill(4) + '.png'
+            myname  = 'yslice-my.'  + repr(tstep).zfill(4) + '.png'
+            mzname  = 'yslice-mz.'  + repr(tstep).zfill(4) + '.png'
+            etname  = 'yslice-et.'  + repr(tstep).zfill(4) + '.png'
+            chemname = [];
+            for ichem in range(nchem):
+                chemname.append('yslice-c' + repr(ichem).zfill(cwidth) +'.'  + repr(tstep).zfill(4) + '.png')
             
             # set x and z meshgrid objects
             Z,X = np.meshgrid(zgrid,xgrid)
                 
             # plot slices of current solution as surfaces, and save to disk
-            fig = plt.figure(1)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, X, rho[:,ny//2,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('x'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
             ax.view_init(elevation,270+angle);
-            title(r'$\rho(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
-            savefig(rhoname)
+            plt.title(r'$\rho(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
+            plt.savefig(rhoname)
             
-            fig = plt.figure(2)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, X, mx[:,ny//2,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('x'); ax.set_zlim((minmaxmx[0], minmaxmx[1]))
             ax.view_init(elevation,270+angle);
-            title(r'$m_x(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
-            savefig(mxname)
+            plt.title(r'$m_x(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
+            plt.savefig(mxname)
             
-            fig = plt.figure(3)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, X, my[:,ny//2,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('x'); ax.set_zlim((minmaxmy[0], minmaxmy[1]))
             ax.view_init(elevation,270+angle);
-            title(r'$m_y(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
-            savefig(myname)
+            plt.title(r'$m_y(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
+            plt.savefig(myname)
             
-            fig = plt.figure(4)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, X, mz[:,ny//2,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('x'); ax.set_zlim((minmaxmz[0], minmaxmz[1]))
             ax.view_init(elevation,270+angle);
-            title(r'$m_z(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
-            savefig(mzname)
+            plt.title(r'$m_z(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
+            plt.savefig(mzname)
             
-            fig = plt.figure(5)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Z, X, et[:,ny//2,:,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('z'); ax.set_ylabel('x'); ax.set_zlim((minmaxet[0], minmaxet[1]))
             ax.view_init(elevation,270+angle);
-            title(r'$e_t(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
-            savefig(etname)
-            
-            if (showplots):
-                plt.show()
-            plt.figure(1), plt.close()
-            plt.figure(2), plt.close()
-            plt.figure(3), plt.close()
-            plt.figure(4), plt.close()
-            plt.figure(5), plt.close()
+            plt.title(r'$e_t(x,z)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
+            plt.savefig(etname)
+
+            for ichem in range(nchem):
+                numfigs += 1
+                fig = plt.figure(numfigs)
+                ax = fig.add_subplot(111, projection='3d')
+                ax.plot_surface(Z, X, chem[:,ny//2,:,ichem,tstep], rstride=1, cstride=1, 
+                                cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
+                ax.set_xlabel('z'); ax.set_ylabel('x')
+                ax.set_zlim((minmaxchem[ichem,0], minmaxchem[ichem,1]))
+                ax.view_init(elevation,angle);
+                plt.title(r'c' + repr(ichem) + '(x,z) slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nzstr)
+                plt.savefig(chemname[ichem])
             
             
         # plot z-slices
         if (zslice):
-            rhoname = 'zslice-euler3D_rho.' + repr(tstep).zfill(4) + '.png'
-            mxname  = 'zslice-euler3D_mx.'  + repr(tstep).zfill(4) + '.png'
-            myname  = 'zslice-euler3D_my.'  + repr(tstep).zfill(4) + '.png'
-            mzname  = 'zslice-euler3D_mz.'  + repr(tstep).zfill(4) + '.png'
-            etname  = 'zslice-euler3D_et.'  + repr(tstep).zfill(4) + '.png'
+            rhoname = 'zslice-rho.' + repr(tstep).zfill(4) + '.png'
+            mxname  = 'zslice-mx.'  + repr(tstep).zfill(4) + '.png'
+            myname  = 'zslice-my.'  + repr(tstep).zfill(4) + '.png'
+            mzname  = 'zslice-mz.'  + repr(tstep).zfill(4) + '.png'
+            etname  = 'zslice-et.'  + repr(tstep).zfill(4) + '.png'
+            chemname = [];
+            for ichem in range(nchem):
+                chemname.append('zslice-c' + repr(ichem).zfill(cwidth) +'.'  + repr(tstep).zfill(4) + '.png')
                 
             # set x and z meshgrid objects
             Y,X = np.meshgrid(ygrid,xgrid)
 
             # plot slices of current solution as surfaces, and save to disk
-            fig = plt.figure(1)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Y, X, rho[:,:,nz//2,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxrho[0], minmaxrho[1]))
             ax.view_init(elevation,angle);
-            title(r'$\rho(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-            savefig(rhoname)
+            plt.title(r'$\rho(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+            plt.savefig(rhoname)
             
-            fig = plt.figure(2)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Y, X, mx[:,:,nz//2,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxmx[0], minmaxmx[1]))
             ax.view_init(elevation,angle);
-            title(r'$m_x(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-            savefig(mxname)
+            plt.title(r'$m_x(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+            plt.savefig(mxname)
             
-            fig = plt.figure(3)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Y, X, my[:,:,nz//2,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxmy[0], minmaxmy[1]))
             ax.view_init(elevation,angle);
-            title(r'$m_y(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-            savefig(myname)
+            plt.title(r'$m_y(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+            plt.savefig(myname)
             
-            fig = plt.figure(4)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Y, X, mz[:,:,nz//2,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxmz[0], minmaxmz[1]))
             ax.view_init(elevation,angle);
-            title(r'$m_z(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-            savefig(mzname)
+            plt.title(r'$m_z(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+            plt.savefig(mzname)
             
-            fig = plt.figure(5)
+            numfigs += 1
+            fig = plt.figure(numfigs)
             ax = fig.add_subplot(111, projection='3d')
             ax.plot_surface(Y, X, et[:,:,nz//2,tstep], rstride=1, cstride=1, 
                             cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
             ax.set_xlabel('y'); ax.set_ylabel('x'); ax.set_zlim((minmaxet[0], minmaxet[1]))
             ax.view_init(elevation,angle);
-            title(r'$e_t(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
-            savefig(etname)
+            plt.title(r'$e_t(x,y)$ slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+            plt.savefig(etname)
+
+            for ichem in range(nchem):
+                numfigs += 1
+                fig = plt.figure(numfigs)
+                ax = fig.add_subplot(111, projection='3d')
+                ax.plot_surface(Y, X, chem[:,:,nz//2,ichem,tstep], rstride=1, cstride=1, 
+                                cmap=cm.jet, linewidth=0, antialiased=True, shade=True)
+                ax.set_xlabel('y'); ax.set_ylabel('x')
+                ax.set_zlim((minmaxchem[ichem,0], minmaxchem[ichem,1]))
+                ax.view_init(elevation,angle);
+                plt.title(r'c' + repr(ichem) + '(x,y) slice at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
+                plt.savefig(chemname[ichem])
             
-            if (showplots):
-                plt.show()
-            plt.figure(1), plt.close()
-            plt.figure(2), plt.close()
-            plt.figure(3), plt.close()
-            plt.figure(4), plt.close()
-            plt.figure(5), plt.close()
-    
+        if (showplots):
+            plt.show()
+        for i in range(1,numfigs+1):
+            plt.figure(i), plt.close()
+
 
 
 # run "plot_slices" with default arguments if run from the command line

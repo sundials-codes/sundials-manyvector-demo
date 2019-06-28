@@ -236,7 +236,7 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
     printf("     errR = %9.2e  %9.2e  %9.2e  %9.2e  %9.2e\n",
            toterrR[0], toterrR[1], toterrR[2], toterrR[3], toterrR[4]);
   }
-  return(check_conservation(t, w, udata));
+  return(0);
 }
 
 //---- end of file ----

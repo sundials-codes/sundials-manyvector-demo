@@ -10,6 +10,7 @@
 
 // Header files
 #include <euler3D.hpp>
+#include <iomanip>
 
 #include "fenv.h"
 
@@ -97,13 +98,11 @@ int main(int argc, char* argv[]) {
          << udata.ylbc << ", " << udata.yrbc << "] x ["
          << udata.zlbc << ", " << udata.zrbc << "]\n";
   }
-  if (udata.showstats) {
-    retval = MPI_Barrier(udata.comm);
-    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-    printf("      proc %4i: %li x %li x %li\n", udata.myid, udata.nxl, udata.nyl, udata.nzl);
-    retval = MPI_Barrier(udata.comm);
-    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-  }
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  printf("      proc %4i: %li x %li x %li\n", udata.myid, udata.nxl, udata.nyl, udata.nzl);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -152,9 +151,9 @@ int main(int argc, char* argv[]) {
     for (k=0; k<udata.nzl; k++) 
       for (j=0; j<udata.nyl; j++) 
         for (i=0; i<udata.nxl; i++) {
-          xloc_value = RCONST(0.00001)*i;
-          yloc_value = RCONST(0.0000001)*j;
-          zloc_value = RCONST(0.000000001)*k;
+          xloc_value = RCONST(0.000001)*(i+udata.is);
+          yloc_value = RCONST(0.000000001)*(j+udata.js);
+          zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
           if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
@@ -174,7 +173,7 @@ int main(int argc, char* argv[]) {
 
   // check receive buffers for accuracy
   long int loc_errs = 0;
-  realtype test_tol = 1e-14;
+  realtype test_tol = 1e-12;
   realtype recv_value;
   //    Wrecv
   myid_value = RCONST(0.01)*udata.ipW;
@@ -184,16 +183,16 @@ int main(int argc, char* argv[]) {
       for (i=0; i<3; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
-          xloc_value = RCONST(0.000001)*(i+ieW-3);
+          xloc_value = RCONST(0.000001)*(i+ieW-2);
           yloc_value = RCONST(0.000000001)*(j+udata.js);
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
           recv_value = udata.Wrecv[BUFIDX(v,i,j,k,3,udata.nyl,udata.nzl)];
           if (abs(recv_value-true_value) > test_tol) {
-            cout << "Wrecv error: myid = " << udata.myid << "(v,i,j,k) = ("
-                 << v << ", " << i << ", " << j << ", " << k << "), Wrecv ="
-                 << recv_value << " != " << true_value << endl;
+            cout << "Wrecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
+                 << v << ", " << i << ", " << j << ", " << k << "), Wrecv = "
+                 << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
             loc_errs++;
           }
         }
@@ -213,9 +212,9 @@ int main(int argc, char* argv[]) {
                      + xloc_value + yloc_value + zloc_value;
           recv_value = udata.Erecv[BUFIDX(v,i,j,k,3,udata.nyl,udata.nzl)];
           if (abs(recv_value-true_value) > test_tol) {
-            cout << "Erecv error: myid = " << udata.myid << "(v,i,j,k) = ("
-                 << v << ", " << i << ", " << j << ", " << k << "), Erecv ="
-                 << recv_value << " != " << true_value << endl;
+            cout << "Erecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
+                 << v << ", " << i << ", " << j << ", " << k << "), Erecv = "
+                 << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
             loc_errs++;
           }
         }
@@ -229,15 +228,15 @@ int main(int argc, char* argv[]) {
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
           xloc_value = RCONST(0.000001)*(i+udata.is);
-          yloc_value = RCONST(0.000000001)*(j+jeS-3);
+          yloc_value = RCONST(0.000000001)*(j+jeS-2);
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
           recv_value = udata.Srecv[BUFIDX(v,j,i,k,3,udata.nxl,udata.nzl)];
           if (abs(recv_value-true_value) > test_tol) {
-            cout << "Srecv error: myid = " << udata.myid << "(v,i,j,k) = ("
-                 << v << ", " << i << ", " << j << ", " << k << "), Srecv ="
-                 << recv_value << " != " << true_value << endl;
+            cout << "Srecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
+                 << v << ", " << i << ", " << j << ", " << k << "), Srecv = "
+                 << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
             loc_errs++;
           }
         }
@@ -257,9 +256,9 @@ int main(int argc, char* argv[]) {
                      + xloc_value + yloc_value + zloc_value;
           recv_value = udata.Nrecv[BUFIDX(v,j,i,k,3,udata.nxl,udata.nzl)];
           if (abs(recv_value-true_value) > test_tol) {
-            cout << "Nrecv error: myid = " << udata.myid << "(v,i,j,k) = ("
-                 << v << ", " << i << ", " << j << ", " << k << "), Nrecv ="
-                 << recv_value << " != " << true_value << endl;
+            cout << "Nrecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
+                 << v << ", " << i << ", " << j << ", " << k << "), Nrecv = "
+                 << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
             loc_errs++;
           }
         }
@@ -274,14 +273,14 @@ int main(int argc, char* argv[]) {
           species_value = RCONST(0.001)*v;
           xloc_value = RCONST(0.000001)*(i+udata.is);
           yloc_value = RCONST(0.000000001)*(j+udata.js);
-          zloc_value = RCONST(0.000000000001)*(k+keB-3);
+          zloc_value = RCONST(0.000000000001)*(k+keB-2);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
           recv_value = udata.Brecv[BUFIDX(v,k,i,j,3,udata.nxl,udata.nyl)];
           if (abs(recv_value-true_value) > test_tol) {
-            cout << "Brecv error: myid = " << udata.myid << "(v,i,j,k) = ("
-                 << v << ", " << i << ", " << j << ", " << k << "), Brecv ="
-                 << recv_value << " != " << true_value << endl;
+            cout << "Brecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
+                 << v << ", " << i << ", " << j << ", " << k << "), Brecv = "
+                 << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
             loc_errs++;
           }
         }
@@ -301,9 +300,9 @@ int main(int argc, char* argv[]) {
                      + xloc_value + yloc_value + zloc_value;
           recv_value = udata.Frecv[BUFIDX(v,k,i,j,3,udata.nxl,udata.nyl)];
           if (abs(recv_value-true_value) > test_tol) {
-            cout << "Frecv error: myid = " << udata.myid << "(v,i,j,k) = ("
-                 << v << ", " << i << ", " << j << ", " << k << "), Frecv ="
-                 << recv_value << " != " << true_value << endl;
+            cout << "Frecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
+                 << v << ", " << i << ", " << j << ", " << k << "), Frecv = "
+                 << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
             loc_errs++;
           }
         }

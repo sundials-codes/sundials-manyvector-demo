@@ -371,8 +371,9 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 {
   realtype sumvals[] = {ZERO, ZERO};
   realtype totvals[] = {ZERO, ZERO};
+  static realtype totsave[] = {-ONE, -ONE};
   bool outproc = (udata.myid == 0);
-  long int i, j, k;
+  long int i, j, k, idx;
   int retval;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (check_conservation)", 0)) return -1;
@@ -381,15 +382,26 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
-        sumvals[0] += rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
-        sumvals[1] += et[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        sumvals[0] += rho[idx];
+        sumvals[1] += et[idx];
       }
   sumvals[0] *= udata.dx*udata.dy*udata.dz;
   sumvals[1] *= udata.dx*udata.dy*udata.dz;
   retval = MPI_Reduce(sumvals, totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
   if (!outproc)  return(0);
-  printf("     tot_mass = %21.16e,  tot_energy = %21.16e\n", totvals[0], totvals[1]);
+  if (totsave[0] == -ONE) {  // first time through; save/output the values
+    printf("   Total mass   = %21.16e\n", totvals[0]);
+    printf("   Total energy = %21.16e\n", totvals[1]);
+    totsave[0] = totvals[0];
+    totsave[1] = totvals[1];
+  } else {
+    printf("   Mass conservation relative change   = %7.2e\n",
+           abs(totvals[0]-totsave[0])/totsave[0]);
+    printf("   Energy conservation relative change = %7.2e\n",
+           abs(totvals[1]-totsave[1])/totsave[1]);
+  }
   return(0);
 }
 
@@ -421,11 +433,11 @@ int print_stats(const realtype& t, const N_Vector w,
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-          rmsvals[0] += SUNRpowerI(rho[idx], 2);
-          rmsvals[1] += SUNRpowerI( mx[idx], 2);
-          rmsvals[2] += SUNRpowerI( my[idx], 2);
-          rmsvals[3] += SUNRpowerI( mz[idx], 2);
-          rmsvals[4] += SUNRpowerI( et[idx], 2);
+          rmsvals[0] += pow(rho[idx], 2);
+          rmsvals[1] += pow( mx[idx], 2);
+          rmsvals[2] += pow( my[idx], 2);
+          rmsvals[3] += pow( mz[idx], 2);
+          rmsvals[4] += pow( et[idx], 2);
           if (udata.nchem > 0) {
             realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
             if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
@@ -458,6 +470,23 @@ int print_stats(const realtype& t, const N_Vector w,
 }
 
 
+// Utility routine to output information on this subdomain
+int output_subdomain_information(const UserData& udata, const realtype& dTout)
+{
+  char outname[100];
+  FILE *UFID = NULL;
+  sprintf(outname, "output-subdomain.%07i.txt", udata.myid);
+  UFID = fopen(outname,"w");
+  if (check_flag((void*) UFID, "fopen (output_subdomain_information)", 0)) return(1);
+  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %i  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
+	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie, udata.js, udata.je, 
+          udata.ks, udata.ke, udata.nchem, udata.xl, udata.xr, udata.yl, 
+          udata.yr, udata.zl, udata.zr, udata.t0, udata.tf, dTout);
+  fclose(UFID);
+  return(0);
+}
+
+
 // Utility routine to output the current solution
 //    newappend == 1 indicates create a new file
 //    newappend == 0 indicates append to existing file
@@ -479,14 +508,28 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
   }
 
   // Set strings for output names
-  sprintf(outname[0], "output-euler3D_rho.%07i.txt", udata.myid);  // density
-  sprintf(outname[1], "output-euler3D_mx.%07i.txt",  udata.myid);  // x-momentum
-  sprintf(outname[2], "output-euler3D_my.%07i.txt",  udata.myid);  // y-momentum
-  sprintf(outname[3], "output-euler3D_mz.%07i.txt",  udata.myid);  // z-momentum
-  sprintf(outname[4], "output-euler3D_et.%07i.txt",  udata.myid);  // total energy
-  for (v=0; v<udata.nchem; v++)
-    sprintf(outname[5+v], "output-euler3D_c%03i.%07i.txt",(int) v,udata.myid);  // tracers
-  
+  sprintf(outname[0], "output-rho.%07i.txt", udata.myid);  // density
+  sprintf(outname[1], "output-mx.%07i.txt",  udata.myid);  // x-momentum
+  sprintf(outname[2], "output-my.%07i.txt",  udata.myid);  // y-momentum
+  sprintf(outname[3], "output-mz.%07i.txt",  udata.myid);  // z-momentum
+  sprintf(outname[4], "output-et.%07i.txt",  udata.myid);  // total energy
+  //   tracers -- set index width based on total number (assumes at most 10001 tracer species)
+  if (udata.nchem < 11) {
+    for (v=0; v<udata.nchem; v++)
+      sprintf(outname[5+v], "output-c%01i.%07i.txt", (int) v, udata.myid);
+  } else if (udata.nchem < 101) {
+    for (v=0; v<udata.nchem; v++)
+      sprintf(outname[5+v], "output-c%02i.%07i.txt", (int) v, udata.myid);
+  } else if (udata.nchem < 1001) {
+    for (v=0; v<udata.nchem; v++)
+      sprintf(outname[5+v], "output-c%03i.%07i.txt", (int) v, udata.myid);
+  } else if (udata.nchem < 10001) {
+    for (v=0; v<udata.nchem; v++)
+      sprintf(outname[5+v], "output-c%04i.%07i.txt", (int) v, udata.myid);
+  } else {
+    cerr << "output_solution error: cannot handle over 10000 tracer species\n";
+    return(1);
+  }
   // Output fluid fields to disk
   for (v=0; v<5; v++) {
     FID[v] = fopen(outname[v],outtype);                  // file ptr
