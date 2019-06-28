@@ -5,9 +5,9 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Header file for shared main routine, utility routines and
- UserData class.
----------------------------------------------------------------*/
+ Header file for shared main routine, utility routines, 
+ ARKodeParameters and UserData class.
+ ---------------------------------------------------------------*/
 
 // only include this file once (if included multiple times)
 #ifndef __EULER3D_HPP__

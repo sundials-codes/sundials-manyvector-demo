@@ -5,9 +5,8 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Header file for shared main routine, utility routines and
- UserData class.
----------------------------------------------------------------*/
+ Implementation file for shared utility routines.
+ ---------------------------------------------------------------*/
 
 // Header files
 #include <euler3D.hpp>

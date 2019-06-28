@@ -5,7 +5,7 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Implementation file for shared main routine and utility routines.
+ Implementation file for shared main routine
  ---------------------------------------------------------------*/
 
 // Header files
