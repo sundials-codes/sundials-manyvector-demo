@@ -53,6 +53,7 @@ COMMONOBJ = euler3D.o utilities.o io.o gopt.o
 
 # listing of all test routines
 TESTS = compile_test.exe \
+        communication_test.exe \
         linear_advection_x.exe \
         linear_advection_y.exe \
         linear_advection_z.exe \
@@ -98,36 +99,41 @@ realclean : clean
 
 
 # build rules for specific tests
-compile_test.exe : src/compile_test.cpp ${COMMONSRC}
+compile_test.exe : compile_test.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=7 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-linear_advection_x.exe : src/linear_advection.cpp ${COMMONOBJ}
+communication_test.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DNVAR=12 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
+
+linear_advection_x.exe : linear_advection.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-linear_advection_y.exe : src/linear_advection.cpp ${COMMONOBJ}
+linear_advection_y.exe : linear_advection.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-linear_advection_z.exe : src/linear_advection.cpp ${COMMONOBJ}
+linear_advection_z.exe : linear_advection.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-sod_x.exe : src/sod.cpp ${COMMONOBJ}
+sod_x.exe : sod.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-sod_y.exe : src/sod.cpp ${COMMONOBJ}
+sod_y.exe : sod.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-sod_z.exe : src/sod.cpp ${COMMONOBJ}
+sod_z.exe : sod.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_xy.exe : src/hurricane.cpp ${COMMONOBJ}
+hurricane_xy.exe : hurricane.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_XY ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_yz.exe : src/hurricane.cpp ${COMMONOBJ}
+hurricane_yz.exe : hurricane.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_YZ ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_zx.exe : src/hurricane.cpp ${COMMONOBJ}
+hurricane_zx.exe : hurricane.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_ZX ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 
