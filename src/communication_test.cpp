@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 
   // general problem parameters
-  long int N, Ntot, Nsubvecs, i, j, k, v, idx;
+  long int N, Ntot, Nsubvecs, i, j, k, l, v, idx;
 
   // general problem variables
   int retval;                    // reusable error-checking flag
@@ -128,6 +128,15 @@ int main(int argc, char* argv[]) {
   //   digits 4-6:   global x index
   //   digits 7-9:   global y index
   //   digits 10-12: global z index
+  if (udata.myid == 0) 
+    cout << "\nAll data uses the following numbering conventions:\n"
+         << "   digits 1-2:   MPI task ID (T)\n"
+         << "   digit  3:     species index (s)\n"
+         << "   digits 4-6:   global x index (X)\n"
+         << "   digits 7-9:   global y index (y)\n"
+         << "   digits 10-12: global z index (Z)\n"
+         << "i.e., data value digit convention:\n"
+         << "   0.TTsXXXyyyZZZ\n\n";
   realtype myid_value = RCONST(0.01)*udata.myid;
   realtype *wdata;
   realtype species_value, xloc_value, yloc_value, zloc_value, true_value;
@@ -172,6 +181,7 @@ int main(int argc, char* argv[]) {
 
 
   // check receive buffers for accuracy
+  if (udata.myid == 0)  cout << "\nChecking receive buffers for accuracy:\n";
   long int loc_errs = 0;
   realtype test_tol = 1e-12;
   realtype recv_value;
@@ -307,12 +317,274 @@ int main(int argc, char* argv[]) {
           }
         }
 
+
+  // now check "pack1D" routines for accuracy
+  myid_value = RCONST(0.01)*udata.myid;
+  if (udata.myid == 0)
+    cout << "\nChecking pack1D routines for accuracy:\n";
+  //     interior
+  realtype w1d[6][NVAR];
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (main)", 0)) return -1;
+  realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (main)", 0)) return -1;
+  realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (main)", 0)) return -1;
+  realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (main)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (main)", 0)) return -1;
+  for (k=3; k<udata.nzl-2; k++)
+    for (j=3; j<udata.nyl-2; j++)
+      for (i=3; i<udata.nxl-2; i++) {
+
+        // x-directional stencil
+        udata.pack1D_x(w1d, rho, mx, my, mz, et, w, i, j, k);
+        for (l=0; l<6; l++) 
+          for (v=0; v<NVAR; v++) {
+            species_value = RCONST(0.001)*v;
+            xloc_value = RCONST(0.000001)*(i+l-3+udata.is);
+            yloc_value = RCONST(0.000000001)*(j+udata.js);
+            zloc_value = RCONST(0.000000000001)*(k+udata.ks);
+            true_value = myid_value + species_value
+              + xloc_value + yloc_value + zloc_value;
+            recv_value = w1d[l][v];
+            if (abs(recv_value-true_value) > test_tol) {
+              cout << "pack1D_x error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                   << v << ", " << i << ", " << j << ", " << k << ", " << l << "), w1d = "
+                   << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+              loc_errs++;
+            }
+          }
+        
+        // y-directional stencil
+        udata.pack1D_y(w1d, rho, mx, my, mz, et, w, i, j, k);
+        for (l=0; l<6; l++) 
+          for (v=0; v<NVAR; v++) {
+            species_value = RCONST(0.001)*v;
+            xloc_value = RCONST(0.000001)*(i+udata.is);
+            yloc_value = RCONST(0.000000001)*(j+l-3+udata.js);
+            zloc_value = RCONST(0.000000000001)*(k+udata.ks);
+            true_value = myid_value + species_value
+              + xloc_value + yloc_value + zloc_value;
+            recv_value = w1d[l][v];
+            if (abs(recv_value-true_value) > test_tol) {
+              cout << "pack1D_y error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                   << v << ", " << i << ", " << j << ", " << k << ", " << l << "), w1d = "
+                   << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+              loc_errs++;
+            }
+          }
+
+        // z-directional stencil
+        udata.pack1D_z(w1d, rho, mx, my, mz, et, w, i, j, k);
+        for (l=0; l<6; l++) 
+          for (v=0; v<NVAR; v++) {
+            species_value = RCONST(0.001)*v;
+            xloc_value = RCONST(0.000001)*(i+udata.is);
+            yloc_value = RCONST(0.000000001)*(j+udata.js);
+            zloc_value = RCONST(0.000000000001)*(k+l-3+udata.ks);
+            true_value = myid_value + species_value
+              + xloc_value + yloc_value + zloc_value;
+            recv_value = w1d[l][v];
+            if (abs(recv_value-true_value) > test_tol) {
+              cout << "pack1D_z error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                   << v << ", " << i << ", " << j << ", " << k << ", " << l << "), w1d = "
+                   << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+              loc_errs++;
+            }
+          }
+        
+      }
+  
+  //     boundary
+  if (udata.myid == 0)
+    cout << "\nChecking pack1D*bdry routines for accuracy:\n";
+  long int istencil, jstencil, kstencil;
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++) {
+
+        // skip strict interior (already computed)
+        if ( (k>2) && (k<udata.nzl-2) && (j>2) && (j<udata.nyl-2) && (i>2) && (i<udata.nxl-2) )
+          continue;
+
+        // x-directional stencil
+        udata.pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
+        for (l=0; l<6; l++) 
+          for (v=0; v<NVAR; v++) {
+            myid_value = RCONST(0.01)*udata.myid;
+            if (i+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipW;
+            if (i+l-3 > udata.nxl-1)  myid_value = RCONST(0.01)*udata.ipE;
+            species_value = RCONST(0.001)*v;
+            istencil = i+l-3+udata.is;
+            if (istencil < 0)           istencil += udata.nx;
+            if (istencil > udata.nx-1)  istencil -= udata.nx;
+            jstencil = j+udata.js;
+            kstencil = k+udata.ks;
+            xloc_value = RCONST(0.000001)*istencil;
+            yloc_value = RCONST(0.000000001)*jstencil;
+            zloc_value = RCONST(0.000000000001)*kstencil;
+            true_value = myid_value + species_value
+              + xloc_value + yloc_value + zloc_value;
+            recv_value = w1d[l][v];
+            if (abs(recv_value-true_value) > test_tol) {
+              cout << "pack1D_x_bdry error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                   << v << ", " << i << ", " << j << ", " << k << ", " << l << "), w1d = "
+                   << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+              loc_errs++;
+            }
+          }
+        
+        // x-directional stencil at upper boundary face
+        if (i == udata.nxl-1) {
+          udata.pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, udata.nxl, j, k);
+          for (l=0; l<6; l++) 
+            for (v=0; v<NVAR; v++) {
+              myid_value = RCONST(0.01)*udata.myid;
+              if (udata.nxl+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipW;
+              if (udata.nxl+l-3 > udata.nxl-1)  myid_value = RCONST(0.01)*udata.ipE;
+              species_value = RCONST(0.001)*v;
+              istencil = udata.nxl+l-3+udata.is;
+              if (istencil < 0)           istencil += udata.nx;
+              if (istencil > udata.nx-1)  istencil -= udata.nx;
+              jstencil = j+udata.js;
+              kstencil = k+udata.ks;
+              xloc_value = RCONST(0.000001)*istencil;
+              yloc_value = RCONST(0.000000001)*jstencil;
+              zloc_value = RCONST(0.000000000001)*kstencil;
+              true_value = myid_value + species_value
+                + xloc_value + yloc_value + zloc_value;
+              recv_value = w1d[l][v];
+              if (abs(recv_value-true_value) > test_tol) {
+                cout << "pack1D_x_bdry error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                     << v << ", " << udata.nxl << ", " << j << ", " << k << ", " << l << "), w1d = "
+                     << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+                loc_errs++;
+              }
+            }
+        }
+        
+        // y-directional stencil
+        udata.pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
+        for (l=0; l<6; l++) 
+          for (v=0; v<NVAR; v++) {
+            myid_value = RCONST(0.01)*udata.myid;
+            if (j+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipS;
+            if (j+l-3 > udata.nyl-1)  myid_value = RCONST(0.01)*udata.ipN;
+            species_value = RCONST(0.001)*v;
+            istencil = i+udata.is;
+            jstencil = j+l-3+udata.js;
+            if (jstencil < 0)           jstencil += udata.ny;
+            if (jstencil > udata.ny-1)  jstencil -= udata.ny;
+            kstencil = k+udata.ks;
+            xloc_value = RCONST(0.000001)*istencil;
+            yloc_value = RCONST(0.000000001)*jstencil;
+            zloc_value = RCONST(0.000000000001)*kstencil;
+            true_value = myid_value + species_value
+              + xloc_value + yloc_value + zloc_value;
+            recv_value = w1d[l][v];
+            if (abs(recv_value-true_value) > test_tol) {
+              cout << "pack1D_y_bdry error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                   << v << ", " << i << ", " << j << ", " << k << ", " << l << "), w1d = "
+                   << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+              loc_errs++;
+            }
+          }
+
+        // y-directional stencil at upper boundary face
+        if (j == udata.nyl-1) {
+          udata.pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, udata.nyl, k);
+          for (l=0; l<6; l++) 
+            for (v=0; v<NVAR; v++) {
+              myid_value = RCONST(0.01)*udata.myid;
+              if (udata.nyl+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipS;
+              if (udata.nyl+l-3 > udata.nyl-1)  myid_value = RCONST(0.01)*udata.ipN;
+              species_value = RCONST(0.001)*v;
+              istencil = i+udata.is;
+              jstencil = udata.nyl+l-3+udata.js;
+              if (jstencil < 0)           jstencil += udata.ny;
+              if (jstencil > udata.ny-1)  jstencil -= udata.ny;
+              kstencil = k+udata.ks;
+              xloc_value = RCONST(0.000001)*istencil;
+              yloc_value = RCONST(0.000000001)*jstencil;
+              zloc_value = RCONST(0.000000000001)*kstencil;
+              true_value = myid_value + species_value
+                + xloc_value + yloc_value + zloc_value;
+              recv_value = w1d[l][v];
+              if (abs(recv_value-true_value) > test_tol) {
+                cout << "pack1D_y_bdry error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                     << v << ", " << i << ", " << udata.nyl << ", " << k << ", " << l << "), w1d = "
+                     << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+                loc_errs++;
+              }
+            }
+        }
+        
+        // z-directional stencil
+        udata.pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
+        for (l=0; l<6; l++) 
+          for (v=0; v<NVAR; v++) {
+            myid_value = RCONST(0.01)*udata.myid;
+            if (k+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipB;
+            if (k+l-3 > udata.nzl-1)  myid_value = RCONST(0.01)*udata.ipF;
+            species_value = RCONST(0.001)*v;
+            istencil = i+udata.is;
+            jstencil = j+udata.js;
+            kstencil = k+l-3+udata.ks;
+            if (kstencil < 0)           kstencil += udata.nz;
+            if (kstencil > udata.nz-1)  kstencil -= udata.nz;
+            xloc_value = RCONST(0.000001)*istencil;
+            yloc_value = RCONST(0.000000001)*jstencil;
+            zloc_value = RCONST(0.000000000001)*kstencil;
+            true_value = myid_value + species_value
+              + xloc_value + yloc_value + zloc_value;
+            recv_value = w1d[l][v];
+            if (abs(recv_value-true_value) > test_tol) {
+              cout << "pack1D_z_bdry error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                   << v << ", " << i << ", " << j << ", " << k << ", " << l << "), w1d = "
+                   << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+              loc_errs++;
+            }
+          }
+        
+        // z-directional stencil at upper boundary face
+        if (k == udata.nzl-1) {
+          udata.pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, udata.nzl);
+          for (l=0; l<6; l++) 
+            for (v=0; v<NVAR; v++) {
+              myid_value = RCONST(0.01)*udata.myid;
+              if (udata.nzl+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipB;
+              if (udata.nzl+l-3 > udata.nzl-1)  myid_value = RCONST(0.01)*udata.ipF;
+              species_value = RCONST(0.001)*v;
+              istencil = i+udata.is;
+              jstencil = j+udata.js;
+              kstencil = udata.nzl+l-3+udata.ks;
+              if (kstencil < 0)           kstencil += udata.nz;
+              if (kstencil > udata.nz-1)  kstencil -= udata.nz;
+              xloc_value = RCONST(0.000001)*istencil;
+              yloc_value = RCONST(0.000000001)*jstencil;
+              zloc_value = RCONST(0.000000000001)*kstencil;
+              true_value = myid_value + species_value
+                + xloc_value + yloc_value + zloc_value;
+              recv_value = w1d[l][v];
+              if (abs(recv_value-true_value) > test_tol) {
+                cout << "pack1D_z_bdry error: myid = " << udata.myid << ", (v,i,j,k,l) = ("
+                     << v << ", " << i << ", " << j << ", " << udata.nzl << ", " << l << "), w1d = "
+                     << fixed << setprecision(13) << recv_value << " != " << true_value << endl;
+                loc_errs++;
+              }
+            }
+        }        
+      }
+  
+  
   // report on total errors encountered
   long int tot_errs = 0;
   retval = MPI_Reduce(&loc_errs, &tot_errs, 1, MPI_LONG, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (main)", 3)) return(1);
   if (udata.myid == 0) 
-    cout << "Communication_test result: " << tot_errs << " total errors\n";
+    cout << "\n\nCommunication_test result: " << tot_errs << " total errors\n";
   
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution vectors
