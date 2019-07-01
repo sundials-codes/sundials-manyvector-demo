@@ -51,11 +51,9 @@ LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
 COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.c
 COMMONOBJ = euler3D.o utilities.o io.o gopt.o
 
-# listing of all test routines
+# listing of all test routines that use 'default' number of fields
 TESTS = compile_test_fluid.exe \
-        compile_test_tracers.exe \
         communication_test_fluid.exe \
-        communication_test_tracers.exe \
         linear_advection_x.exe \
         linear_advection_y.exe \
         linear_advection_z.exe \
@@ -64,7 +62,6 @@ TESTS = compile_test_fluid.exe \
         sod_z.exe \
         hurricane_xy.exe \
         hurricane_zx.exe \
-        hurricane_zx_color.exe \
         hurricane_yz.exe \
         rayleigh_taylor.exe \
         interacting_bubbles.exe \
@@ -72,11 +69,16 @@ TESTS = compile_test_fluid.exe \
         explosion.exe \
         double_mach_reflection.exe
 
+# listing of all test routines that use a custom 'NVAR' value
+COLORTESTS = compile_test_tracers.exe \
+             communication_test_tracers.exe \
+             hurricane_zx_color.exe
+
 # instruct Make to look in 'src' for source code files
 VPATH = src
 
 # target to build all test executables
-all : ${TESTS} buildclean
+all : ${TESTS} ${COLORTESTS} buildclean
 
 # general build rules
 gopt.o : gopt.c gopt.h
