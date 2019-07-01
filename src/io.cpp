@@ -98,7 +98,6 @@ int load_inputs(int myid, int argc, char* argv[],
     options[irtol].long_name = "rtol";
     options[iatol].long_name = "atol";
     argc = gopt(argv, options);
-    //gopt_errors(argv[0], options);
 
     // handle help request
     if (options[ihelp].count) {

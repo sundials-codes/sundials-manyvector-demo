@@ -194,9 +194,9 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
 
 // given a 6-point stencil of solution values,
-//   w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2}), w(x_{j+3})
+//   w(x_{j-3}) w(x_{j-2}) w(x_{j-1}), w(x_j), w(x_{j+1}), w(x_{j+2})
 // and the flux direction idir, compute the face-centered flux (f_flux)
-// at the center of the stencil, x_{j+1/2}.
+// at the center of the stencil, x_{j-1/2}.
 //
 // The input "idir" handles the directionality for the 1D calculation
 //    idir = 0  implies x-directional flux
@@ -384,7 +384,8 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
 
-  // compute projected flux for fluid fields (copy tracer fluxes)
+  /*// compute projected flux for fluid fields (copy tracer fluxes)*/
+  // compute projected flux for fluid fields; treat tracers as another densty
   for (j=0; j<(STSIZE-1); j++) {
     for (i=0; i<5; i++)
       fproj[j][i] = LV[i][0]*fs[j][0] + LV[i][1]*fs[j][1] + LV[i][2]*fs[j][2]
