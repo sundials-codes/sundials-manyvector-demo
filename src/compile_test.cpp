@@ -51,6 +51,8 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         // tracer initial conditions
         if (udata.nchem > 0) {
           realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer_MPIManyVector (initial_conditions)", 0))
+            return -1;
           for (v=0; v<udata.nchem; v++) {
             chem[v] = ZERO;
             if ((udata.is+i >= chemstripes[v][0]) && (udata.is+i < chemstripes[v][1]))
