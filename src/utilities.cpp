@@ -173,7 +173,20 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
                        + ( udata->zflux[BUFIDX(4,i,  j,  k+1,nxl,  nyl,  nzl+1)]
                          - udata->zflux[BUFIDX(4,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
 
+        // compute RHS for tracer/chemistry species
+        if (udata->nchem > 0) {
+          chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5+idx);
+          if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
+          for (v=0; v<udata->nchem; v++)
+            chemdot[v] -= ( ( udata->xflux[BUFIDX(5+v,i+1,j,  k,  nxl+1,nyl,  nzl  )]
+                            - udata->xflux[BUFIDX(5+v,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
+                          + ( udata->yflux[BUFIDX(5+v,i,  j+1,k,  nxl,  nyl+1,nzl  )]
+                            - udata->yflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
+                          + ( udata->zflux[BUFIDX(5+v,i,  j,  k+1,nxl,  nyl,  nzl+1)]
+                            - udata->zflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
         }
+        
+      }
 
   // return with success
   return 0;
@@ -316,10 +329,10 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   for (j=0; j<(STSIZE); j++) {
     u = w1d[j][1]/w1d[j][0];                      // u = vx = mx/rho
     flux[j][0] = w1d[j][1];                       // f_rho = rho*u = mx
-    flux[j][1] = u*w1d[j][1] + p[i];              // f_mx = rho*u*u + p = mx*u + p
+    flux[j][1] = u*w1d[j][1] + p[j];              // f_mx = rho*u*u + p = mx*u + p
     flux[j][2] = u*w1d[j][2];                     // f_my = rho*v*u = my*u
     flux[j][3] = u*w1d[j][3];                     // f_mz = rho*w*u = mz*u
-    flux[j][4] = u*(w1d[j][4] + p[i]);            // f_et = u*(et + p)
+    flux[j][4] = u*(w1d[j][4] + p[j]);            // f_et = u*(et + p)
     for (i=0; i<udata.nchem; i++)
       flux[j][5+i] = u*w1d[j][5+i];               // f_cj = cj*u, j=0,...,nchem-1
     csnd = SUNRsqrt(udata.gamma*p[j]/w1d[j][0]);  // csnd = sqrt(gamma*p/rho)
@@ -363,6 +376,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     ff[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
+  
   // fm(x_{i+1/2}):
   
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
