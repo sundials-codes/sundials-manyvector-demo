@@ -1022,7 +1022,6 @@ public:
           if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (pack1D_x_bdry)", 0)) throw std::exception();
           for (int v=0; v<nchem; v++)   w1d[l][5+v] = chem[v];
         }
-        for (int v=0; v<nchem; v++)  w1d[l][5+v] = ZERO;
       }
       for (int l=0; l<3; l++) {
         if (i>(nxl-l-1)) {
