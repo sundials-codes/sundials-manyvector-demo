@@ -184,7 +184,7 @@ public:
   ///// class operations /////
   // constructor
   UserData() :
-      nx(4), ny(4), nz(4), xl(0.0), xr(1.0), yl(0.0), yr(1.0), zl(0.0),
+      nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0), zl(0.0),
       zr(1.0), t0(0.0), tf(1.0), xlbc(0), xrbc(0), ylbc(0), yrbc(0),
       zlbc(0), zrbc(0), is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1),
       nxl(-1), nyl(-1), nzl(-1), comm(MPI_COMM_WORLD), myid(-1),
