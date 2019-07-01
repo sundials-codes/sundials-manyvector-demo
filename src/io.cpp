@@ -410,13 +410,14 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 //    firstlast = 0 indicates the first output
 //    firstlast = 1 indicates a normal output
 //    firstlast = 2 indicates the lastoutput
-int print_stats(const realtype& t, const N_Vector w,
-                const int& firstlast, const UserData& udata)
+int print_stats(const realtype& t, const N_Vector w, const int& firstlast, 
+                void *arkode_mem, const UserData& udata)
 {
   realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
   long int v, i, j, k, idx;
   int retval;
+  sunindextype nst;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -427,6 +428,8 @@ int print_stats(const realtype& t, const N_Vector w,
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  retval = ARKStepGetNumSteps(arkode_mem, &nst);
+  if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   if (firstlast < 2) {
     for (v=0; v<NVAR; v++)  rmsvals[v] = ZERO;
     for (k=0; k<udata.nzl; k++)
@@ -453,18 +456,18 @@ int print_stats(const realtype& t, const N_Vector w,
   if (firstlast == 0) {
     cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms";
     for (v=0; v<udata.nchem; v++)  cout << "  ||c" << v << "||_rms";
-    cout << endl;
+    cout << "     nst\n";
   }
   if (firstlast != 1) {
     cout << "   -----------------------------------------------------------------------";
     for (v=0; v<udata.nchem; v++)  cout << "------------";
-    cout << endl;
+    cout << "----------\n";
   }
   if (firstlast<2) {
     printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f", t,
            totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
     for (v=0; v<udata.nchem; v++)  printf("  %10.6f", totrms[5+v]);
-    printf("\n");
+    printf("  %6li\n", nst);
   }
   return(0);
 }

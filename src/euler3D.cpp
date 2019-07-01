@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
   if (udata.showstats) {
-    retval = print_stats(t, w, 0, udata);
+    retval = print_stats(t, w, 0, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   int iout;
@@ -260,7 +260,7 @@ int main(int argc, char* argv[]) {
     iostart = MPI_Wtime();
     // output statistics to stdout
     if (udata.showstats) {
-      retval = print_stats(t, w, 1, udata);
+      retval = print_stats(t, w, 1, arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     }
 
@@ -276,7 +276,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.showstats) {
     iostart = MPI_Wtime();
-    retval = print_stats(t, w, 2, udata);
+    retval = print_stats(t, w, 2, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     tinout += MPI_Wtime() - iostart;
   }

@@ -1189,8 +1189,8 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
 int check_conservation(const realtype& t, const N_Vector w, const UserData& udata);
 
 //    Print solution statistics
-int print_stats(const realtype& t, const N_Vector w,
-                const int& firstlast, const UserData& udata);
+int print_stats(const realtype& t, const N_Vector w, const int& firstlast, 
+                void *arkode_mem, const UserData& udata);
 
 //    Output information on domain and this subdomain
 int output_subdomain_information(const UserData& udata, const realtype& dTout);
