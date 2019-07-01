@@ -63,16 +63,11 @@
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
-  // verify that NVAR has been set up properly
-  if (NVAR != 5) {
-    cerr << "initial_conditions error: incorrect NVAR (check Makefile settings)";
-    return -1;
-  }
   
-  // iterate over subdomain, setting initial condition
-  long int i, j, k;
-  realtype xloc, yloc, zloc, r, costheta, sintheta;
-  const realtype halfpi = RCONST(2.0)*atan(RCONST(1.0));
+  // access data fields
+  long int v, i, j, k, idx;
+  realtype xloc, yloc, zloc, r, theta, costheta, sintheta;
+  const realtype pi = RCONST(4.0)*atan(RCONST(1.0));
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -83,20 +78,21 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
-  long int nxl = udata.nxl;
-  long int nyl = udata.nyl;
-  long int nzl = udata.nzl;
 
+  // output test problem information
   if (udata.myid == 0) {
 #ifdef TEST_XY
-    cout << "\nHurricane test problem (xy-plane)\n\n";
+    cout << "\nHurricane test problem (xy-plane)\n";
 #endif
 #ifdef TEST_ZX
-    cout << "\nHurricane test problem (zx-plane)\n\n";
+    cout << "\nHurricane test problem (zx-plane)\n";
 #endif
 #ifdef TEST_YZ
-    cout << "\nHurricane test problem (yz-plane)\n\n";
+    cout << "\nHurricane test problem (yz-plane)\n";
 #endif
+    if (udata.nchem > 0)
+      cout << "\n  using " << udata.nchem << " tracers for color advection\n";
+    cout << endl;
   }
 
   // return error if input parameters are inappropriate
@@ -117,47 +113,69 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     return -1;
   }
 
-  for (k=0; k<nzl; k++)
-    for (j=0; j<nyl; j++)
-      for (i=0; i<nxl; i++) {
+  // set "stripe" boundaries when advecting color fields
+  realtype chemstripes[udata.nchem][2];
+  for (v=0; v<udata.nchem; v++) {
+    chemstripes[v][0] = -pi + v*TWO*pi/udata.nchem;     // angle lower bound for this stripe
+    chemstripes[v][1] = -pi + (v+1)*TWO*pi/udata.nchem; // angle upper bound for this stripe
+  }
+  
+  // iterate over subdomain, setting initial conditions
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++) {
+        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-
+        
 #ifdef TEST_XY
         r = SUNRsqrt(xloc*xloc + yloc*yloc);
+        theta = atan2(yloc,xloc);
         if (r == ZERO)  r = 1e-14;  // protect against division by zero
         costheta = xloc/r;
         sintheta = yloc/r;
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sintheta;
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*costheta;
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        mx[idx] = rho0*v0*sintheta;
+        my[idx] = -rho0*v0*costheta;
+        mz[idx] = ZERO;
 #endif
 #ifdef TEST_ZX
         r = SUNRsqrt(zloc*zloc + xloc*xloc);
+        theta = atan2(xloc,zloc);
         if (r == ZERO)  r = 1e-14;  // protect against division by zero
         costheta = zloc/r;
         sintheta = xloc/r;
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sintheta;
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*costheta;
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        mz[idx] = rho0*v0*sintheta;
+        mx[idx] = -rho0*v0*costheta;
+        my[idx] = ZERO;
 #endif
 #ifdef TEST_YZ
         r = SUNRsqrt(yloc*yloc + zloc*zloc);
+        theta = atan2(zloc,yloc);
         if (r == ZERO)  r = 1e-14;  // protect against division by zero
         costheta = yloc/r;
         sintheta = zloc/r;
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = rho0*v0*sintheta;
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = -rho0*v0*costheta;
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        my[idx] = rho0*v0*sintheta;
+        mz[idx] = -rho0*v0*costheta;
+        mx[idx] = ZERO;
 #endif
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0;
-        et[ IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rho[IDX(i,j,k,nxl,nyl,nzl)],
-                                                    mx[ IDX(i,j,k,nxl,nyl,nzl)],
-                                                    my[ IDX(i,j,k,nxl,nyl,nzl)],
-                                                    mz[ IDX(i,j,k,nxl,nyl,nzl)],
-                                                    Amp*pow(rho0,udata.gamma));
+        rho[idx] = rho0;
+        et[idx]  = udata.eos_inv(rho[idx], mx[idx], my[idx], mz[idx],
+                                 Amp*pow(rho0,udata.gamma));
+
+        // tracer initial conditions
+        if (udata.nchem > 0) {
+          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
+          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer_MPIManyVector (initial_conditions)", 0))
+            return -1;
+          for (v=0; v<udata.nchem; v++) {
+            chem[v] = ZERO;
+            if ((theta >= chemstripes[v][0]) && (theta < chemstripes[v][1]))
+              chem[v] = ONE;
+          }
+        }
       }
+  
   return 0;
 }
 
@@ -203,7 +221,6 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
   realtype errI[] = {ZERO, ZERO, ZERO, ZERO};
   realtype errR[] = {ZERO, ZERO, ZERO, ZERO};
   realtype toterrI[4], toterrR[4];
-  const realtype halfpi = RCONST(2.0)*atan(RCONST(1.0));
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);

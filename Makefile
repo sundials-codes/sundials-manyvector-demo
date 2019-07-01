@@ -64,6 +64,7 @@ TESTS = compile_test_fluid.exe \
         sod_z.exe \
         hurricane_xy.exe \
         hurricane_zx.exe \
+        hurricane_zx_color.exe \
         hurricane_yz.exe \
         rayleigh_taylor.exe \
         interacting_bubbles.exe \
@@ -147,6 +148,11 @@ hurricane_yz.exe : hurricane.cpp ${COMMONOBJ}
 
 hurricane_zx.exe : hurricane.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_ZX ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+hurricane_zx_color.exe : hurricane.cpp ${COMMONSRC}
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DTEST_ZX -DNVAR=11 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
 
 
 
