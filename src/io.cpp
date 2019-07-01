@@ -457,7 +457,7 @@ int print_stats(const realtype& t, const N_Vector w,
   }
   if (firstlast != 1) {
     cout << "   -----------------------------------------------------------------------";
-    for (v=0; v<udata.nchem; v++)  cout << "-----------";
+    for (v=0; v<udata.nchem; v++)  cout << "------------";
     cout << endl;
   }
   if (firstlast<2) {
