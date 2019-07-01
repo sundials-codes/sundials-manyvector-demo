@@ -75,6 +75,7 @@ int load_inputs(int myid, int argc, char* argv[],
     options[icfl].long_name = "cfl";
     options[inout].long_name = "nout";
     options[ishow].long_name = "showstats";
+    options[ishow].flags = GOPT_ARGUMENT_FORBIDDEN;
     options[iord].long_name = "order";
     options[idord].long_name = "dense_order";
     options[ibt].long_name = "btable";
@@ -125,7 +126,7 @@ int load_inputs(int myid, int argc, char* argv[],
            << "   --zrbc=<int>         (" << udata.zrbc << ")\n"
            << "\nAvailable run options (and the default if not provided):\n"
            << "   --nout=<int>         (" << udata.nout << ")\n"
-           << "   --showstats          (disabled)\n"
+           << "   --showstats          to enable (disabled)\n"
            << "\nAvailable time-stepping options (and the default if not provided):\n"
            << "   --cfl=<float>        (" << udata.cfl << ")\n"
            << "   --order=<int>        (" << opts.order << ")\n"
@@ -467,7 +468,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
     printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f", t,
            totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
     for (v=0; v<udata.nchem; v++)  printf("  %10.6f", totrms[5+v]);
-    printf("  %6li\n", nst);
+    printf("   %6li\n", nst);
   }
   return(0);
 }
