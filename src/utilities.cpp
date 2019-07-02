@@ -217,26 +217,6 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   realtype RV[5][5], LV[5][5], p[STSIZE], flux[STSIZE][NVAR],
     fproj[STSIZE-1][NVAR], fs[STSIZE-1][NVAR], ff[NVAR];
   const realtype bc = RCONST(1.083333333333333333333333333333333333333);    // 13/12
-  const realtype dm[3] = {RCONST(0.1), RCONST(0.6), RCONST(0.3)};
-  const realtype cm[3][3] = {{RCONST(1.833333333333333333333333333333333333333),    // 11/6
-                              -RCONST(1.166666666666666666666666666666666666667),   // -7/6
-                              RCONST(0.3333333333333333333333333333333333333333)},  // 1/3
-                             {RCONST(0.3333333333333333333333333333333333333333),   // 1/3
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              -RCONST(0.1666666666666666666666666666666666666667)}, // -1/6
-                             {-RCONST(0.1666666666666666666666666666666666666667),  // -1/6
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              RCONST(0.3333333333333333333333333333333333333333)}}; // 1/3
-  const realtype dp[3] = {RCONST(0.3), RCONST(0.6), RCONST(0.1)};
-  const realtype cp[3][3] = {{RCONST(0.3333333333333333333333333333333333333333),   // 1/3
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              -RCONST(0.1666666666666666666666666666666666666667)}, // -1/6
-                             {-RCONST(0.1666666666666666666666666666666666666667),  // -1/6
-                              RCONST(0.8333333333333333333333333333333333333333),   // 5/6
-                              RCONST(0.3333333333333333333333333333333333333333)},  // 1/3
-                             {RCONST(0.3333333333333333333333333333333333333333),   // 1/3
-                              -RCONST(1.166666666666666666666666666666666666667),   // -7/6
-                              RCONST(1.833333333333333333333333333333333333333)}};  // 11/6
   const realtype epsilon = 1e-6;
 
   // convert state to direction-independent version
@@ -257,16 +237,16 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   //   H = wbar_5 / wbar_1
   rhosqrL = SUNRsqrt(w1d[2][0]);
   rhosqrR = SUNRsqrt(w1d[3][0]);
-  rhosqrbar = RCONST(0.5)*(rhosqrL + rhosqrR);
-  u = RCONST(0.5)*(w1d[2][1]/rhosqrL + w1d[3][1]/rhosqrR)/rhosqrbar;
-  v = RCONST(0.5)*(w1d[2][2]/rhosqrL + w1d[3][2]/rhosqrR)/rhosqrbar;
-  w = RCONST(0.5)*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
-  H = RCONST(0.5)*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
+  rhosqrbar = HALF*(rhosqrL + rhosqrR);
+  u = HALF*(w1d[2][1]/rhosqrL + w1d[3][1]/rhosqrR)/rhosqrbar;
+  v = HALF*(w1d[2][2]/rhosqrL + w1d[3][2]/rhosqrR)/rhosqrbar;
+  w = HALF*(w1d[2][3]/rhosqrL + w1d[3][3]/rhosqrR)/rhosqrbar;
+  H = HALF*((p[2]+w1d[2][4])/rhosqrL + (p[3]+w1d[3][4])/rhosqrR)/rhosqrbar;
 
   // compute eigenvectors at face (note: eigenvectors for tracers are just identity)
   qsq = u*u + v*v + w*w;
   gamm = udata.gamma-ONE;
-  csnd = gamm*(H - RCONST(0.5)*qsq);
+  csnd = gamm*(H - HALF*qsq);
   cinv = ONE/csnd;
   cisq = cinv*cinv;
   for (i=0; i<5; i++)
@@ -355,7 +335,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     for (i=0; i<udata.nchem; i++)  fproj[j][5+i] = fs[j][5+i];
   }
 
-  //   compute WENO signed fluxes
+  //   compute WENO signed flux
   for (i=0; i<(NVAR); i++) {
     // smoothness indicators
     beta1 = bc*pow(fproj[2][i] - RCONST(2.0)*fproj[3][i] + fproj[4][i],2)
@@ -365,13 +345,19 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     beta3 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
           + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
     // nonlinear weights
-    w1 = dp[0] / (epsilon + beta1) / (epsilon + beta1);
-    w2 = dp[1] / (epsilon + beta2) / (epsilon + beta2);
-    w3 = dp[2] / (epsilon + beta3) / (epsilon + beta3);
+    w1 = RCONST(0.3) / ((epsilon + beta1) * (epsilon + beta1));
+    w2 = RCONST(0.6) / ((epsilon + beta2) * (epsilon + beta2));
+    w3 = RCONST(0.1) / ((epsilon + beta3) * (epsilon + beta3));
     // flux stencils
-    f1 = cp[0][0]*fproj[2][i] + cp[0][1]*fproj[3][i] + cp[0][2]*fproj[4][i];
-    f2 = cp[1][0]*fproj[1][i] + cp[1][1]*fproj[2][i] + cp[1][2]*fproj[3][i];
-    f3 = cp[2][0]*fproj[0][i] + cp[2][1]*fproj[1][i] + cp[2][2]*fproj[2][i];
+    f1 = RCONST(0.3333333333333333333333333333333333333333)*fproj[2][i]
+       + RCONST(0.8333333333333333333333333333333333333333)*fproj[3][i]
+       - RCONST(0.1666666666666666666666666666666666666667)*fproj[4][i];
+    f2 = -RCONST(0.1666666666666666666666666666666666666667)*fproj[1][i]
+       + RCONST(0.8333333333333333333333333333333333333333)*fproj[2][i]
+       + RCONST(0.3333333333333333333333333333333333333333)*fproj[3][i];
+    f3 = RCONST(0.3333333333333333333333333333333333333333)*fproj[0][i]
+       - RCONST(1.166666666666666666666666666666666666667)*fproj[1][i]
+       + RCONST(1.833333333333333333333333333333333333333)*fproj[2][i];
     // resulting signed flux at face
     ff[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
@@ -403,13 +389,19 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     beta3 = bc*pow(fproj[0][i] - RCONST(2.0)*fproj[1][i] + fproj[2][i],2)
           + FOURTH*pow(fproj[0][i] - RCONST(4.0)*fproj[1][i] + RCONST(3.0)*fproj[2][i],2);
     // nonlinear weights
-    w1 = dm[0] / (epsilon + beta1) / (epsilon + beta1);
-    w2 = dm[1] / (epsilon + beta2) / (epsilon + beta2);
-    w3 = dm[2] / (epsilon + beta3) / (epsilon + beta3);
+    w1 = RCONST(0.1) / ((epsilon + beta1) * (epsilon + beta1));
+    w2 = RCONST(0.6) / ((epsilon + beta2) * (epsilon + beta2));
+    w3 = RCONST(0.3) / ((epsilon + beta3) * (epsilon + beta3));
     // flux stencils
-    f1 = cm[0][0]*fproj[2][i] + cm[0][1]*fproj[3][i] + cm[0][2]*fproj[4][i];
-    f2 = cm[1][0]*fproj[1][i] + cm[1][1]*fproj[2][i] + cm[1][2]*fproj[3][i];
-    f3 = cm[2][0]*fproj[0][i] + cm[2][1]*fproj[1][i] + cm[2][2]*fproj[2][i];
+    f1 = RCONST(1.833333333333333333333333333333333333333)*fproj[2][i]
+       - RCONST(1.166666666666666666666666666666666666667)*fproj[3][i]
+       + RCONST(0.3333333333333333333333333333333333333333)*fproj[4][i];
+    f2 = RCONST(0.3333333333333333333333333333333333333333)*fproj[1][i]
+       + RCONST(0.8333333333333333333333333333333333333333)*fproj[2][i]
+       - RCONST(0.1666666666666666666666666666666666666667)*fproj[3][i];
+    f3 = -RCONST(0.1666666666666666666666666666666666666667)*fproj[0][i]
+       + RCONST(0.8333333333333333333333333333333333333333)*fproj[1][i]
+       + RCONST(0.3333333333333333333333333333333333333333)*fproj[2][i];
     // resulting signed flux (add to ff)
     ff[i] += (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
