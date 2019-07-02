@@ -79,7 +79,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     cerr << "\nInappropriate x-boundary conditions, exiting\n\n";
     return -1;
   }
-  if ((udata.ylbc != BC_NEUMANN) || (udata.yrbc != BC_NEUMANN)) {
+  if ((udata.ylbc != BC_REFLECTING) || (udata.yrbc != BC_REFLECTING)) {
     cerr << "\nInappropriate y-boundary conditions, exiting\n\n";
     return -1;
   }

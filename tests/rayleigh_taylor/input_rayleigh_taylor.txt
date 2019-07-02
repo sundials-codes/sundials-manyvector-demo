@@ -27,10 +27,10 @@ ny = 300
 nz = 3
 xlbc = 0            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 0            #    0 = periodic  (opposite periodic faces must match)
-ylbc = 1            #    1 = homogeneous Neumann
-yrbc = 1            #    2 = homogeneous Dirichlet
-zlbc = 0
-zrbc = 0
+ylbc = 3            #    1 = homogeneous Neumann
+yrbc = 3            #    2 = homogeneous Dirichlet
+zlbc = 1            #    3 = reflecting
+zrbc = 1
 #
 #
 #### Run Options ####

@@ -63,9 +63,10 @@ using namespace std;
 
 
 // boundary condition types
-#define  BC_PERIODIC  0
-#define  BC_NEUMANN   1
-#define  BC_DIRICHLET 2
+#define  BC_PERIODIC   0
+#define  BC_NEUMANN    1
+#define  BC_DIRICHLET  2
+#define  BC_REFLECTING 3
 
 
 // Utility routine to check function return values:
@@ -621,13 +622,35 @@ public:
 
     //     West face
     if (ipW == MPI_PROC_NULL) {
-      if (xlbc == BC_NEUMANN) {  // homogeneous Neumann
+      if (xlbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<3; i++) 
               Wrecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(2-i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[ IDX(2-i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(2-i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(2-i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(2-i,j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<3; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(2-i,j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Wrecv[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = chem[v];
+              }
+            }
+          }
+      } else if (xlbc == BC_REFLECTING) {
+        for (k=0; k<nzl; k++)
+          for (j=0; j<nyl; j++) {
+            for (i=0; i<3; i++) 
+              Wrecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(2-i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[IDX(2-i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(2-i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
@@ -670,13 +693,35 @@ public:
 
     //     East face
     if (ipE == MPI_PROC_NULL) {
-      if (xrbc == BC_NEUMANN) {  // homogeneous Neumann
+      if (xrbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<3; i++) 
               Erecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<3; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(nxl-3+i,j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Erecv[BUFIDX(5+v,i,j,k,3,nyl,nzl)] = chem[v];
+              }
+            }
+          }
+      } else if (xrbc == BC_REFLECTING) {
+        for (k=0; k<nzl; k++)
+          for (j=0; j<nyl; j++) {
+            for (i=0; i<3; i++) 
+              Erecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
+            for (i=0; i<3; i++) 
+              Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
               Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             for (i=0; i<3; i++) 
@@ -719,7 +764,7 @@ public:
 
     //     South face
     if (ipS == MPI_PROC_NULL) {
-      if (ylbc == BC_NEUMANN) {  // homogeneous Neumann
+      if (ylbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
             for (i=0; i<nxl; i++) 
@@ -728,6 +773,28 @@ public:
               Srecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,2-j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Srecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = my[ IDX(i,2-j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Srecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,2-j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,2-j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Srecv[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = chem[v];
+              }
+            }
+          }
+      } else if (ylbc == BC_REFLECTING) {
+        for (k=0; k<nzl; k++)
+          for (j=0; j<3; j++) {
+            for (i=0; i<nxl; i++) 
+              Srecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,2-j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Srecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,2-j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Srecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = -my[IDX(i,2-j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
@@ -768,7 +835,7 @@ public:
 
     //     North face
     if (ipN == MPI_PROC_NULL) {
-      if (yrbc == BC_NEUMANN) {  // homogeneous Neumann
+      if (yrbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
             for (i=0; i<nxl; i++) 
@@ -777,6 +844,28 @@ public:
               Nrecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Nrecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = my[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Nrecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,nyl-3+j,k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Nrecv[BUFIDX(5+v,j,i,k,3,nxl,nzl)] = chem[v];
+              }
+            }
+          }
+      } else if (yrbc == BC_REFLECTING) {
+        for (k=0; k<nzl; k++)
+          for (j=0; j<3; j++) {
+            for (i=0; i<nxl; i++) 
+              Nrecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Nrecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Nrecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = -my[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
@@ -817,7 +906,7 @@ public:
 
     //     Back face
     if (ipB == MPI_PROC_NULL) {
-      if (zlbc == BC_NEUMANN) {  // homogeneous Neumann
+      if (zlbc == BC_NEUMANN) {
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<nxl; i++) 
@@ -828,6 +917,28 @@ public:
               Brecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,2-k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,2-k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,2-k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,2-k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Brecv[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = chem[v];
+              }
+            }
+          }
+      } else if (zlbc == BC_REFLECTING) {
+        for (k=0; k<3; k++)
+          for (j=0; j<nyl; j++) {
+            for (i=0; i<nxl; i++) 
+              Brecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,2-k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Brecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,2-k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Brecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,2-k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[IDX(i,j,2-k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,2-k,nxl,nyl,nzl)];
             if (nchem>0) {
@@ -866,7 +977,7 @@ public:
 
     //     Front face
     if (ipF == MPI_PROC_NULL) {
-      if (zrbc == BC_NEUMANN) {  // homogeneous Neumann
+      if (zrbc == BC_NEUMANN) {
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<nxl; i++) 
@@ -877,6 +988,28 @@ public:
               Frecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            if (nchem>0) {
+              for (i=0; i<nxl; i++) {
+                chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+IDX(i,j,nzl-3+k,nxl,nyl,nzl));
+                if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
+                for (v=0; v<nchem; v++)
+                  Frecv[BUFIDX(5+v,k,i,j,3,nxl,nyl)] = chem[v];
+              }
+            }
+          }
+      } else if (zrbc == BC_REFLECTING) {
+        for (k=0; k<3; k++)
+          for (j=0; j<nyl; j++) {
+            for (i=0; i<nxl; i++) 
+              Frecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Frecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Frecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
+            for (i=0; i<nxl; i++) 
+              Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             for (i=0; i<nxl; i++) 
               Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             if (nchem>0) {

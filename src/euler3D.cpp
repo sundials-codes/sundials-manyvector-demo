@@ -68,8 +68,8 @@ int main(int argc, char* argv[]) {
          << udata.yl << ", " << udata.yr << "] x ["
          << udata.zl << ", " << udata.zr << "]\n";
     cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
-    cout << "   bdry cond (" << BC_PERIODIC << "=per, "
-         << BC_NEUMANN << "=Neu, " << BC_DIRICHLET << "=Dir): ["
+    cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, " 
+         << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
          << udata.ylbc << ", " << udata.yrbc << "] x ["
          << udata.zlbc << ", " << udata.zrbc << "]\n";

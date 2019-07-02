@@ -29,7 +29,7 @@ xlbc = 0            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 0            #    0 = periodic  (opposite periodic faces must match)
 ylbc = 0            #    1 = homogeneous Neumann
 yrbc = 0            #    2 = homogeneous Dirichlet
-zlbc = 0
+zlbc = 0            #    3 = reflecting
 zrbc = 0
 #
 #

@@ -93,8 +93,8 @@ int main(int argc, char* argv[]) {
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
     cout << "   tracers/chemical species: " << udata.nchem << "\n";
-    cout << "   bdry cond (" << BC_PERIODIC << "=per, "
-         << BC_NEUMANN << "=Neu, " << BC_DIRICHLET << "=Dir): ["
+    cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, " 
+         << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
          << udata.ylbc << ", " << udata.yrbc << "] x ["
          << udata.zlbc << ", " << udata.zrbc << "]\n";
