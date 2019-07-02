@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
   if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
 
   // overwrite specified boundary conditions to enable periodicity in all directions
-  udata.xlbc = udata.xrbc = udata.ylbc = udata.yrbc = udata.zlbc = udata.zrbc = 0;
+  udata.xlbc = udata.xrbc = udata.ylbc = udata.yrbc = udata.zlbc = udata.zrbc = BC_PERIODIC;
   
   // set up udata structure
   retval = udata.SetupDecomp();
@@ -93,7 +93,8 @@ int main(int argc, char* argv[]) {
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
     cout << "   tracers/chemical species: " << udata.nchem << "\n";
-    cout << "   bdry cond (0=per, 1=Neu, 2=Dir): ["
+    cout << "   bdry cond (" << BC_PERIODIC << "=per, "
+         << BC_NEUMANN << "=Neu, " << BC_DIRICHLET << "=Dir): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
          << udata.ylbc << ", " << udata.yrbc << "] x ["
          << udata.zlbc << ", " << udata.zrbc << "]\n";

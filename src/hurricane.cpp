@@ -96,15 +96,15 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   }
 
   // return error if input parameters are inappropriate
-  if ((udata.xlbc != 1) || (udata.xrbc != 1)) {
+  if ((udata.xlbc != BC_NEUMANN) || (udata.xrbc != BC_NEUMANN)) {
     cerr << "\nInappropriate x-boundary conditions, exiting\n\n";
     return -1;
   }
-  if ((udata.ylbc != 1) || (udata.yrbc != 1)) {
+  if ((udata.ylbc != BC_NEUMANN) || (udata.yrbc != BC_NEUMANN)) {
     cerr << "\nInappropriate y-boundary conditions, exiting\n\n";
     return -1;
   }
-  if ((udata.zlbc != 1) || (udata.zrbc != 1)) {
+  if ((udata.zlbc != BC_NEUMANN) || (udata.zrbc != BC_NEUMANN)) {
     cerr << "\nInappropriate z-boundary conditions, exiting\n\n";
     return -1;
   }

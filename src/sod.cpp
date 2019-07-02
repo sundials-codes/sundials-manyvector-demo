@@ -103,7 +103,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     cerr << "\nInappropriate spatial domain, exiting\n\n";
     return -1;
   }
-  if ((udata.xlbc != 1) || (udata.xrbc != 1)) {
+  if ((udata.xlbc != BC_NEUMANN) || (udata.xrbc != BC_NEUMANN)) {
     cerr << "\nInappropriate boundary conditions, exiting\n\n";
     return -1;
   }
@@ -113,7 +113,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     cerr << "\nInappropriate spatial domain, exiting\n\n";
     return -1;
   }
-  if ((udata.ylbc != 1) || (udata.yrbc != 1)) {
+  if ((udata.ylbc != BC_NEUMANN) || (udata.yrbc != BC_NEUMANN)) {
     cerr << "\nInappropriate boundary conditions, exiting\n\n";
     return -1;
   }
@@ -123,7 +123,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     cerr << "\nInappropriate spatial domain, exiting\n\n";
     return -1;
   }
-  if ((udata.zlbc != 1) || (udata.zrbc != 1)) {
+  if ((udata.zlbc != BC_NEUMANN) || (udata.zrbc != BC_NEUMANN)) {
     cerr << "\nInappropriate boundary conditions, exiting\n\n";
     return -1;
   }

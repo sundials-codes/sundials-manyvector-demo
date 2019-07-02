@@ -62,6 +62,12 @@ using namespace std;
 #define ELEVEN  RCONST(11.0)
 
 
+// boundary condition types
+#define  BC_PERIODIC  0
+#define  BC_NEUMANN   1
+#define  BC_DIRICHLET 2
+
+
 // Utility routine to check function return values:
 int check_flag(const void *flagvalue, const string funcname, const int opt);
 
@@ -185,14 +191,14 @@ public:
   // constructor
   UserData() :
       nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0), zl(0.0),
-      zr(1.0), t0(0.0), tf(1.0), xlbc(0), xrbc(0), ylbc(0), yrbc(0),
-      zlbc(0), zrbc(0), is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1),
-      nxl(-1), nyl(-1), nzl(-1), comm(MPI_COMM_WORLD), myid(-1),
-      nprocs(-1), npx(-1), npy(-1), npz(-1), Erecv(NULL), Wrecv(NULL), Nrecv(NULL),
-      Srecv(NULL), Frecv(NULL), Brecv(NULL), Esend(NULL), Wsend(NULL), Nsend(NULL),
-      Ssend(NULL), Fsend(NULL), Bsend(NULL), ipW(-1), ipE(-1), ipS(-1), ipN(-1),
-      ipB(-1), ipF(-1), gamma(1.4), cfl(0.0), xflux(NULL), yflux(NULL),
-      zflux(NULL), nout(10), showstats(0)
+      zr(1.0), t0(0.0), tf(1.0), xlbc(BC_PERIODIC), xrbc(BC_PERIODIC),
+      ylbc(BC_PERIODIC), yrbc(BC_PERIODIC), zlbc(BC_PERIODIC), zrbc(BC_PERIODIC),
+      is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1), nxl(-1), nyl(-1), nzl(-1), 
+      comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1), 
+      Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL), 
+      Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL), 
+      ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
+      xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0)
   {
     nchem = (NVAR) - 5;
   };
@@ -259,21 +265,24 @@ public:
       dims[2] = dims_suggested[i++];
     
     // set up 3D Cartesian communicator
-    if ((xlbc*xrbc == 0) && (xlbc+xrbc != 0)) {
+    if ( ((xlbc == BC_PERIODIC) && (xrbc != BC_PERIODIC)) ||
+         ((xlbc != BC_PERIODIC) && (xrbc == BC_PERIODIC)) ) {
       cerr << "SetupDecomp error: only one x-boundary is periodic\n";
       return 1;
     }
-    if ((ylbc*yrbc == 0) && (ylbc+yrbc != 0)) {
+    if ( ((ylbc == BC_PERIODIC) && (yrbc != BC_PERIODIC)) ||
+         ((ylbc != BC_PERIODIC) && (yrbc == BC_PERIODIC)) ) {
       cerr << "SetupDecomp error: only one y-boundary is periodic\n";
       return 1;
     }
-    if ((zlbc*zrbc == 0) && (zlbc+zrbc != 0)) {
+    if ( ((zlbc == BC_PERIODIC) && (zrbc != BC_PERIODIC)) ||
+         ((zlbc != BC_PERIODIC) && (zrbc == BC_PERIODIC)) ) {
       cerr << "SetupDecomp error: only one z-boundary is periodic\n";
       return 1;
     }
-    periods[0] = (xlbc == 0) ? 1 : 0;
-    periods[1] = (ylbc == 0) ? 1 : 0;
-    periods[2] = (zlbc == 0) ? 1 : 0;
+    periods[0] = (xlbc == BC_PERIODIC) ? 1 : 0;
+    periods[1] = (ylbc == BC_PERIODIC) ? 1 : 0;
+    periods[2] = (zlbc == BC_PERIODIC) ? 1 : 0;
     retval = MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, 0, &comm);
     if (check_flag(&retval, "MPI_Cart_create (UserData::SetupDecomp)", 3)) return -1;
     retval = MPI_Comm_rank(comm, &myid);
@@ -319,7 +328,7 @@ public:
     Wrecv = new realtype[(NVAR)*3*nyl*nzl];
     Wsend = new realtype[(NVAR)*3*nyl*nzl];
     ipW = MPI_PROC_NULL;
-    if ((coords[0] > 0) || (xlbc == 0)) {
+    if ((coords[0] > 0) || (xlbc == BC_PERIODIC)) {
       nbcoords[0] = coords[0]-1;
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2];
@@ -330,7 +339,7 @@ public:
     Erecv = new realtype[(NVAR)*3*nyl*nzl];
     Esend = new realtype[(NVAR)*3*nyl*nzl];
     ipE = MPI_PROC_NULL;
-    if ((coords[0] < dims[0]-1) || (xrbc == 0)) {
+    if ((coords[0] < dims[0]-1) || (xrbc == BC_PERIODIC)) {
       nbcoords[0] = coords[0]+1;
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2];
@@ -341,7 +350,7 @@ public:
     Srecv = new realtype[(NVAR)*nxl*3*nzl];
     Ssend = new realtype[(NVAR)*nxl*3*nzl];
     ipS = MPI_PROC_NULL;
-    if ((coords[1] > 0) || (ylbc == 0)) {
+    if ((coords[1] > 0) || (ylbc == BC_PERIODIC)) {
       nbcoords[0] = coords[0];
       nbcoords[1] = coords[1]-1;
       nbcoords[2] = coords[2];
@@ -352,7 +361,7 @@ public:
     Nrecv = new realtype[(NVAR)*nxl*3*nzl];
     Nsend = new realtype[(NVAR)*nxl*3*nzl];
     ipN = MPI_PROC_NULL;
-    if ((coords[1] < dims[1]-1) || (yrbc == 0)) {
+    if ((coords[1] < dims[1]-1) || (yrbc == BC_PERIODIC)) {
       nbcoords[0] = coords[0];
       nbcoords[1] = coords[1]+1;
       nbcoords[2] = coords[2];
@@ -363,7 +372,7 @@ public:
     Brecv = new realtype[(NVAR)*nxl*nyl*3];
     Bsend = new realtype[(NVAR)*nxl*nyl*3];
     ipB = MPI_PROC_NULL;
-    if ((coords[2] > 0) || (zlbc == 0)) {
+    if ((coords[2] > 0) || (zlbc == BC_PERIODIC)) {
       nbcoords[0] = coords[0];
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2]-1;
@@ -374,7 +383,7 @@ public:
     Frecv = new realtype[(NVAR)*nxl*nyl*3];
     Fsend = new realtype[(NVAR)*nxl*nyl*3];
     ipF = MPI_PROC_NULL;
-    if ((coords[2] < dims[2]-1) || (zrbc == 0)) {
+    if ((coords[2] < dims[2]-1) || (zrbc == BC_PERIODIC)) {
       nbcoords[0] = coords[0];
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2]+1;
@@ -612,7 +621,7 @@ public:
 
     //     West face
     if (ipW == MPI_PROC_NULL) {
-      if (xlbc == 1) {  // homogeneous Neumann
+      if (xlbc == BC_NEUMANN) {  // homogeneous Neumann
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<3; i++) 
@@ -661,7 +670,7 @@ public:
 
     //     East face
     if (ipE == MPI_PROC_NULL) {
-      if (xrbc == 1) {  // homogeneous Neumann
+      if (xrbc == BC_NEUMANN) {  // homogeneous Neumann
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<3; i++) 
@@ -710,7 +719,7 @@ public:
 
     //     South face
     if (ipS == MPI_PROC_NULL) {
-      if (ylbc == 1) {  // homogeneous Neumann
+      if (ylbc == BC_NEUMANN) {  // homogeneous Neumann
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
             for (i=0; i<nxl; i++) 
@@ -759,7 +768,7 @@ public:
 
     //     North face
     if (ipN == MPI_PROC_NULL) {
-      if (yrbc == 1) {  // homogeneous Neumann
+      if (yrbc == BC_NEUMANN) {  // homogeneous Neumann
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
             for (i=0; i<nxl; i++) 
@@ -808,7 +817,7 @@ public:
 
     //     Back face
     if (ipB == MPI_PROC_NULL) {
-      if (zlbc == 1) {  // homogeneous Neumann
+      if (zlbc == BC_NEUMANN) {  // homogeneous Neumann
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<nxl; i++) 
@@ -857,7 +866,7 @@ public:
 
     //     Front face
     if (ipF == MPI_PROC_NULL) {
-      if (zrbc == 1) {  // homogeneous Neumann
+      if (zrbc == BC_NEUMANN) {  // homogeneous Neumann
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
             for (i=0; i<nxl; i++) 
