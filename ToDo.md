@@ -11,8 +11,7 @@
       section 3.2.1-1  [done]
 
    d. Rayleigh-Taylor instability [2D] -- see Liska & Wendroff SISC
-      2003, or Pan et al Num. Math. Theor. Meth. Appl. 2017, section
-      3.3  [yet to begin]
+      2003 [in progress]
 
    e. Interacting bubbles -- see Yang and Cai SISC 2013, section 6.1.2
       [yet to begin] 
