@@ -17,7 +17,9 @@
 // Main Program
 int main(int argc, char* argv[]) {
 
+#ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
 
   // general problem parameters
   long int N, Ntot, Nsubvecs, i, j, k, l, v, idx;
@@ -41,7 +43,7 @@ int main(int argc, char* argv[]) {
            << "Test must be run with realtype at least double precision.\n";
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
-  
+
   // read problem and solver parameters from input file / command line
   UserData udata;
   ARKodeParameters opts;
@@ -51,7 +53,7 @@ int main(int argc, char* argv[]) {
 
   // overwrite specified boundary conditions to enable periodicity in all directions
   udata.xlbc = udata.xrbc = udata.ylbc = udata.yrbc = udata.zlbc = udata.zrbc = BC_PERIODIC;
-  
+
   // set up udata structure
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -65,7 +67,7 @@ int main(int argc, char* argv[]) {
            << "(" << udata.nx << " x " << udata.ny << " x " << udata.nz << " used here)\n";
     MPI_Abort(udata.comm, 1);
   }
-  
+
   // ensure that test uses at most 100 MPI tasks
   // (so that MPI indices fit in 2 digits)
   if (udata.nprocs > 100) {
@@ -74,7 +76,7 @@ int main(int argc, char* argv[]) {
            << "(" << udata.nprocs << " used here)\n.";
     MPI_Abort(udata.comm, 1);
   }
-  
+
   // ensure that test uses at most 10 total unknowns per spatial location
   // (so that species indices fit in 1 digit)
   if (NVAR > 9) {
@@ -83,7 +85,7 @@ int main(int argc, char* argv[]) {
            << "unknowns per spatial location. (" << NVAR << " used here)\n.";
     MPI_Abort(udata.comm, 1);
   }
-  
+
   // Initial problem output
   bool outproc = (udata.myid == 0);
   if (outproc) {
@@ -93,7 +95,7 @@ int main(int argc, char* argv[]) {
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
     cout << "   tracers/chemical species: " << udata.nchem << "\n";
-    cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, " 
+    cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
          << udata.ylbc << ", " << udata.yrbc << "] x ["
@@ -104,7 +106,7 @@ int main(int argc, char* argv[]) {
   printf("      proc %4i: %li x %li x %li\n", udata.myid, udata.nxl, udata.nyl, udata.nzl);
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-  
+
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
@@ -129,7 +131,7 @@ int main(int argc, char* argv[]) {
   //   digits 4-6:   global x index
   //   digits 7-9:   global y index
   //   digits 10-12: global z index
-  if (udata.myid == 0) 
+  if (udata.myid == 0)
     cout << "\nAll data uses the following numbering conventions:\n"
          << "   digits 1-2:   MPI task ID (T)\n"
          << "   digit  3:     species index (s)\n"
@@ -146,8 +148,8 @@ int main(int argc, char* argv[]) {
     wdata = N_VGetArrayPointer(wsubvecs[v]);
     if (check_flag((void *) wdata, "N_VGetArrayPointer (main)", 0)) return -1;
     species_value = RCONST(0.001)*v;
-    for (k=0; k<udata.nzl; k++) 
-      for (j=0; j<udata.nyl; j++) 
+    for (k=0; k<udata.nzl; k++)
+      for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
           xloc_value = RCONST(0.000001)*(i+udata.is);
           yloc_value = RCONST(0.000000001)*(j+udata.js);
@@ -158,8 +160,8 @@ int main(int argc, char* argv[]) {
   }
   //   then fill the tracer vectors
   if (udata.nchem > 0) {
-    for (k=0; k<udata.nzl; k++) 
-      for (j=0; j<udata.nyl; j++) 
+    for (k=0; k<udata.nzl; k++)
+      for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
           xloc_value = RCONST(0.000001)*(i+udata.is);
           yloc_value = RCONST(0.000000001)*(j+udata.js);
@@ -173,7 +175,7 @@ int main(int argc, char* argv[]) {
           }
         }
   }
-  
+
   // perform communication
   retval = udata.ExchangeStart(w);
   if (check_flag(&retval, "ExchangeStart (main)", 1)) return -1;
@@ -190,7 +192,7 @@ int main(int argc, char* argv[]) {
   myid_value = RCONST(0.01)*udata.ipW;
   long int ieW = (udata.is==0) ? udata.nx-1 : udata.is-1;
   for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++) 
+    for (j=0; j<udata.nyl; j++)
       for (i=0; i<3; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
@@ -212,7 +214,7 @@ int main(int argc, char* argv[]) {
   myid_value = RCONST(0.01)*udata.ipE;
   long int isE = (udata.ie==udata.nx-1) ? 0 : udata.ie+1;
   for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++) 
+    for (j=0; j<udata.nyl; j++)
       for (i=0; i<3; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
@@ -234,7 +236,7 @@ int main(int argc, char* argv[]) {
   myid_value = RCONST(0.01)*udata.ipS;
   long int jeS = (udata.js==0) ? udata.ny-1 : udata.js-1;
   for (k=0; k<udata.nzl; k++)
-    for (j=0; j<3; j++) 
+    for (j=0; j<3; j++)
       for (i=0; i<udata.nxl; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
@@ -256,7 +258,7 @@ int main(int argc, char* argv[]) {
   myid_value = RCONST(0.01)*udata.ipN;
   long int jsN = (udata.je==udata.ny-1) ? 0 : udata.je+1;
   for (k=0; k<udata.nzl; k++)
-    for (j=0; j<3; j++) 
+    for (j=0; j<3; j++)
       for (i=0; i<udata.nxl; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
@@ -278,7 +280,7 @@ int main(int argc, char* argv[]) {
   myid_value = RCONST(0.01)*udata.ipB;
   long int keB = (udata.ks==0) ? udata.nz-1 : udata.ks-1;
   for (k=0; k<3; k++)
-    for (j=0; j<udata.nyl; j++) 
+    for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
@@ -300,7 +302,7 @@ int main(int argc, char* argv[]) {
   myid_value = RCONST(0.01)*udata.ipF;
   long int ksF = (udata.ke==udata.nz-1) ? 0 : udata.ke+1;
   for (k=0; k<3; k++)
-    for (j=0; j<udata.nyl; j++) 
+    for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++)
         for (v=0; v<NVAR; v++) {
           species_value = RCONST(0.001)*v;
@@ -341,7 +343,7 @@ int main(int argc, char* argv[]) {
 
         // x-directional stencil
         udata.pack1D_x(w1d, rho, mx, my, mz, et, w, i, j, k);
-        for (l=0; l<6; l++) 
+        for (l=0; l<6; l++)
           for (v=0; v<NVAR; v++) {
             species_value = RCONST(0.001)*v;
             xloc_value = RCONST(0.000001)*(i+l-3+udata.is);
@@ -357,10 +359,10 @@ int main(int argc, char* argv[]) {
               loc_errs++;
             }
           }
-        
+
         // y-directional stencil
         udata.pack1D_y(w1d, rho, mx, my, mz, et, w, i, j, k);
-        for (l=0; l<6; l++) 
+        for (l=0; l<6; l++)
           for (v=0; v<NVAR; v++) {
             species_value = RCONST(0.001)*v;
             xloc_value = RCONST(0.000001)*(i+udata.is);
@@ -379,7 +381,7 @@ int main(int argc, char* argv[]) {
 
         // z-directional stencil
         udata.pack1D_z(w1d, rho, mx, my, mz, et, w, i, j, k);
-        for (l=0; l<6; l++) 
+        for (l=0; l<6; l++)
           for (v=0; v<NVAR; v++) {
             species_value = RCONST(0.001)*v;
             xloc_value = RCONST(0.000001)*(i+udata.is);
@@ -395,9 +397,9 @@ int main(int argc, char* argv[]) {
               loc_errs++;
             }
           }
-        
+
       }
-  
+
   //     boundary
   if (udata.myid == 0)
     cout << "\nChecking pack1D*bdry routines for accuracy:\n";
@@ -412,7 +414,7 @@ int main(int argc, char* argv[]) {
 
         // x-directional stencil
         udata.pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
-        for (l=0; l<6; l++) 
+        for (l=0; l<6; l++)
           for (v=0; v<NVAR; v++) {
             myid_value = RCONST(0.01)*udata.myid;
             if (i+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipW;
@@ -436,11 +438,11 @@ int main(int argc, char* argv[]) {
               loc_errs++;
             }
           }
-        
+
         // x-directional stencil at upper boundary face
         if (i == udata.nxl-1) {
           udata.pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, udata.nxl, j, k);
-          for (l=0; l<6; l++) 
+          for (l=0; l<6; l++)
             for (v=0; v<NVAR; v++) {
               myid_value = RCONST(0.01)*udata.myid;
               if (udata.nxl+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipW;
@@ -465,10 +467,10 @@ int main(int argc, char* argv[]) {
               }
             }
         }
-        
+
         // y-directional stencil
         udata.pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
-        for (l=0; l<6; l++) 
+        for (l=0; l<6; l++)
           for (v=0; v<NVAR; v++) {
             myid_value = RCONST(0.01)*udata.myid;
             if (j+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipS;
@@ -496,7 +498,7 @@ int main(int argc, char* argv[]) {
         // y-directional stencil at upper boundary face
         if (j == udata.nyl-1) {
           udata.pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, udata.nyl, k);
-          for (l=0; l<6; l++) 
+          for (l=0; l<6; l++)
             for (v=0; v<NVAR; v++) {
               myid_value = RCONST(0.01)*udata.myid;
               if (udata.nyl+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipS;
@@ -521,10 +523,10 @@ int main(int argc, char* argv[]) {
               }
             }
         }
-        
+
         // z-directional stencil
         udata.pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
-        for (l=0; l<6; l++) 
+        for (l=0; l<6; l++)
           for (v=0; v<NVAR; v++) {
             myid_value = RCONST(0.01)*udata.myid;
             if (k+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipB;
@@ -548,11 +550,11 @@ int main(int argc, char* argv[]) {
               loc_errs++;
             }
           }
-        
+
         // z-directional stencil at upper boundary face
         if (k == udata.nzl-1) {
           udata.pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, udata.nzl);
-          for (l=0; l<6; l++) 
+          for (l=0; l<6; l++)
             for (v=0; v<NVAR; v++) {
               myid_value = RCONST(0.01)*udata.myid;
               if (udata.nzl+l-3 < 0)            myid_value = RCONST(0.01)*udata.ipB;
@@ -576,17 +578,17 @@ int main(int argc, char* argv[]) {
                 loc_errs++;
               }
             }
-        }        
+        }
       }
-  
-  
+
+
   // report on total errors encountered
   long int tot_errs = 0;
   retval = MPI_Reduce(&loc_errs, &tot_errs, 1, MPI_LONG, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (main)", 3)) return(1);
-  if (udata.myid == 0) 
+  if (udata.myid == 0)
     cout << "\n\nCommunication_test result: " << tot_errs << " total errors\n";
-  
+
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution vectors
   for (i=0; i<Nsubvecs; i++)

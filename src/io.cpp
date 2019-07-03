@@ -5,7 +5,7 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Implementation file for input/output utility routines.   
+ Implementation file for input/output utility routines.
  Input routines read problem and solver input parameters
  from specified files.  For solver parameters, this calls
  associated "set" routines to specify options to ARKode.
@@ -38,8 +38,8 @@ int load_inputs(int myid, int argc, char* argv[],
     // use 'gopt' to handle parsing command-line; first define all available options
     const int nopt = 44;
     struct option options[nopt+1];
-    enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0, 
-                itf, igam, inx, iny, inz, ixlb, ixrb, iylb, 
+    enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
+                itf, igam, inx, iny, inz, ixlb, ixrb, iylb,
                 iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
@@ -160,7 +160,7 @@ int load_inputs(int myid, int argc, char* argv[],
            << "   -f <fname> or --infile=<fname>\n\n\n";
       return(1);
     }
-    
+
     // if an input file was specified, read that here
     if (options[ifname].count) {
       char line[MAX_LINE_LENGTH];
@@ -221,7 +221,7 @@ int load_inputs(int myid, int argc, char* argv[],
           fprintf(stderr, "load_inputs Warning: parameter line was not interpreted:\n%s", line);
       }
       fclose(FID);
-      
+
     }
 
     // replace any current option with a value specified on the command line
@@ -340,7 +340,7 @@ int load_inputs(int myid, int argc, char* argv[],
   opts.mxhnil = ibuff[16];
   opts.mxsteps = ibuff[17];
   opts.pq = ibuff[18];
-  
+
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
   udata.yl = dbuff[2];
@@ -415,14 +415,13 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 //    firstlast = 0 indicates the first output
 //    firstlast = 1 indicates a normal output
 //    firstlast = 2 indicates the lastoutput
-int print_stats(const realtype& t, const N_Vector w, const int& firstlast, 
+int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
                 void *arkode_mem, const UserData& udata)
 {
   realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
-  long int v, i, j, k, idx;
+  long int v, i, j, k, idx, nst;
   int retval;
-  sunindextype nst;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -487,8 +486,8 @@ int output_subdomain_information(const UserData& udata, const realtype& dTout)
   UFID = fopen(outname,"w");
   if (check_flag((void*) UFID, "fopen (output_subdomain_information)", 0)) return(1);
   fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %i  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
-	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie, udata.js, udata.je, 
-          udata.ks, udata.ke, udata.nchem, udata.xl, udata.xr, udata.yl, 
+	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie, udata.js, udata.je,
+          udata.ks, udata.ke, udata.nchem, udata.xl, udata.xr, udata.yl,
           udata.yr, udata.zl, udata.zr, udata.t0, udata.tf, dTout);
   fclose(UFID);
   return(0);
@@ -564,7 +563,7 @@ int output_solution(const N_Vector w, const int& newappend, const UserData& udat
       fclose(FID[v]);
     }
   }
-  
+
   // return with success
   return(0);
 }
