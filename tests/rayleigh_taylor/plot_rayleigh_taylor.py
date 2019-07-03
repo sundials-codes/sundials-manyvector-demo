@@ -11,6 +11,7 @@
 
 # imports
 import os
+import multiprocessing
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
@@ -18,46 +19,9 @@ import matplotlib.pyplot as plt
 from utilities_euler3D import *
 
 
-# determine if running interactively
-if __name__=="__main__":
-  showplots = False
-else:
-  showplots = True
-
-# set view for surface plots  
-elevation = 15
-angle = 20
-
-
-# load solution data
-print('  ')
-print('Loading data...')
-nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem = load_data()
-
-# output general information to screen
-print('  ')
-print('Generating plots for data set...')
-print('  nx: ', nx)
-print('  ny: ', ny)
-print('  nt: ', nt)
-    
-# determine extents of plots
-minmaxrho = [0.9*rho.min(), 1.1*rho.max()]
-if (minmaxrho[0] == minmaxrho[1]):
-  minmaxrho += [-0.1, 0.1]
-minmaxmx  = [0.9*mx.min(), 1.1*mx.max()]
-if (minmaxmx[0] == minmaxmx[1]):
-  minmaxmx += [-0.1, 0.1]
-minmaxmy  = [0.9*my.min(), 1.1*my.max()]
-if (minmaxmy[0] == minmaxmy[1]):
-  minmaxmy += [-0.1, 0.1]
-minmaxet  = [0.9*et.min(), 1.1*et.max()]
-if (minmaxet[0] == minmaxet[1]):
-  minmaxet += [-0.1, 0.1]
-
-# generate plots of solution
-for tstep in range(nt):
-  numfigs = 0
+# function to generate plots of solution snapshot
+def plot_step(tstep):
+  numfigs = tstep*100
     
   print('  time step', tstep+1, 'out of', nt)
 
@@ -134,23 +98,60 @@ for tstep in range(nt):
   plt.title(r'$e_t(x,y)$ at output ' + tstr + ', mesh = ' + nxstr + 'x' + nystr)
   plt.savefig(etcont)
 
-    
-  if (showplots):
-    plt.show()
   for i in range(1,numfigs+1):
     plt.figure(i), plt.close()
+  return
 
 
-# generate movies of plots
-print('  ')
-print('Converting plots into movies...')
-basenames = [ 'rho_surface', 'et_surface', 'velocity', 'rho_contour', 'et_contour' ]
-for name in basenames:
-  cmd = '../../bin/make_movie.py ' + name + '* -name ' + name + ' > /dev/null 2>&1'
-  os.system(cmd)
+if __name__ == '__main__':
 
-print('  ')
-print('Finished.')
+  # set view for surface plots  
+  elevation = 15
+  angle = 20
+
+  # load solution data
+  print('  ')
+  print('Loading data...')
+  nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem = load_data()
+
+  # output general information to screen
+  print('  ')
+  print('Generating plots for data set...')
+  print('  nx: ', nx)
+  print('  ny: ', ny)
+  print('  nt: ', nt)
+  
+  # determine extents of plots
+  minmaxrho = [0.9*rho.min(), 1.1*rho.max()]
+  if (minmaxrho[0] == minmaxrho[1]):
+    minmaxrho += [-0.1, 0.1]
+  minmaxmx  = [0.9*mx.min(), 1.1*mx.max()]
+  if (minmaxmx[0] == minmaxmx[1]):
+    minmaxmx += [-0.1, 0.1]
+  minmaxmy  = [0.9*my.min(), 1.1*my.max()]
+  if (minmaxmy[0] == minmaxmy[1]):
+    minmaxmy += [-0.1, 0.1]
+  minmaxet  = [0.9*et.min(), 1.1*et.max()]
+  if (minmaxet[0] == minmaxet[1]):
+    minmaxet += [-0.1, 0.1]
+
+  # spawn processes to generate plots for each time step
+  timesteps = range(0,nt)
+  nprocs = multiprocessing.cpu_count()//2
+  p = multiprocessing.Pool(nprocs)
+  p.map(plot_step, timesteps)
+  p.close()
+
+  # generate movies of plots
+  print('  ')
+  print('Converting plots into movies...')
+  basenames = [ 'rho_surface', 'et_surface', 'velocity', 'rho_contour', 'et_contour' ]
+  for name in basenames:
+    cmd = '../../bin/make_movie.py ' + name + '* -name ' + name + ' > /dev/null 2>&1'
+    os.system(cmd)
+    
+  print('  ')
+  print('Finished.')
 
   
 ##### end of script #####
