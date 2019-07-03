@@ -45,7 +45,7 @@ btable = -1         # specific built-in Butcher table to use (<0 => default)
 adapt_method = 0    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)
-mxsteps = 0         # max internal steps per 'evolve' call (0 => default)
+mxsteps = 5000      # max internal steps per 'evolve' call (0 => default)
 safety = 0          # temporal step size safety factor (0 => default)
 cfl  = 0.0          # max CFL fraction: cfl (disabled if set to zero)
 bias = 0            # temporal error bias factor (0 => default)

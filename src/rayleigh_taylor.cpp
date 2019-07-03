@@ -49,7 +49,8 @@
 #define rhoBot RCONST(1.0)
 #define grav   RCONST(0.1)
 #define p0     RCONST(2.5)
-#define Amp    RCONST(0.0025)
+//#define Amp    RCONST(0.0025)
+#define Amp    RCONST(0.01)
 
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
@@ -101,9 +102,9 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
 
         rho[idx] = (yloc > ZERO) ? rhoTop : rhoBot;
-        mx[idx] = ZERO;
-        my[idx] = rho[idx]*Amp*(ONE + cos(RCONST(4.0)*pi*xloc))*(1 + cos(RCONST(3.0)*pi*yloc));
-        mz[idx] = ZERO;
+        mx[idx]  = ZERO;
+        my[idx]  = rho[idx]*Amp*(ONE + cos(RCONST(4.0)*pi*xloc))*(ONE + cos(RCONST(3.0)*pi*yloc));
+        mz[idx]  = ZERO;
         et[idx]  = udata.eos_inv(rho[idx], mx[idx], my[idx], mz[idx],
                                  p0 - grav*rho[idx]*yloc);
 
