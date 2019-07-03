@@ -25,13 +25,13 @@ C and C++ compilers.  All dependencies (SUNDIALS and KLU) for the demo
 are installed in-place using [Spack](https://github.com/spack/spack).
 
 ```bash
-   git clone https://github.com/drreynolds/sundials-manyvector-demo.git
-   cd sundials-manyvector-demo
-   git clone https://github.com/spack/spack.git .spack
-   .spack/bin/spack install sundials +int64 +klu +mpi ~examples-f77 ~examples-install ~examples-c ~CVODE ~CVODES ~IDA ~IDAS ~KINSOL
-   .spack/bin/spack view symlink libs sundials
-   .spack/bin/spack view symlink mpi mpi
-   make
+\$ git clone https://github.com/drreynolds/sundials-manyvector-demo.git
+\$ cd sundials-manyvector-demo
+\$ git clone https://github.com/spack/spack.git .spack
+\$ .spack/bin/spack install sundials +int64 +klu +mpi ~examples-f77 ~examples-install ~examples-c ~CVODE ~CVODES ~IDA ~IDAS ~KINSOL
+\$ .spack/bin/spack view symlink libs sundials
+\$ .spack/bin/spack view symlink mpi mpi
+\$ make
 ```
 
 The above steps will build all codes in 'production' mode, with
@@ -177,7 +177,7 @@ case some have been added since this `README` was last updated).  To
 specify an input file to the executable, the input filename should be
 provided using the `-f` flag, e.g.
 ```bash
-   <executable> -f <input_file>
+\$ <executable> -f <input_file>
 ```
 This input file contains parameters to set up the physical problem:
 
@@ -210,7 +210,7 @@ http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html.
 Additionally, any input parameters may also be specified on the
 command line, e.g.
 ```bash
-   <executable> --nx=100 --ny=100 --nz=400
+\$ <executable> --nx=100 --ny=100 --nz=400
 ```
 
 The auxiliary source code files must contain three functions.  Each of
