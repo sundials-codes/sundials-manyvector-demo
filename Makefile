@@ -34,7 +34,7 @@ ifeq ($(USEOMP),0)
 endif
 
 # shortcuts for include and library paths, etc.
-INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS}
+INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS} ${HDFINCDIRS}
 
 SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_arkode \
@@ -43,7 +43,8 @@ SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_nvecserial \
            -lsundials_sunlinsolklu
 KLULIBS = -L$(KLULIBDIR) -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig
-LIBS = ${SUNDLIBS} ${KLULIBS} -lm
+HDFLIBS = -L$(HDFLIBDIR) -lhdf5 -lsz
+LIBS = ${SUNDLIBS} ${KLULIBS} ${HDFLIBS} -lm
 
 LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
 
@@ -90,14 +91,14 @@ gopt.o : gopt.c gopt.h
 .cpp.o : include/euler3D.hpp
 	${CXX} -c ${CXXFLAGS} ${OMPFLAGS} ${INCS} $< -o $@
 
-buildclean : 
+buildclean :
 	\rm -rf *.o
 
 outclean :
-	\rm -rf diags*.txt output*.txt xslice*.png yslice*.png zslice*.png __pycache__
+	\rm -rf diags*.txt output*.hdf5 xslice*.png yslice*.png zslice*.png __pycache__
 
 clean : outclean buildclean
-	\rm -rf *.orig *~ 
+	\rm -rf *.orig *~
 
 realclean : clean
 	\rm -rf *.exe *.dSYM

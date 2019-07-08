@@ -16,6 +16,7 @@
 // Header files
 #include <euler3D.hpp>
 #include <string.h>
+#include "hdf5.h"
 #include "gopt.h"
 
 
@@ -25,25 +26,28 @@
 // Load problem-defining parameters from file: root process
 // reads parameters and broadcasts results to remaining
 // processes
-int load_inputs(int myid, int argc, char* argv[],
-                UserData& udata, ARKodeParameters& opts)
+int load_inputs(int myid, int argc, char* argv[], UserData& udata,
+                ARKodeParameters& opts, int& restart)
 {
   int retval;
   double dbuff[23];
-  long int ibuff[19];
+  long int ibuff[20];
+
+  // disable 'restart' by default
+  restart = -1;
 
   // root process handles command-line and file-based solver parameters, and packs send buffers
   if (myid == 0) {
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 44;
+    const int nopt = 45;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
                 itf, igam, inx, iny, inz, ixlb, ixrb, iylb,
                 iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
-                iemaf, ih0, ihmin, ihmax, irtol, iatol};
+                iemaf, ih0, ihmin, ihmax, irtol, iatol, irest};
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -97,6 +101,7 @@ int load_inputs(int myid, int argc, char* argv[],
     options[ihmax].long_name = "hmax";
     options[irtol].long_name = "rtol";
     options[iatol].long_name = "atol";
+    options[irest].long_name = "restart";
     argc = gopt(argv, options);
 
     // handle help request
@@ -131,6 +136,7 @@ int load_inputs(int myid, int argc, char* argv[],
            << "\nAvailable run options (and the default if not provided):\n"
            << "   --nout=<int>         (" << udata.nout << ")\n"
            << "   --showstats          to enable (disabled)\n"
+           << "   --restart=<int>      output number to restart from: output-<num>.hdf5 (disabled)\n"
            << "\nAvailable time-stepping options (and the default if not provided):\n"
            << "   --cfl=<float>        (" << udata.cfl << ")\n"
            << "   --order=<int>        (" << opts.order << ")\n"
@@ -215,6 +221,7 @@ int load_inputs(int myid, int argc, char* argv[],
         retval += sscanf(line,"hmax = %lf", &opts.hmax);
         retval += sscanf(line,"rtol = %lf", &opts.rtol);
         retval += sscanf(line,"atol = %lf", &opts.atol);
+        retval += sscanf(line,"restart = %i", &restart);
 
         /* if unable to read the line (and it looks suspicious) issue a warning */
         if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
@@ -267,6 +274,7 @@ int load_inputs(int myid, int argc, char* argv[],
     if (options[ihmax].count)  opts.hmax         = atof(options[ihmax].argument);
     if (options[irtol].count)  opts.rtol         = atof(options[irtol].argument);
     if (options[iatol].count)  opts.atol         = atof(options[iatol].argument);
+    if (options[irest].count)  restart           = atoi(options[irest].argument);
 
     // pack buffers with final parameter values
     ibuff[0]  = udata.nx;
@@ -288,6 +296,7 @@ int load_inputs(int myid, int argc, char* argv[],
     ibuff[16] = opts.mxhnil;
     ibuff[17] = opts.mxsteps;
     ibuff[18] = opts.pq;
+    ibuff[19] = restart;
 
     dbuff[0]  = udata.xl;
     dbuff[1]  = udata.xr;
@@ -317,7 +326,7 @@ int load_inputs(int myid, int argc, char* argv[],
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 23, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 19, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 20, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
@@ -340,6 +349,7 @@ int load_inputs(int myid, int argc, char* argv[],
   opts.mxhnil = ibuff[16];
   opts.mxsteps = ibuff[17];
   opts.pq = ibuff[18];
+  restart = ibuff[19];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -477,92 +487,270 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 }
 
 
-// Utility routine to output information on this subdomain
-int output_subdomain_information(const UserData& udata, const realtype& dTout)
+// Write problem-defining parameters to file
+int write_parameters(const realtype& tcur, const int& iout,
+                     const UserData& udata, const ARKodeParameters& opts)
 {
-  char outname[100];
-  FILE *UFID = NULL;
-  sprintf(outname, "output-subdomain.%07i.txt", udata.myid);
-  UFID = fopen(outname,"w");
-  if (check_flag((void*) UFID, "fopen (output_subdomain_information)", 0)) return(1);
-  fprintf(UFID, "%li  %li  %li  %li  %li  %li  %li  %li  %li  %i  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf  %lf\n",
-	  udata.nx, udata.ny, udata.nz, udata.is, udata.ie, udata.js, udata.je,
-          udata.ks, udata.ke, udata.nchem, udata.xl, udata.xr, udata.yl,
-          udata.yr, udata.zl, udata.zr, udata.t0, udata.tf, dTout);
-  fclose(UFID);
+  // root process creates restart file
+  if (udata.myid == 0) {
+
+    char outname[23];
+    FILE *UFID = NULL;
+    sprintf(outname, "restart_parameters.txt");
+    UFID = fopen(outname,"w");
+    if (check_flag((void*) UFID, "fopen (write_parameters)", 0)) return(1);
+    fprintf(UFID, "# Euler3D restart file\n");
+    fprintf(UFID, "xl = %lf\n", udata.xl);
+    fprintf(UFID, "xr = %lf\n", udata.xr);
+    fprintf(UFID, "yl = %lf\n", udata.yl);
+    fprintf(UFID, "yr = %lf\n", udata.yr);
+    fprintf(UFID, "zl = %lf\n", udata.zl);
+    fprintf(UFID, "zr = %lf\n", udata.zr);
+    fprintf(UFID, "t0 = %lf\n", tcur);
+    fprintf(UFID, "tf = %lf\n", udata.tf);
+    fprintf(UFID, "gamma = %lf\n", udata.gamma);
+    fprintf(UFID, "nx = %li\n", udata.nx);
+    fprintf(UFID, "ny = %li\n", udata.ny);
+    fprintf(UFID, "nz = %li\n", udata.nz);
+    fprintf(UFID, "xlbc = %i\n", udata.xlbc);
+    fprintf(UFID, "xrbc = %i\n", udata.xrbc);
+    fprintf(UFID, "ylbc = %i\n", udata.ylbc);
+    fprintf(UFID, "yrbc = %i\n", udata.yrbc);
+    fprintf(UFID, "zlbc = %i\n", udata.zlbc);
+    fprintf(UFID, "zrbc = %i\n", udata.zrbc);
+    fprintf(UFID, "cfl = %lf\n", udata.cfl);
+    fprintf(UFID, "nout = %i\n", udata.nout);
+    fprintf(UFID, "showstats = %i\n", udata.showstats);
+    fprintf(UFID, "order = %i\n", opts.order);
+    fprintf(UFID, "dense_order = %i\n", opts.dense_order);
+    fprintf(UFID, "btable = %i\n",  opts.btable);
+    fprintf(UFID, "adapt_method = %i\n", opts.adapt_method);
+    fprintf(UFID, "maxnef = %i\n", opts.maxnef);
+    fprintf(UFID, "mxhnil = %i\n", opts.mxhnil);
+    fprintf(UFID, "mxsteps = %i\n", opts.mxsteps);
+    fprintf(UFID, "safety = %lf\n", opts.safety);
+    fprintf(UFID, "bias = %lf\n", opts.bias);
+    fprintf(UFID, "growth = %lf\n", opts.growth);
+    fprintf(UFID, "pq = %i\n", opts.pq);
+    fprintf(UFID, "k1 = %lf\n", opts.k1);
+    fprintf(UFID, "k2 = %lf\n", opts.k2);
+    fprintf(UFID, "k3 = %lf\n", opts.k3);
+    fprintf(UFID, "etamx1 = %lf\n", opts.etamx1);
+    fprintf(UFID, "etamxf = %lf\n", opts.etamxf);
+    fprintf(UFID, "h0 = %lf\n", opts.h0);
+    fprintf(UFID, "hmin = %lf\n", opts.hmin);
+    fprintf(UFID, "hmax = %lf\n", opts.hmax);
+    fprintf(UFID, "rtol = %lf\n", opts.rtol);
+    fprintf(UFID, "atol = %lf\n", opts.atol);
+    fprintf(UFID, "restart = %i\n", iout);
+    fclose(UFID);
+  }
+
+  // return with success
   return(0);
 }
 
 
 // Utility routine to output the current solution
-//    newappend == 1 indicates create a new file
-//    newappend == 0 indicates append to existing file
-int output_solution(const N_Vector w, const int& newappend, const UserData& udata)
+//    iout should be an integer specifying which output to create
+//
+// Most of the contents of this routine follow from the hdf5_parallel.c
+// example code available at:
+// http://www.astro.sunysb.edu/mzingale/io_tutorial/HDF5_parallel/hdf5_parallel.c
+int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
+                    const UserData& udata, const ARKodeParameters& opts)
 {
   // reusable variables
-  char outtype[2];
-  char outname[NVAR][100];
-  FILE *FID[NVAR];
-  realtype *W;
+  char outname[100];
+  char chemname[13];
+  realtype *W, **Wtmp;
+  realtype domain[6];
   long int i, v;
   long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
+  int retval;
+  hid_t acc_template, file_identifier, filespace, memspace, dataset[NVAR], attspace, attr, h5_realtype;
+  hsize_t dimens[3], stride[3], count[3], start[3];
+  MPI_Info FILE_INFO_TEMPLATE;
+  char comment[] = "This is an output/restart file from the 'Euler3D' SUNDIALS ManyVector+Multirate demonstration code";
 
-  // Set string for output type
-  if (newappend == 1) {
-    sprintf(outtype, "w");
+  // Output restart parameter file
+  retval = write_parameters(tcur, iout, udata, opts);
+  if (check_flag(&retval, "write_parameters (output_solution)", 3)) return(-1);
+
+  // Set string for output filename
+  sprintf(outname, "output-%07i.hdf5", iout);
+
+  // Determine HDF5 equivalent of 'realtype'
+  if (sizeof(realtype) == sizeof(float)) {
+    h5_realtype = H5T_NATIVE_FLOAT;
+  } else if (sizeof(realtype) == sizeof(double)) {
+    h5_realtype = H5T_NATIVE_DOUBLE;
+  } else if (sizeof(realtype) == sizeof(long double)) {
+    h5_realtype = H5T_NATIVE_LDOUBLE;
   } else {
-    sprintf(outtype, "a");
+    cerr << "Output_solution error: cannot map 'realtype' to HDF5 type\n";
+    return(-1);
   }
 
-  // Set strings for output names
-  sprintf(outname[0], "output-rho.%07i.txt", udata.myid);  // density
-  sprintf(outname[1], "output-mx.%07i.txt",  udata.myid);  // x-momentum
-  sprintf(outname[2], "output-my.%07i.txt",  udata.myid);  // y-momentum
-  sprintf(outname[3], "output-mz.%07i.txt",  udata.myid);  // z-momentum
-  sprintf(outname[4], "output-et.%07i.txt",  udata.myid);  // total energy
-  //   tracers -- set index width based on total number (assumes at most 10001 tracer species)
-  if (udata.nchem < 11) {
-    for (v=0; v<udata.nchem; v++)
-      sprintf(outname[5+v], "output-c%01i.%07i.txt", (int) v, udata.myid);
-  } else if (udata.nchem < 101) {
-    for (v=0; v<udata.nchem; v++)
-      sprintf(outname[5+v], "output-c%02i.%07i.txt", (int) v, udata.myid);
-  } else if (udata.nchem < 1001) {
-    for (v=0; v<udata.nchem; v++)
-      sprintf(outname[5+v], "output-c%03i.%07i.txt", (int) v, udata.myid);
-  } else if (udata.nchem < 10001) {
-    for (v=0; v<udata.nchem; v++)
-      sprintf(outname[5+v], "output-c%04i.%07i.txt", (int) v, udata.myid);
-  } else {
-    cerr << "output_solution error: cannot handle over 10000 tracer species\n";
-    return(1);
+  // set the file access template for parallel IO access
+  acc_template = H5Pcreate(H5P_FILE_ACCESS);
+
+  //-------------
+  // platform dependent code goes here -- the access template should be
+  // tuned for a particular filesystem blocksize.  some of these
+  // numbers are guesses / experiments, others come from the file system
+  // documentation
+  //
+  // The sieve_buf_size should be equal a multiple of the disk block size
+
+  // create an MPI_INFO object -- on some platforms it is useful to
+  // pass some information onto the underlying MPI_File_open call
+  retval = MPI_Info_create(&FILE_INFO_TEMPLATE);
+  if (check_flag(&retval, "MPI_Info_create (output_solution)", 3)) return(-1);
+  retval = H5Pset_sieve_buf_size(acc_template, 262144);
+  if (check_flag(&retval, "H5Pset_sieve_buf_size (output_solution)", 3)) return(-1);
+  retval = H5Pset_alignment(acc_template, 524288, 262144);
+  if (check_flag(&retval, "H5Pset_alignment (output_solution)", 3)) return(-1);
+  retval = MPI_Info_set(FILE_INFO_TEMPLATE, "access_style", "write_once");
+  if (check_flag(&retval, "MPI_Info_set (output_solution)", 3)) return(-1);
+  retval = MPI_Info_set(FILE_INFO_TEMPLATE, "collective_buffering", "true");
+  if (check_flag(&retval, "MPI_Info_set (output_solution)", 3)) return(-1);
+  retval = MPI_Info_set(FILE_INFO_TEMPLATE, "cb_block_size", "1048576");
+  if (check_flag(&retval, "MPI_Info_set (output_solution)", 3)) return(-1);
+  retval = MPI_Info_set(FILE_INFO_TEMPLATE, "cb_buffer_size", "4194304");
+  if (check_flag(&retval, "MPI_Info_set (output_solution)", 3)) return(-1);
+
+  // tell HDF5 that we want to use MPI-IO to do the writing
+  retval = H5Pset_fapl_mpio(acc_template, udata.comm, FILE_INFO_TEMPLATE);
+  if (check_flag(&retval, "H5Pset_fapl_mpio (output_solution)", 3)) return(-1);
+
+  // end of platform dependent properties
+  //-------------
+
+  // H5Fcreate takes several arguments in addition to the filename.  We
+  // specify H5F_ACC_TRUNC to the second argument to tell it to overwrite
+  // an existing file by the same name if it exists.  The next two
+  // arguments are the file creation property list and the file access
+  // property lists.  These are used to pass options to the library about
+  // how to create the file, and how it will be accessed (ex. via mpi-io). */
+  file_identifier = H5Fcreate(outname, H5F_ACC_TRUNC, H5P_DEFAULT, acc_template);
+
+  // release the file access template
+  retval = H5Pclose(acc_template);
+  if (check_flag(&retval, "H5Pclose (output_solution)", 3)) return(-1);
+  retval = MPI_Info_free(&FILE_INFO_TEMPLATE);
+  if (check_flag(&retval, "MPI_Info_free (output_solution)", 3)) return(-1);
+
+
+  //-------------
+  // Now store some metadata for the output -- first some scalars
+  attspace = H5Screate(H5S_SCALAR);
+  //    current time
+  attr = H5Dcreate(file_identifier, "time", h5_realtype, attspace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (udata.myid == 0) {
+    retval = H5Dwrite(attr, h5_realtype, H5S_ALL, attspace, H5P_DEFAULT, &tcur);
+    if (check_flag(&retval, "H5Dwrite (output_solution)", 3)) return(-1);
   }
-  // Output fluid fields to disk
+  H5Dclose(attr);
+  //    number of chemical species
+  attr = H5Dcreate(file_identifier, "nchem", H5T_NATIVE_INT, attspace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (udata.myid == 0) {
+    retval = H5Dwrite(attr, H5T_NATIVE_INT, H5S_ALL, attspace, H5P_DEFAULT, &udata.nchem);
+    if (check_flag(&retval, "H5Dwrite (output_solution)", 3)) return(-1);
+  }
+  H5Dclose(attr);
+  H5Sclose(attspace);
+
+  // second, an array with the domain bounds
+  domain[0] = udata.zl;  domain[1] = udata.zr;
+  domain[2] = udata.yl;  domain[3] = udata.yr;
+  domain[4] = udata.xl;  domain[5] = udata.xr;
+  dimens[0] = 3;
+  dimens[1] = 2;
+  attspace = H5Screate_simple(2, dimens, NULL);
+  attr = H5Dcreate(file_identifier, "domain", h5_realtype, attspace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (udata.myid == 0) {
+    retval = H5Dwrite(attr, h5_realtype, H5S_ALL, attspace, H5P_DEFAULT, domain);
+    if (check_flag(&retval, "H5Dwrite (output_solution)", 3)) return(-1);
+  }
+  H5Dclose(attr);
+  H5Sclose(attspace);
+
+
+  //-------------
+  // Now store the solution fields
+
+  // create the filespace for the datasets (how each will be stored on disk)
+  dimens[0] = udata.nz;
+  dimens[1] = udata.ny;
+  dimens[2] = udata.nx;
+  filespace = H5Screate_simple(3, dimens, NULL);
+  dimens[0] = udata.nzl;
+  dimens[1] = udata.nyl;
+  dimens[2] = udata.nxl;
+  memspace = H5Screate_simple(3, dimens, NULL);
+
+  // create the datasets (with default properties) and close filespace
+  dataset[0] = H5Dcreate(file_identifier, "Density",     h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[1] = H5Dcreate(file_identifier, "x-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[2] = H5Dcreate(file_identifier, "y-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[3] = H5Dcreate(file_identifier, "z-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[4] = H5Dcreate(file_identifier, "TotalEnergy", h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  for (v=0; v<udata.nchem; v++) {
+    sprintf(chemname, "Chemical-%03li", v);
+    dataset[5+v] = H5Dcreate(file_identifier, chemname, h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  }
+
+  // Set this processor's offsets into the filespace
+  start[0] = udata.ks;
+  start[1] = udata.js;
+  start[2] = udata.is;
+  stride[0] = 1;
+  stride[1] = 1;
+  stride[2] = 1;
+  count[0] = udata.nzl;
+  count[1] = udata.nyl;
+  count[2] = udata.nxl;
+  retval = H5Sselect_hyperslab(filespace, H5S_SELECT_SET, start, stride, count, NULL);
+  if (check_flag(&retval, "H5Sselect_hyperslab (output_solution)", 3)) return(-1);
+
+  // write each fluid field to disk, and close the associated dataset
   for (v=0; v<5; v++) {
-    FID[v] = fopen(outname[v],outtype);                  // file ptr
+    W = NULL;
     W = N_VGetSubvectorArrayPointer_MPIManyVector(w,v);  // data array
-    if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-    for (i=0; i<N; i++) fprintf(FID[v]," %.16e", W[i]);  // output
-    fprintf(FID[v],"\n");                                // newline
-    fclose(FID[v]);                                      // close file
+    retval = H5Dwrite(dataset[v], h5_realtype, memspace, filespace, H5P_DEFAULT, W);
+    if (check_flag(&retval, "H5Dwrite (output_solution)", 3)) return(-1);
+    H5Dclose(dataset[v]);
   }
 
-  // Output tracer fields to disk
+  // write each chemical field to disk, and close the associated dataset
+  // (note: we first copy these to be contiguous over this MPI task)
   if (udata.nchem > 0) {
-    for (v=0; v<udata.nchem; v++)                        // open file ptrs
-      FID[v] = fopen(outname[5+v],outtype);
+    Wtmp = new realtype*[udata.nchem];
+    for (v=0; v<udata.nchem; v++)
+      Wtmp[v] = new realtype[N];
     for (i=0; i<N; i++) {                                // loop over subdomain
       W = NULL;
       W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+i);
       if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-      for (v=0; v<udata.nchem; v++)                      // output tracers at this location
-        fprintf(FID[v]," %.16e", W[v]);
-    }
-    for (v=0; v<udata.nchem; v++) {                      // add newlines and close files
-      fprintf(FID[v],"\n");
-      fclose(FID[v]);
+      for (v=0; v<udata.nchem; v++)  Wtmp[v][i] = W[v];
     }
   }
+  for (v=0; v<udata.nchem; v++) {
+    retval = H5Dwrite(dataset[5+v], h5_realtype, memspace, filespace, H5P_DEFAULT, Wtmp[v]);
+    if (check_flag(&retval, "H5Dwrite (output_solution)", 3)) return(-1);
+    H5Dclose(dataset[5+v]);
+  }
+
+  // clean up and close the file
+  if (udata.nchem > 0) {
+    for (v=0; v<udata.nchem; v++)
+      delete[] Wtmp[v];
+    delete[] Wtmp;
+  }
+  H5Sclose(memspace);
+  H5Sclose(filespace);
+  H5Fclose(file_identifier);
 
   // return with success
   return(0);

@@ -28,6 +28,10 @@ ifeq ($(HOST),longclaw)
   KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
   KLULIBDIR = $(KLUDIR)/lib
 
+  HDF5DIR = /usr/local/hdf5-1.10.5/gnu
+  HDFINCDIRS = -I${HDF5DIR}/include
+  HDFLIBDIR = ${HDF5DIR}/lib
+
   CXX = /usr/local/mpich-3.2.1/gnu/bin/mpicxx --std=c++11
   OMPFLAGS = -fopenmp
 
@@ -44,6 +48,10 @@ else ifeq ($(HOST),cauchy)
   KLUDIR = /usr/local/suitesparse-5.2.0/gnu
   KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
   KLULIBDIR = $(KLUDIR)/lib
+
+  HDF5DIR = /usr/local/hdf5-1.10.5/gnu
+  HDFINCDIRS = -I${HDF5DIR}/include
+  HDFLIBDIR = ${HDF5DIR}/lib
 
   CXX = /usr/local/mpich-3.2.1/gnu/bin/mpicxx --std=c++11
   OMPFLAGS = -fopenmp
@@ -62,6 +70,10 @@ else ifeq ($(HOST),descartes.local)
   KLUINCDIRS = -I$(KLUDIR)/include/
   KLULIBDIR = $(KLUDIR)/lib
 
+  HDF5DIR = /usr/local/hdf5-1.10.5/clang
+  HDFINCDIRS = -I${HDF5DIR}/include
+  HDFLIBDIR = ${HDF5DIR}/lib
+
   CXX = /usr/local/mpich-3.3/clang/bin/mpicxx --std=c++11
   OMPFLAGS = #-Xpreprocessor -fopenmp -lomp
 
@@ -75,6 +87,10 @@ else
   KLUDIR = ./libs
   KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
   KLULIBDIR = $(KLUDIR)/lib
+
+  HDF5DIR = ./libs
+  HDFINCDIRS = -I${HDF5DIR}/include
+  HDFLIBDIR = ${HDF5DIR}/lib
 
   CXX = ./mpi/bin/mpicxx --std=c++11
   OMPFLAGS = -fopenmp
