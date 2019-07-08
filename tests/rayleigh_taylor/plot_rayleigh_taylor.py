@@ -137,7 +137,7 @@ if __name__ == '__main__':
 
   # spawn processes to generate plots for each time step
   timesteps = range(0,nt)
-  nprocs = multiprocessing.cpu_count()//2
+  nprocs = max(1, multiprocessing.cpu_count()//8)
   p = multiprocessing.Pool(nprocs)
   p.map(plot_step, timesteps)
   p.close()
