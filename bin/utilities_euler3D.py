@@ -12,158 +12,88 @@
 import sys
 import numpy as np
 
-# determine the number of MPI processes used
-def get_MPI_tasks():
-    nprocs=1
-    for i in range(10000):
-        sname = 'output-subdomain.' + repr(i).zfill(7) + '.txt'
-        try:
-            f = open(sname,'r')
-            f.close()
-        except IOError:
-            nprocs = i
-            break
-    return nprocs
-
-# load subdomain information, store in table
-def load_subdomain_info(nprocs):
-    subdomains = np.zeros((nprocs,6), dtype=np.int)
-    domain = np.zeros((4,2), dtype=np.float)
-    sname = 'output-subdomain.0000000.txt'
-    subd = np.loadtxt(sname)
-    nx = np.int(subd[0])
-    ny = np.int(subd[1])
-    nz = np.int(subd[2])
-    subdomains[0,:] = subd[3:9]  # [is,ie,js,je,ks,ke]
-    nchem = np.int(subd[9])
-    domain[0,:] = subd[10:12]     # [xl,xr]
-    domain[1,:] = subd[12:14]    # [yl,yr]
-    domain[2,:] = subd[14:16]    # [zl,zr]
-    domain[3,:] = subd[16:18]    # [t0,tf]
-    dTout = np.float(subd[18])
-    for i in range(1,nprocs):
-        sname = 'output-subdomain.' + repr(i).zfill(7) + '.txt'
-        subd = np.loadtxt(sname)
-        if ((subd[0] != nx) or (subd[1] != ny) or (subd[2] != nz)):
-            sys.exit("error: subdomain files incompatible (clean up and re-run test)")
-        subdomains[i,:] = subd[3:9]
-    return [nx, ny, nz, nchem, subdomains, domain, dTout]
-
 # load solution data into multi-dimensional arrays
 def load_data():
+    import h5py
 
-    # load metadata
-    nprocs = get_MPI_tasks()
-    nx, ny, nz, nchem, subdomains, domain, dTout = load_subdomain_info(nprocs)
-    
-    # load first processor's data, and determine total number of time steps
-    rho_data = np.loadtxt('output-rho.0000000.txt', dtype=np.double)
-    mx_data  = np.loadtxt('output-mx.0000000.txt',  dtype=np.double)
-    my_data  = np.loadtxt('output-my.0000000.txt',  dtype=np.double)
-    mz_data  = np.loadtxt('output-mz.0000000.txt',  dtype=np.double)
-    et_data  = np.loadtxt('output-et.0000000.txt',  dtype=np.double)
-    chem_data = []
-    if (nchem < 11):
-        cwidth = 1
-    elif (nchem < 101):
-        cwidth = 2
-    elif (nchem < 1001):
-        cwidth = 3
-    elif (nchem < 10001):
-        cwidth = 4
-    for ichem in range(nchem):
-        fname = 'output-c' + repr(ichem).zfill(cwidth) + '.0000000.txt'
-        chem_data.append(np.loadtxt(fname,  dtype=np.double))
-    nt = np.shape(rho_data)[0]
-    if ( (np.shape(mx_data)[0] != nt) or (np.shape(my_data)[0] != nt) or
-         (np.shape(mz_data)[0] != nt) or (np.shape(et_data)[0] != nt) ):
-        sys.exit('error: an output for subdomain 0 has an incorrect number of time steps')
-    for ichem in range(nchem):
-        if (np.shape(chem_data[ichem])[0] != nt):
-            sys.exit('error: an output for subdomain 0 has an incorrect number of time steps')
+    # load from restart_parameters.txt
+    f = open('restart_parameters.txt')
+    d = {}
+    for line in f:
+        linevals = line.split()
+        if linevals: d.update({linevals[0]: linevals[2]})
+    nx = int(d['nx'])
+    ny = int(d['ny'])
+    nz = int(d['nz'])
+    nt = int(d['restart'])+1
 
-    # create space-time mesh arrays
-    xgrid = np.linspace(domain[0,0], domain[0,1], nx)
-    ygrid = np.linspace(domain[1,0], domain[1,1], ny)
-    zgrid = np.linspace(domain[2,0], domain[2,1], nz)
-    tgrid = np.zeros((nt), dtype=float)
-    for it in range(nt):
-        tgrid[it] = it*dTout
-    
-    # create empty array for all solution data
+    # create spatial mesh arrays
+    xgrid = np.linspace(float(d['xl']), float(d['xr']), nx)
+    ygrid = np.linspace(float(d['yl']), float(d['yr']), ny)
+    zgrid = np.linspace(float(d['zl']), float(d['zr']), nz)
+    tgrid = np.zeros((nt+1), dtype=float)
+
+    # read first output file, and verify that it matches metadata
+    f = h5py.File("output-0000000.hdf5", "r")
+    if ( (nx != np.size(f['Density'][:], 2)) or
+         (ny != np.size(f['Density'][:], 1)) or
+         (nz != np.size(f['Density'][:], 0)) ):
+        raise ValueError("load_data: HDF5 file output-0000000.hdf5 and metadata disagree on data shape")
+
+    # set number of chemical species and current time
+    nchem = f[('nchem')].value
+    tgrid[0] = f[('time')].value
+
+    # create empty arrays for all solution data
     rho  = np.zeros((nx,ny,nz,nt), order='F')
     mx   = np.zeros((nx,ny,nz,nt), order='F')
     my   = np.zeros((nx,ny,nz,nt), order='F')
     mz   = np.zeros((nx,ny,nz,nt), order='F')
     et   = np.zeros((nx,ny,nz,nt), order='F')
     chem = np.zeros((nx,ny,nz,nchem,nt), order='F')
-    
-    # insert first processor's data into results array
-    ist = subdomains[0,0]
-    ind = subdomains[0,1]
-    jst = subdomains[0,2]
-    jnd = subdomains[0,3]
-    kst = subdomains[0,4]
-    knd = subdomains[0,5]
-    nxl = ind-ist+1
-    nyl = jnd-jst+1
-    nzl = knd-kst+1
-    for i in range(nt):
-        rho[ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-        mx[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mx_data[i,:], (nxl,nyl,nzl), order='F')
-        my[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( my_data[i,:], (nxl,nyl,nzl), order='F')
-        mz[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mz_data[i,:], (nxl,nyl,nzl), order='F')
-        et[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( et_data[i,:], (nxl,nyl,nzl), order='F')
-        for ichem in range(nchem):
-            chem[ist:ind+1,jst:jnd+1,kst:knd+1,ichem,i] = np.reshape(
-                chem_data[ichem][i,:], (nxl,nyl,nzl), order='F')
-        
-    # iterate over remaining data files, inserting into output
-    if (nprocs > 1):
-        for isub in range(1,nprocs):
-            rho_data = np.loadtxt('output-rho.' + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            mx_data  = np.loadtxt('output-mx.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            my_data  = np.loadtxt('output-my.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            mz_data  = np.loadtxt('output-mz.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            et_data  = np.loadtxt('output-et.'  + repr(isub).zfill(7) + '.txt', dtype=np.double)
-            for ichem in range(nchem):
-                fname = 'output-c' + repr(ichem).zfill(cwidth) + '.' + repr(isub).zfill(7) + '.txt'
-                chem_data[ichem] = np.loadtxt(fname,  dtype=np.double)
-            # check that files have correct number of time steps
-            if( (np.shape(rho_data)[0] != nt) or (np.shape(mx_data)[0] != nt) or (np.shape(my_data)[0] != nt) or
-                (np.shape(mz_data)[0] != nt) or (np.shape(et_data)[0] != nt) ):
-                sys.exit('error: an output for subdomain ' + repr(isub) + ' has an incorrect number of time steps')
-            for ichem in range(nchem):
-                if (np.shape(chem_data[ichem])[0] != nt):
-                    sys.exit('error: an output for subdomain ' + repr(isub) + ' has an incorrect number of time steps')
 
-            ist = subdomains[isub,0]
-            ind = subdomains[isub,1]
-            jst = subdomains[isub,2]
-            jnd = subdomains[isub,3]
-            kst = subdomains[isub,4]
-            knd = subdomains[isub,5]
-            nxl = ind-ist+1
-            nyl = jnd-jst+1
-            nzl = knd-kst+1
-            for i in range(nt):
-                rho[ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape(rho_data[i,:], (nxl,nyl,nzl), order='F')
-                mx[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mx_data[i,:], (nxl,nyl,nzl), order='F')
-                my[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( my_data[i,:], (nxl,nyl,nzl), order='F')
-                mz[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( mz_data[i,:], (nxl,nyl,nzl), order='F')
-                et[ ist:ind+1,jst:jnd+1,kst:knd+1,i] = np.reshape( et_data[i,:], (nxl,nyl,nzl), order='F')
-                for ichem in range(nchem):
-                    chem[ist:ind+1,jst:jnd+1,kst:knd+1,ichem,i] = np.reshape(
-                        chem_data[ichem][i,:], (nxl,nyl,nzl), order='F')
+    # insert first dataset results arrays
+    rho[:,:,:,0] = np.transpose(f['Density'])
+    mx[ :,:,:,0] = np.transpose(f['x-Momentum'])
+    my[ :,:,:,0] = np.transpose(f['y-Momentum'])
+    mz[ :,:,:,0] = np.transpose(f['z-Momentum'])
+    et[ :,:,:,0] = np.transpose(f['TotalEnergy'])
+    for ichem in range(nchem):
+        chemname = 'Chemical-' + repr(ichem).zfill(3)
+        chem[:,:,:,ichem,0] = np.transpose(f[chemname])
+
+    # iterate over remaining hdf5 files, inserting into output
+    for iout in range(1,nt):
+        fname = 'output-' + repr(iout).zfill(7) + '.hdf5'
+        f = h5py.File(fname, 'r')
+        tgrid[iout] = f[('time')].value
+
+        # check that this file's dimensions match the first one
+        if ( (nx != np.size(f['Density'][:], 2)) or
+             (ny != np.size(f['Density'][:], 1)) or
+             (nz != np.size(f['Density'][:], 0)) ):
+            raise ValueError("load_data: HDF5 file " + fname + " and metadata disagree on data shape")
+        if (nchem != f[('nchem')].value):
+            raise ValueError("load_data: HDF5 file " + fname + " and metadata disagree on nchem")
+
+        # insert into output arrays
+        rho[:,:,:,iout] = np.transpose(f['Density'])
+        mx[ :,:,:,iout] = np.transpose(f['x-Momentum'])
+        my[ :,:,:,iout] = np.transpose(f['y-Momentum'])
+        mz[ :,:,:,iout] = np.transpose(f['z-Momentum'])
+        et[ :,:,:,iout] = np.transpose(f['TotalEnergy'])
+        for ichem in range(nchem):
+            chemname = 'Chemical-' + repr(ichem).zfill(3)
+            chem[:,:,:,ichem,iout] = np.transpose(f[chemname])
 
     return [nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem]
 
 
 
 def fsecant(p4, p1, p5, rho1, rho5, gamma):
-    """  
+    """
     f = fsecant(p4, p1, p5, rho1, rho5, gamma)
-    
+
     Utility routine for exact_Riemann function
     """
     z = (p4 / p5 - 1.0)
@@ -184,16 +114,16 @@ def fsecant(p4, p1, p5, rho1, rho5, gamma):
 
 
 def exact_Riemann(t, x, xI, gamma, rhoL, rhoR, uL, uR, pL, pR):
-    """  
+    """
     rho, u, m, p, et = exact_Riemann(t, x, xI, gamma, rhoL, rhoR, uL, uR, pL, pR)
-    
+
     Exact 1D Riemann problem solver (retrieves domain from UserData structure),
     based on Fortran code at http://cococubed.asu.edu/codes/riemann/exact_riemann.f
 
-    Inputs: t time for desired solution, 
+    Inputs: t time for desired solution,
             x spatial grid for solution output
-            [xL,xR] spatial domain, 
-            xI location of discontinuity at t=0, 
+            [xL,xR] spatial domain,
+            xI location of discontinuity at t=0,
             gamma parameter for gas equation of state
             rhoL, rhoR -- left/right densities for Riemann problem
             uL, uR -- left/right velocities for Riemann problem
@@ -210,7 +140,7 @@ def exact_Riemann(t, x, xI, gamma, rhoL, rhoR, uL, uR, pL, pR):
     m   = np.zeros(npts, dtype=float)
     p   = np.zeros(npts, dtype=float)
     et  = np.zeros(npts, dtype=float)
-    
+
     # begin solution
     if (pL > pR):
         rho1 = rhoL

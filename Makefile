@@ -34,7 +34,7 @@ ifeq ($(USEOMP),0)
 endif
 
 # shortcuts for include and library paths, etc.
-INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS}
+INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS} ${HDFINCDIRS}
 
 SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_arkode \
@@ -43,9 +43,10 @@ SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_nvecserial \
            -lsundials_sunlinsolklu
 KLULIBS = -L$(KLULIBDIR) -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig
-LIBS = ${SUNDLIBS} ${KLULIBS} -lm
+HDFLIBS = -L$(HDFLIBDIR) -lhdf5 -lsz
+LIBS = ${SUNDLIBS} ${KLULIBS} ${HDFLIBS} -lm
 
-LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
+LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR},-rpath,${HDFLIBDIR}
 
 # common source/object files on which all executables depend
 COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.c
@@ -54,6 +55,7 @@ COMMONOBJ = euler3D.o utilities.o io.o gopt.o
 # listing of all test routines that use 'default' number of fields
 TESTS = compile_test_fluid.exe \
         communication_test_fluid.exe \
+        io_test_fluid.exe \
         linear_advection_x.exe \
         linear_advection_y.exe \
         linear_advection_z.exe \
@@ -72,6 +74,7 @@ TESTS = compile_test_fluid.exe \
 # listing of all test routines that use a custom 'NVAR' value
 COLORTESTS = compile_test_tracers.exe \
              communication_test_tracers.exe \
+             io_test_tracers.exe \
              hurricane_zx_color.exe
 
 # instruct Make to look in 'src' for source code files
@@ -90,14 +93,14 @@ gopt.o : gopt.c gopt.h
 .cpp.o : include/euler3D.hpp
 	${CXX} -c ${CXXFLAGS} ${OMPFLAGS} ${INCS} $< -o $@
 
-buildclean : 
+buildclean :
 	\rm -rf *.o
 
 outclean :
-	\rm -rf diags*.txt output*.txt xslice*.png yslice*.png zslice*.png __pycache__
+	\rm -rf diags*.txt restart_parameters.txt output*.hdf5 xslice*.png yslice*.png zslice*.png __pycache__
 
 clean : outclean buildclean
-	\rm -rf *.orig *~ 
+	\rm -rf *.orig *~
 
 realclean : clean
 	\rm -rf *.exe *.dSYM
@@ -120,6 +123,16 @@ communication_test_fluid.exe : communication_test.cpp utilities.cpp io.cpp gopt.
 	\rm -rf *.o
 
 communication_test_tracers.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
+
+io_test_fluid.exe : io_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+	\rm -rf *.o
+	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	\rm -rf *.o
+
+io_test_tracers.exe : io_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o

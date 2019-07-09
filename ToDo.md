@@ -25,13 +25,7 @@
    h. Double mach reflection problem [2D] -- see Andreyev final report,
       section 4.2.2  [yet to begin] 
 
-2. HDF5 parallel I/O, with restart capabilities.  Store current
-   solutions as well as current time and step size to HDF5 files.
-   Write out all current simulation parameters to a restart input
-   file.  On restarts, create ARKStep solver as usual, but set initial
-   step size to match stored value.
-
-3. Chemical species:
+2. Chemical species:
 
    a. Add support for "nc" chemical species to be advected along with
       fluid (at fluid time scale); these should be initially stored in
@@ -53,7 +47,7 @@
       but do 'number crunching' for RHS, Jacobian and linear solves on
       GPU.
 
-4. Viscosity: add fluid viscosity, treated implicitly with ARK method
+3. Viscosity: add fluid viscosity, treated implicitly with ARK method
    at slow time scale.  Precondition/solve the corresponding linear
    systems with our new scalable linear solver interfaces (e.g.,
    *hypre*, PETSc, Trilinos).  This must wait until MRIStep has

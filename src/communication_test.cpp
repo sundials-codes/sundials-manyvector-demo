@@ -27,6 +27,7 @@ int main(int argc, char* argv[]) {
   // general problem variables
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
+  int restart;                   // restart file number to use (unused here)
   N_Vector w = NULL;             // empty vectors for storing overall solution
   N_Vector *wsubvecs;
 
@@ -47,7 +48,7 @@ int main(int argc, char* argv[]) {
   // read problem and solver parameters from input file / command line
   UserData udata;
   ARKodeParameters opts;
-  retval = load_inputs(myid, argc, argv, udata, opts);
+  retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
 

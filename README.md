@@ -21,15 +21,17 @@ that have been added to SUNDIALS in recent years.  Namely:
 Steps showing the process to download this demo code, install the
 relevant dependencies, and build the demo in a Linux or OS X
 environment are as follows.  To compile this code you will need modern
-C and C++ compilers.  All dependencies (SUNDIALS and KLU) for the demo
+C and C++ compilers.  All dependencies (SUNDIALS, KLU and HDF5) for the demo
 are installed in-place using [Spack](https://github.com/spack/spack).
 
 ```bash
    git clone https://github.com/drreynolds/sundials-manyvector-demo.git
    cd sundials-manyvector-demo
    git clone https://github.com/spack/spack.git .spack
+   .spack/bin/spack install hdf5 +mpi +pic +szip
    .spack/bin/spack install sundials +int64 +klu +mpi ~examples-f77 ~examples-install ~examples-c ~CVODE ~CVODES ~IDA ~IDAS ~KINSOL
-   .spack/bin/spack view symlink libs sundials
+   .spack/bin/spack view symlink hdf5 hdf5
+   .spack/bin/spack view symlink sundials sundials
    .spack/bin/spack view symlink mpi mpi
    make
 ```
@@ -38,9 +40,9 @@ The above steps will build all codes in 'production' mode, with
 optimization enabled, and both OpenMP and debugging symbols turned
 off. 
 
-Alternately, if you already have MPI, SUNDIALS and KLU/SuiteSparse
-installed, you can edit the file `Makefile.in` to specify these
-installations, and skip the Spack-related steps above. 
+Alternately, if you already have MPI, SUNDIALS, parallel HDF5, and
+KLU/SuiteSparse installed, you can edit the file `Makefile.in` to
+specify these installations, and skip the Spack-related steps above. 
 
 Additionally, you may edit the `Makefile.opts` file to switch between
 an optimized/debugging build, and to enable/disable OpenMP prior to
@@ -130,8 +132,9 @@ together to form the full "solution" vector <img src="/tex/31fae8b8b78ebe01cbfbe
 `MPIManyVector` `N_Vector` module.  The resulting initial-value
 problem is solved using a temporally-adaptive explicit Runge Kutta
 method from ARKode's ARKStep module.  The solution is output to disk
-and solution statistics are optionally output to the screen at
-specified frequencies, and run statistics are printed at the end.
+using parallel HDF5, and solution statistics are optionally output to
+the screen at specified frequencies, and run statistics are printed at
+the end.
 
 Individual test problems may be uniquely specified through an input
 file and auxiliarly source code file(s) that should be linked with
@@ -224,6 +227,18 @@ To supply these auxiliary source code file(s), add this to the
 `Makefile` in a similar manner as the existing test problems are built
 (e.g. `hurricane_yz.exe`).
 
+As stated above, this code uses parallel HDF5 to store solution
+snapshots at the frequency specified by `nout`.  Accompanying these
+`output-#######.hdf5` files is an automatically-generated input file,
+`restart_parameters.txt` that stores a complete set of input
+parameters to restart the simulation from the most recently-generated
+output file.  This is a "warm" restart, in that it will pick up the
+calculation where the previous one left off, using the same initial
+time step size as ARKStep would use.  This restart may differ slightly
+from an uninterrupted run since other internal ARKStep time adaptivity
+parameters cannot be reused.  We note that the restart must use the
+same spatial grid size and number of chemical tracers as the original
+run, but it may use a different number of MPI tasks if desired.
 
 
 ## Authors

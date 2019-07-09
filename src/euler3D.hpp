@@ -5,7 +5,7 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Header file for shared main routine, utility routines, 
+ Header file for shared main routine, utility routines,
  ARKodeParameters and UserData class.
  ---------------------------------------------------------------*/
 
@@ -99,7 +99,7 @@ public:
   double hmax;         // maximum time step size (0 => infinite)
   double rtol;         // relative solution tolerance (0 => default)
   double atol;         // absolute solution tolerance (0 => default)
-  
+
   // constructor (with default values)
   ARKodeParameters() :
     order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
@@ -140,7 +140,7 @@ public:
   realtype dx;          // x-directional mesh spacing
   realtype dy;          // y-directional mesh spacing
   realtype dz;          // z-directional mesh spacing
-  
+
   ///// problem-defining data /////
   int      xlbc;        // boundary condition types:
   int      xrbc;        //      0 = periodic
@@ -155,12 +155,12 @@ public:
   ///// run-control parameters /////
   int nout;             // num pauses in integration to run diagnostics/io
   int showstats;        // flag indicating whether to display run stats to screen
-  
+
   ///// reusable arrays for WENO flux calculations /////
   realtype *xflux;
   realtype *yflux;
   realtype *zflux;
-  
+
   ///// MPI-specific data /////
   MPI_Comm comm;        // communicator object
   int myid;             // MPI process ID
@@ -194,10 +194,10 @@ public:
       nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0), zl(0.0),
       zr(1.0), t0(0.0), tf(1.0), xlbc(BC_PERIODIC), xrbc(BC_PERIODIC),
       ylbc(BC_PERIODIC), yrbc(BC_PERIODIC), zlbc(BC_PERIODIC), zrbc(BC_PERIODIC),
-      is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1), nxl(-1), nyl(-1), nzl(-1), 
-      comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1), 
-      Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL), 
-      Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL), 
+      is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1), nxl(-1), nyl(-1), nzl(-1),
+      comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
+      Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
+      Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
       ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
       xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0)
   {
@@ -249,7 +249,7 @@ public:
     truedims += (nx > 3) ? 1 : 0;
     truedims += (ny > 3) ? 1 : 0;
     truedims += (nz > 3) ? 1 : 0;
-    
+
     // get suggested parallel decomposition
     retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     if (check_flag(&retval, "MPI_Comm_size (UserData::SetupDecomp)", 3)) return -1;
@@ -258,13 +258,13 @@ public:
 
     // adjust dims to match actual problem dimensions
     i=0;
-    if (nx > 3) 
+    if (nx > 3)
       dims[0] = dims_suggested[i++];
-    if (ny > 3) 
+    if (ny > 3)
       dims[1] = dims_suggested[i++];
-    if (nz > 3) 
+    if (nz > 3)
       dims[2] = dims_suggested[i++];
-    
+
     // set up 3D Cartesian communicator
     if ( ((xlbc == BC_PERIODIC) && (xrbc != BC_PERIODIC)) ||
          ((xlbc != BC_PERIODIC) && (xrbc == BC_PERIODIC)) ) {
@@ -318,12 +318,12 @@ public:
       cerr << "SetupDecomp error: task " << myid << " has nzl = " << nzl << " < 3\n";
       return(-1);
     }
-    
+
     // allocate temporary arrays for storing directional fluxes
     xflux = new realtype[(NVAR)*(nxl+1)*nyl*nzl];
     yflux = new realtype[(NVAR)*nxl*(nyl+1)*nzl];
     zflux = new realtype[(NVAR)*nxl*nyl*(nzl+1)];
-    
+
     // for all faces where neighbors exist: determine neighbor process indices;
     // for all faces: allocate exchange buffers (external boundaries fill with ghost values)
     Wrecv = new realtype[(NVAR)*3*nyl*nzl];
@@ -413,7 +413,7 @@ public:
     realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
     if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
     realtype *chem;
-    
+
     // initialize all requests in array
     for (i=0; i<12; i++)  req[i] = MPI_REQUEST_NULL;
 
@@ -458,15 +458,15 @@ public:
     if (ipW != MPI_PROC_NULL) {
       for (k=0; k<nzl; k++)
         for (j=0; j<nyl; j++) {
-          for (i=0; i<3; i++) 
+          for (i=0; i<3; i++)
             Wsend[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<3; i++) 
+          for (i=0; i<3; i++)
             Wsend[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<3; i++) 
+          for (i=0; i<3; i++)
             Wsend[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<3; i++) 
+          for (i=0; i<3; i++)
             Wsend[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<3; i++) 
+          for (i=0; i<3; i++)
             Wsend[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(i,j,k,nxl,nyl,nzl)];
           if (nchem>0) {
             for (i=0; i<3; i++) {
@@ -512,15 +512,15 @@ public:
     if (ipS != MPI_PROC_NULL) {
       for (k=0; k<nzl; k++)
         for (j=0; j<3; j++) {
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Ssend[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Ssend[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Ssend[BUFIDX(2,j,i,k,3,nxl,nzl)] = my[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Ssend[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Ssend[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,j,k,nxl,nyl,nzl)];
           if (nchem>0) {
             for (i=0; i<nxl; i++) {
@@ -539,15 +539,15 @@ public:
     if (ipN != MPI_PROC_NULL) {
       for (k=0; k<nzl; k++)
         for (j=0; j<3; j++) {
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Nsend[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Nsend[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Nsend[BUFIDX(2,j,i,k,3,nxl,nzl)] = my[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Nsend[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Nsend[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
           if (nchem>0) {
             for (i=0; i<nxl; i++) {
@@ -566,15 +566,15 @@ public:
     if (ipB != MPI_PROC_NULL) {
       for (k=0; k<3; k++)
         for (j=0; j<nyl; j++) {
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Bsend[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Bsend[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Bsend[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Bsend[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Bsend[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,k,nxl,nyl,nzl)];
           if (nchem>0) {
             for (i=0; i<nxl; i++) {
@@ -593,15 +593,15 @@ public:
     if (ipF != MPI_PROC_NULL) {
       for (k=0; k<3; k++)
         for (j=0; j<nyl; j++) {
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Fsend[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Fsend[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Fsend[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Fsend[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-          for (i=0; i<nxl; i++) 
+          for (i=0; i<nxl; i++)
             Fsend[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
           if (nchem>0) {
             for (i=0; i<nxl; i++) {
@@ -625,15 +625,15 @@ public:
       if (xlbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(2-i,j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<3; i++) {
@@ -647,15 +647,15 @@ public:
       } else if (xlbc == BC_REFLECTING) {
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(2-i,j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<3; i++) {
@@ -669,15 +669,15 @@ public:
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = -rho[IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = -my[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = -mz[ IDX(2-i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Wrecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -et[ IDX(2-i,j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<3; i++) {
@@ -696,15 +696,15 @@ public:
       if (xrbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = mx[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<3; i++) {
@@ -718,15 +718,15 @@ public:
       } else if (xrbc == BC_REFLECTING) {
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = rho[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = my[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<3; i++) {
@@ -740,15 +740,15 @@ public:
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(0,i,j,k,3,nyl,nzl)] = -rho[IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(1,i,j,k,3,nyl,nzl)] = -mx[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(2,i,j,k,3,nyl,nzl)] = -my[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(3,i,j,k,3,nyl,nzl)] = -mz[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
-            for (i=0; i<3; i++) 
+            for (i=0; i<3; i++)
               Erecv[BUFIDX(4,i,j,k,3,nyl,nzl)] = -et[ IDX(nxl-3+i,j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<3; i++) {
@@ -767,15 +767,15 @@ public:
       if (ylbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = my[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,2-j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -789,15 +789,15 @@ public:
       } else if (ylbc == BC_REFLECTING) {
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = -my[IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,2-j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -811,15 +811,15 @@ public:
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = -rho[IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = -mx[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = -my[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = -mz[ IDX(i,2-j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Srecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = -et[ IDX(i,2-j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -838,15 +838,15 @@ public:
       if (yrbc == BC_NEUMANN) {
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = my[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -860,15 +860,15 @@ public:
       } else if (yrbc == BC_REFLECTING) {
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = rho[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = mx[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = -my[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -882,15 +882,15 @@ public:
       } else {          // homogeneous Dirichlet
         for (k=0; k<nzl; k++)
           for (j=0; j<3; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(0,j,i,k,3,nxl,nzl)] = -rho[IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(1,j,i,k,3,nxl,nzl)] = -mx[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(2,j,i,k,3,nxl,nzl)] = -my[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(3,j,i,k,3,nxl,nzl)] = -mz[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Nrecv[BUFIDX(4,j,i,k,3,nxl,nzl)] = -et[ IDX(i,nyl-3+j,k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -909,15 +909,15 @@ public:
       if (zlbc == BC_NEUMANN) {
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,2-k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -931,15 +931,15 @@ public:
       } else if (zlbc == BC_REFLECTING) {
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,2-k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -953,15 +953,15 @@ public:
       } else {          // homogeneous Dirichlet
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = -rho[IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = -mx[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = -my[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[ IDX(i,j,2-k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Brecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = -et[ IDX(i,j,2-k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -980,15 +980,15 @@ public:
       if (zrbc == BC_NEUMANN) {
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -1002,15 +1002,15 @@ public:
       } else if (zrbc == BC_REFLECTING) {
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = rho[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = mx[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = my[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -1024,15 +1024,15 @@ public:
       } else {          // homogeneous Dirichlet
         for (k=0; k<3; k++)
           for (j=0; j<nyl; j++) {
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(0,k,i,j,3,nxl,nyl)] = -rho[IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(1,k,i,j,3,nxl,nyl)] = -mx[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(2,k,i,j,3,nxl,nyl)] = -my[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(3,k,i,j,3,nxl,nyl)] = -mz[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
-            for (i=0; i<nxl; i++) 
+            for (i=0; i<nxl; i++)
               Frecv[BUFIDX(4,k,i,j,3,nxl,nyl)] = -et[ IDX(i,j,nzl-3+k,nxl,nyl,nzl)];
             if (nchem>0) {
               for (i=0; i<nxl; i++) {
@@ -1065,7 +1065,7 @@ public:
 
   // Utility routines to pack 1-dimensional data for *interior only* data;
   // e.g., in the x-direction given an (i,j,k) location, we return values at
-  // the 6 nodal values closest to the (i-1/2,j,k) face along the x-direction, 
+  // the 6 nodal values closest to the (i-1/2,j,k) face along the x-direction,
   // {w(i-3,j,k), w(i-2,j,k), w(i-1,j,k), w(i,j,k), w(i+1,j,k), w(i+2,j,k)}.
   inline void pack1D_x(realtype (&w1d)[6][NVAR], const realtype* rho,
                        const realtype* mx, const realtype* my,
@@ -1135,25 +1135,25 @@ public:
                             const N_Vector w, const long int& i,
                             const long int& j, const long int& k) const
   {
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l][0] = (i<(3-l)) ? Wrecv[BUFIDX(0,i+l,j,k,3,nyl,nzl)] : rho[IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l][1] = (i<(3-l)) ? Wrecv[BUFIDX(1,i+l,j,k,3,nyl,nzl)] : mx[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l][2] = (i<(3-l)) ? Wrecv[BUFIDX(2,i+l,j,k,3,nyl,nzl)] : my[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l][3] = (i<(3-l)) ? Wrecv[BUFIDX(3,i+l,j,k,3,nyl,nzl)] : mz[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l][4] = (i<(3-l)) ? Wrecv[BUFIDX(4,i+l,j,k,3,nyl,nzl)] : et[ IDX(i-3+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l+3][0] = (i>(nxl-l-1)) ? Erecv[BUFIDX(0,i-nxl+l,j,k,3,nyl,nzl)] : rho[IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l+3][1] = (i>(nxl-l-1)) ? Erecv[BUFIDX(1,i-nxl+l,j,k,3,nyl,nzl)] : mx[ IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l+3][2] = (i>(nxl-l-1)) ? Erecv[BUFIDX(2,i-nxl+l,j,k,3,nyl,nzl)] : my[ IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l+3][3] = (i>(nxl-l-1)) ? Erecv[BUFIDX(3,i-nxl+l,j,k,3,nyl,nzl)] : mz[ IDX(i+l,j,k,nxl,nyl,nzl)];
-    for (int l=0; l<3; l++) 
+    for (int l=0; l<3; l++)
       w1d[l+3][4] = (i>(nxl-l-1)) ? Erecv[BUFIDX(4,i-nxl+l,j,k,3,nyl,nzl)] : et[ IDX(i+l,j,k,nxl,nyl,nzl)];
     if (nchem>0) {
       for (int l=0; l<3; l++) {
@@ -1276,7 +1276,7 @@ public:
   //    p = (gamma-1)*(e - (mx^2+my^2+mz^2))/(2*rho)
   inline realtype eos(const realtype& rho, const realtype& mx,
                       const realtype& my, const realtype& mz,
-                      const realtype& et) const 
+                      const realtype& et) const
   {
     return((gamma-ONE)*(et - (mx*mx+my*my+mz*mz)*HALF/rho));
   }
@@ -1286,7 +1286,7 @@ public:
   //    e_t = p/(gamma-1) + (m_x^2 + m_y^2 + m_z^2)/(2*rho)
   inline realtype eos_inv(const realtype& rho, const realtype& mx,
                           const realtype& my, const realtype& mz,
-                          const realtype& pr) const 
+                          const realtype& pr) const
   {
     return(pr/(gamma-ONE) + (mx*mx+my*my+mz*mz)*HALF/rho);
   }
@@ -1298,7 +1298,7 @@ public:
   // non-positive, but energy was fine
   inline int legal_state(const realtype& rho, const realtype& mx,
                          const realtype& my, const realtype& mz,
-                         const realtype& et) const 
+                         const realtype& et) const
   {
     int dfail, efail, pfail;
     dfail = (rho > ZERO) ? 0 : 1;
@@ -1306,7 +1306,7 @@ public:
     pfail = (eos(rho, mx, my, mz, et) > ZERO) ? 0 : 4;
     return(dfail+efail+pfail);
   }
-  
+
 };   // end UserData;
 
 
@@ -1315,10 +1315,14 @@ public:
 // Additional utility routines
 
 //    Load inputs from file
-int load_inputs(int myid, int argc, char* argv[], UserData& udata, ARKodeParameters& opts);
+int load_inputs(int myid, int argc, char* argv[], UserData& udata,
+                ARKodeParameters& opts, int& restart);
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
+
+//    Read initial conditions from restart file
+int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& udata);
 
 //    Forcing terms
 int external_forces(const realtype& t, N_Vector G, const UserData& udata);
@@ -1330,15 +1334,16 @@ int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udat
 int check_conservation(const realtype& t, const N_Vector w, const UserData& udata);
 
 //    Print solution statistics
-int print_stats(const realtype& t, const N_Vector w, const int& firstlast, 
+int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
                 void *arkode_mem, const UserData& udata);
 
-//    Output information on domain and this subdomain
-int output_subdomain_information(const UserData& udata, const realtype& dTout);
+//    Output current parameters
+int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
+                     const UserData& udata, const ARKodeParameters& opts);
 
 //    Output current solution
-int output_solution(const N_Vector w, const int& newappend,
-                    const UserData& udata);
+int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
+                    const int& iout, const UserData& udata, const ARKodeParameters& opts);
 
 //    WENO Div(flux(u)) function
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
@@ -1349,6 +1354,6 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 
 //    CFL stable time step calculation routine
 int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data);
-  
+
 #endif
 //---- end of file ----
