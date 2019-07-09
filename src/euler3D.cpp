@@ -118,8 +118,10 @@ int main(int argc, char* argv[]) {
     retval = initial_conditions(udata.t0, w, udata);
     if (check_flag(&retval, "initial_conditions (main)", 1)) MPI_Abort(udata.comm, 1);
   } else {
-    cerr << "Restart capabilities have not yet been implemented\n";
-    MPI_Abort(udata.comm, 1);
+    retval = read_restart(restart, udata.t0, w, udata);
+    if (check_flag(&retval, "read_restart (main)", 1)) MPI_Abort(udata.comm, 1);
+    // cerr << "Restart capabilities have not yet been implemented\n";
+    // MPI_Abort(udata.comm, 1);
   }
 
   // initialize the integrator memory

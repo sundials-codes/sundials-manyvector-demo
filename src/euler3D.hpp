@@ -1321,6 +1321,9 @@ int load_inputs(int myid, int argc, char* argv[], UserData& udata,
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
 
+//    Read initial conditions from restart file
+int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& udata);
+
 //    Forcing terms
 int external_forces(const realtype& t, N_Vector G, const UserData& udata);
 

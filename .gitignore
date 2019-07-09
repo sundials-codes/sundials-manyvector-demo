@@ -42,7 +42,7 @@ __pycache__
 *~
 
 # Simulation output/graphics files
-output*.txt
+output*.hdf5
 diags*.txt
 *.png
 

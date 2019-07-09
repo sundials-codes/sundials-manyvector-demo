@@ -565,13 +565,12 @@ int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
   char chemname[13];
   realtype *W, **Wtmp;
   realtype domain[6];
-  long int i, v;
+  long int i;
   long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
-  int retval;
+  int v, retval;
   hid_t acc_template, file_identifier, filespace, memspace, dataset[NVAR], attspace, attr, h5_realtype;
   hsize_t dimens[3], stride[3], count[3], start[3];
   MPI_Info FILE_INFO_TEMPLATE;
-  char comment[] = "This is an output/restart file from the 'Euler3D' SUNDIALS ManyVector+Multirate demonstration code";
 
   // Output restart parameter file
   retval = write_parameters(tcur, iout, udata, opts);
@@ -588,7 +587,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
   } else if (sizeof(realtype) == sizeof(long double)) {
     h5_realtype = H5T_NATIVE_LDOUBLE;
   } else {
-    cerr << "Output_solution error: cannot map 'realtype' to HDF5 type\n";
+    cerr << "output_solution error: cannot map 'realtype' to HDF5 type\n";
     return(-1);
   }
 
@@ -632,7 +631,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
   // an existing file by the same name if it exists.  The next two
   // arguments are the file creation property list and the file access
   // property lists.  These are used to pass options to the library about
-  // how to create the file, and how it will be accessed (ex. via mpi-io). */
+  // how to create the file, and how it will be accessed (ex. via mpi-io).
   file_identifier = H5Fcreate(outname, H5F_ACC_TRUNC, H5P_DEFAULT, acc_template);
 
   // release the file access template
@@ -697,7 +696,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
   dataset[3] = H5Dcreate(file_identifier, "z-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   dataset[4] = H5Dcreate(file_identifier, "TotalEnergy", h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   for (v=0; v<udata.nchem; v++) {
-    sprintf(chemname, "Chemical-%03li", v);
+    sprintf(chemname, "Chemical-%03hu", (unsigned short) v);
     dataset[5+v] = H5Dcreate(file_identifier, chemname, h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   }
 
@@ -750,6 +749,216 @@ int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
   }
   H5Sclose(memspace);
   H5Sclose(filespace);
+  H5Fclose(file_identifier);
+
+  // return with success
+  return(0);
+}
+
+
+// Utility routine to set the time "t" and the state "w" from the restart file
+// "output-<restart>.hdf5"
+int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& udata)
+{
+  // reusable variables
+  char inname[100];
+  char chemname[13];
+  realtype *W, *Wtmp;
+  realtype domain[6];
+  long int i;
+  long int N = (udata.nzl)*(udata.nyl)*(udata.nxl);
+  int v, nchem, retval;
+  hid_t acc_template, file_identifier, memspace, dataset, dataspace, h5_realtype;
+  hsize_t dimens[3], stride[3], count[3], start[3];
+
+  // Set string for input filename
+  sprintf(inname, "output-%07i.hdf5", restart);
+
+  // Determine HDF5 equivalent of 'realtype'
+  if (sizeof(realtype) == sizeof(float)) {
+    h5_realtype = H5T_NATIVE_FLOAT;
+  } else if (sizeof(realtype) == sizeof(double)) {
+    h5_realtype = H5T_NATIVE_DOUBLE;
+  } else if (sizeof(realtype) == sizeof(long double)) {
+    h5_realtype = H5T_NATIVE_LDOUBLE;
+  } else {
+    cerr << "read_restart error: cannot map 'realtype' to HDF5 type\n";
+    return(-1);
+  }
+
+  // set the file access template for parallel IO access
+  // open the file, and
+  // release the file access template
+  acc_template = H5Pcreate(H5P_FILE_ACCESS);
+  file_identifier = H5Fopen(inname, H5F_ACC_RDONLY, H5P_DEFAULT);
+  retval = H5Pclose(acc_template);
+  if (check_flag(&retval, "H5Pclose (read_restart)", 3)) return(-1);
+
+  //-------------
+  // Now read metadata from the output -- first some scalars
+  //    current time (use this to check that file precision matches executable)
+  dataset = H5Dopen2(file_identifier, "time", H5P_DEFAULT);
+  //  if (H5Tget_class(H5Dget_type(dataset)) != h5_realtype) {
+  if (!H5Tequal(H5Dget_type(dataset), h5_realtype)) {
+    cerr << "read_restart error: file type does not match 'realtype' type\n";
+    return(-1);
+  }
+  dataspace = H5Dget_space(dataset);
+  retval = H5Dread(dataset, h5_realtype, H5S_ALL, dataspace, H5P_DEFAULT, &t);
+  if (check_flag(&retval, "H5Dread (read_restart)", 3)) return(-1);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+  //    number of chemical species -- must match executable
+  dataset = H5Dopen2(file_identifier, "nchem", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  retval = H5Dread(dataset, H5T_NATIVE_INT, H5S_ALL, dataspace, H5P_DEFAULT, &nchem);
+  if (check_flag(&retval, "H5Dread (read_restart)", 3)) return(-1);
+  if (nchem != udata.nchem) {
+    cerr << "read_restart error: incompatible number of chemical/tracer fields\n";
+    return(-1);
+  }
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+  // second, read the domain bounds and verify against stored values
+  dataset = H5Dopen2(file_identifier, "domain", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  if (H5Sget_simple_extent_ndims(dataspace) != 2) {
+    cerr << "read_restart error: incompatible domain\n";
+    return(-1);
+  }
+  retval = H5Sget_simple_extent_dims(dataspace, dimens, NULL);
+  if ((dimens[0] != 3) || (dimens[1] != 2)) {
+    cerr << "read_restart error: incompatible domain\n";
+    return(-1);
+  }
+  retval = H5Dread(dataset, h5_realtype, H5S_ALL, dataspace, H5P_DEFAULT, domain);
+  if (check_flag(&retval, "H5Dread (read_restart)", 3)) return(-1);
+  if ( abs(domain[0] - udata.zl) > 1e-14 ||
+       abs(domain[1] - udata.zr) > 1e-14 ||
+       abs(domain[2] - udata.yl) > 1e-14 ||
+       abs(domain[3] - udata.yr) > 1e-14 ||
+       abs(domain[4] - udata.xl) > 1e-14 ||
+       abs(domain[5] - udata.xr) > 1e-14 ) {
+    cerr << "read_restart error: incompatible domain\n";
+    return(-1);
+  }
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+
+  //-------------
+  // Now read the solution fields
+
+  // first, zero output state
+  N_VConst(ZERO, w);
+
+  // define memory space for each field on this process
+  dimens[0] = udata.nzl;
+  dimens[1] = udata.nyl;
+  dimens[2] = udata.nxl;
+  memspace = H5Screate_simple(3, dimens, NULL);
+  
+  // define hyperslab for each field on this process
+  start[0] = udata.ks;
+  start[1] = udata.js;
+  start[2] = udata.is;
+  stride[0] = 1;
+  stride[1] = 1;
+  stride[2] = 1;
+  count[0] = udata.nzl;
+  count[1] = udata.nyl;
+  count[2] = udata.nxl;
+
+  // read density -- use this one to verify compatible dimensions
+  dataset = H5Dopen2(file_identifier, "Density", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  if (H5Sget_simple_extent_ndims(dataspace) != 3) {
+    cerr << "read_restart error: incompatible field dimensions\n";
+    return(-1);
+  }
+  retval = H5Sget_simple_extent_dims(dataspace, dimens, NULL);
+  if ((dimens[0] != udata.nz) || (dimens[1] != udata.ny) || (dimens[2] != udata.nx)) {
+    cerr << "read_restart error: incompatible field size\n";
+    return(-1);
+  }
+  retval = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, start, stride, count, NULL);
+  if (check_flag(&retval, "H5Sselect_hyperslab (read_restart)", 3)) return(-1);
+  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  retval = H5Dread(dataset, h5_realtype, memspace, dataspace, H5P_DEFAULT, W);
+  if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+  // read x-Momentum
+  dataset = H5Dopen2(file_identifier, "x-Momentum", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  retval = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, start, stride, count, NULL);
+  if (check_flag(&retval, "H5Sselect_hyperslab (read_restart)", 3)) return(-1);
+  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  retval = H5Dread(dataset, h5_realtype, memspace, dataspace, H5P_DEFAULT, W);
+  if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+  // read y-Momentum
+  dataset = H5Dopen2(file_identifier, "y-Momentum", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  retval = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, start, stride, count, NULL);
+  if (check_flag(&retval, "H5Sselect_hyperslab (read_restart)", 3)) return(-1);
+  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  retval = H5Dread(dataset, h5_realtype, memspace, dataspace, H5P_DEFAULT, W);
+  if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+  // read z-Momentum
+  dataset = H5Dopen2(file_identifier, "z-Momentum", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  retval = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, start, stride, count, NULL);
+  if (check_flag(&retval, "H5Sselect_hyperslab (read_restart)", 3)) return(-1);
+  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  retval = H5Dread(dataset, h5_realtype, memspace, dataspace, H5P_DEFAULT, W);
+  if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+  // read TotalEnergy
+  dataset = H5Dopen2(file_identifier, "TotalEnergy", H5P_DEFAULT);
+  dataspace = H5Dget_space(dataset);
+  retval = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, start, stride, count, NULL);
+  if (check_flag(&retval, "H5Sselect_hyperslab (read_restart)", 3)) return(-1);
+  W = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  retval = H5Dread(dataset, h5_realtype, memspace, dataspace, H5P_DEFAULT, W);
+  if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+
+  // read remaining chemical fields
+  if (udata.nchem > 0) {
+    Wtmp = new realtype[N];
+    for (v=0; v<udata.nchem; v++) {
+      sprintf(chemname, "Chemical-%03hu", (unsigned short) v);
+      dataset = H5Dopen2(file_identifier, chemname, H5P_DEFAULT);
+      dataspace = H5Dget_space(dataset);
+      retval = H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, start, stride, count, NULL);
+      if (check_flag(&retval, "H5Sselect_hyperslab (read_restart)", 3)) return(-1);
+      retval = H5Dread(dataset, h5_realtype, memspace, dataspace, H5P_DEFAULT, Wtmp);
+      if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
+      H5Sclose(dataspace);
+      H5Dclose(dataset);
+      for (i=0; i<N; i++) {   // loop over subdomain, copying data into vectors
+        W = NULL;
+        W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+i);
+        if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
+        W[v] = Wtmp[i];
+      }
+    }
+    delete[] Wtmp;
+  }
+
+  // clean up and close the file
+  H5Sclose(memspace);
   H5Fclose(file_identifier);
 
   // return with success
