@@ -1338,12 +1338,12 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
                 void *arkode_mem, const UserData& udata);
 
 //    Output current parameters
-int write_parameters(const realtype& tcur, const int& iout,
+int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
                      const UserData& udata, const ARKodeParameters& opts);
 
 //    Output current solution
-int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
-                    const UserData& udata, const ARKodeParameters& opts);
+int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
+                    const int& iout, const UserData& udata, const ARKodeParameters& opts);
 
 //    WENO Div(flux(u)) function
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,

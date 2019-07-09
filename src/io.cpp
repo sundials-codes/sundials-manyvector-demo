@@ -23,6 +23,15 @@
 #define MAX_LINE_LENGTH 512
 
 
+#if defined(SUNDIALS_SINGLE_PRECISION)
+#define ESYM "%.8e"
+#elif defined(SUNDIALS_DOUBLE_PRECISION)
+#define ESYM "%.16e"
+#else
+#define ESYM "%.29e"
+#endif
+
+
 // Load problem-defining parameters from file: root process
 // reads parameters and broadcasts results to remaining
 // processes
@@ -407,8 +416,8 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
   if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
   if (!outproc)  return(0);
   if (totsave[0] == -ONE) {  // first time through; save/output the values
-    printf("   Total mass   = %21.16e\n", totvals[0]);
-    printf("   Total energy = %21.16e\n", totvals[1]);
+    printf("   Total mass   = " ESYM "\n", totvals[0]);
+    printf("   Total energy = " ESYM "\n", totvals[1]);
     totsave[0] = totvals[0];
     totsave[1] = totvals[1];
   } else {
@@ -488,7 +497,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 
 
 // Write problem-defining parameters to file
-int write_parameters(const realtype& tcur, const int& iout,
+int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout, 
                      const UserData& udata, const ARKodeParameters& opts)
 {
   // root process creates restart file
@@ -500,15 +509,15 @@ int write_parameters(const realtype& tcur, const int& iout,
     UFID = fopen(outname,"w");
     if (check_flag((void*) UFID, "fopen (write_parameters)", 0)) return(1);
     fprintf(UFID, "# Euler3D restart file\n");
-    fprintf(UFID, "xl = %lf\n", udata.xl);
-    fprintf(UFID, "xr = %lf\n", udata.xr);
-    fprintf(UFID, "yl = %lf\n", udata.yl);
-    fprintf(UFID, "yr = %lf\n", udata.yr);
-    fprintf(UFID, "zl = %lf\n", udata.zl);
-    fprintf(UFID, "zr = %lf\n", udata.zr);
-    fprintf(UFID, "t0 = %lf\n", tcur);
-    fprintf(UFID, "tf = %lf\n", udata.tf);
-    fprintf(UFID, "gamma = %lf\n", udata.gamma);
+    fprintf(UFID, "xl = " ESYM "\n", udata.xl);
+    fprintf(UFID, "xr = " ESYM "\n", udata.xr);
+    fprintf(UFID, "yl = " ESYM "\n", udata.yl);
+    fprintf(UFID, "yr = " ESYM "\n", udata.yr);
+    fprintf(UFID, "zl = " ESYM "\n", udata.zl);
+    fprintf(UFID, "zr = " ESYM "\n", udata.zr);
+    fprintf(UFID, "t0 = " ESYM "\n", tcur);
+    fprintf(UFID, "tf = " ESYM "\n", udata.tf);
+    fprintf(UFID, "gamma = " ESYM "\n", udata.gamma);
     fprintf(UFID, "nx = %li\n", udata.nx);
     fprintf(UFID, "ny = %li\n", udata.ny);
     fprintf(UFID, "nz = %li\n", udata.nz);
@@ -518,7 +527,7 @@ int write_parameters(const realtype& tcur, const int& iout,
     fprintf(UFID, "yrbc = %i\n", udata.yrbc);
     fprintf(UFID, "zlbc = %i\n", udata.zlbc);
     fprintf(UFID, "zrbc = %i\n", udata.zrbc);
-    fprintf(UFID, "cfl = %lf\n", udata.cfl);
+    fprintf(UFID, "cfl = " ESYM "\n", udata.cfl);
     fprintf(UFID, "nout = %i\n", udata.nout);
     fprintf(UFID, "showstats = %i\n", udata.showstats);
     fprintf(UFID, "order = %i\n", opts.order);
@@ -528,20 +537,20 @@ int write_parameters(const realtype& tcur, const int& iout,
     fprintf(UFID, "maxnef = %i\n", opts.maxnef);
     fprintf(UFID, "mxhnil = %i\n", opts.mxhnil);
     fprintf(UFID, "mxsteps = %i\n", opts.mxsteps);
-    fprintf(UFID, "safety = %lf\n", opts.safety);
-    fprintf(UFID, "bias = %lf\n", opts.bias);
-    fprintf(UFID, "growth = %lf\n", opts.growth);
+    fprintf(UFID, "safety = " ESYM "\n", opts.safety);
+    fprintf(UFID, "bias = " ESYM "\n", opts.bias);
+    fprintf(UFID, "growth = " ESYM "\n", opts.growth);
     fprintf(UFID, "pq = %i\n", opts.pq);
-    fprintf(UFID, "k1 = %lf\n", opts.k1);
-    fprintf(UFID, "k2 = %lf\n", opts.k2);
-    fprintf(UFID, "k3 = %lf\n", opts.k3);
-    fprintf(UFID, "etamx1 = %lf\n", opts.etamx1);
-    fprintf(UFID, "etamxf = %lf\n", opts.etamxf);
-    fprintf(UFID, "h0 = %lf\n", opts.h0);
-    fprintf(UFID, "hmin = %lf\n", opts.hmin);
-    fprintf(UFID, "hmax = %lf\n", opts.hmax);
-    fprintf(UFID, "rtol = %lf\n", opts.rtol);
-    fprintf(UFID, "atol = %lf\n", opts.atol);
+    fprintf(UFID, "k1 = " ESYM "\n", opts.k1);
+    fprintf(UFID, "k2 = " ESYM "\n", opts.k2);
+    fprintf(UFID, "k3 = " ESYM "\n", opts.k3);
+    fprintf(UFID, "etamx1 = " ESYM "\n", opts.etamx1);
+    fprintf(UFID, "etamxf = " ESYM "\n", opts.etamxf);
+    fprintf(UFID, "h0 = " ESYM "\n", hcur);
+    fprintf(UFID, "hmin = " ESYM "\n", opts.hmin);
+    fprintf(UFID, "hmax = " ESYM "\n", opts.hmax);
+    fprintf(UFID, "rtol = " ESYM "\n", opts.rtol);
+    fprintf(UFID, "atol = " ESYM "\n", opts.atol);
     fprintf(UFID, "restart = %i\n", iout);
     fclose(UFID);
   }
@@ -557,8 +566,8 @@ int write_parameters(const realtype& tcur, const int& iout,
 // Most of the contents of this routine follow from the hdf5_parallel.c
 // example code available at:
 // http://www.astro.sunysb.edu/mzingale/io_tutorial/HDF5_parallel/hdf5_parallel.c
-int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
-                    const UserData& udata, const ARKodeParameters& opts)
+int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur, 
+                    const int& iout, const UserData& udata, const ARKodeParameters& opts)
 {
   // reusable variables
   char outname[100];
@@ -573,7 +582,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const int& iout,
   MPI_Info FILE_INFO_TEMPLATE;
 
   // Output restart parameter file
-  retval = write_parameters(tcur, iout, udata, opts);
+  retval = write_parameters(tcur, hcur, iout, udata, opts);
   if (check_flag(&retval, "write_parameters (output_solution)", 3)) return(-1);
 
   // Set string for output filename

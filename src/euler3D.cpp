@@ -117,11 +117,10 @@ int main(int argc, char* argv[]) {
   if (restart < 0) {
     retval = initial_conditions(udata.t0, w, udata);
     if (check_flag(&retval, "initial_conditions (main)", 1)) MPI_Abort(udata.comm, 1);
+    restart = 0;
   } else {
     retval = read_restart(restart, udata.t0, w, udata);
     if (check_flag(&retval, "read_restart (main)", 1)) MPI_Abort(udata.comm, 1);
-    // cerr << "Restart capabilities have not yet been implemented\n";
-    // MPI_Abort(udata.comm, 1);
   }
 
   // initialize the integrator memory
@@ -218,7 +217,7 @@ int main(int argc, char* argv[]) {
   // Initial batch of outputs
   double iostart = MPI_Wtime();
   //    Output initial conditions to disk
-  retval = output_solution(udata.t0, w, 0, udata, opts);
+  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    Optionally output total mass/energy
@@ -246,12 +245,13 @@ int main(int argc, char* argv[]) {
      prints results.  Stops when the final time has been reached */
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
+  realtype hcur;
   if (udata.showstats) {
     retval = print_stats(t, w, 0, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   int iout;
-  for (iout=0; iout<udata.nout; iout++) {
+  for (iout=restart; iout<restart+udata.nout; iout++) {
 
     if (!idense)
       retval = ARKStepSetStopTime(arkode_mem, tout);
@@ -275,8 +275,10 @@ int main(int argc, char* argv[]) {
     retval = output_diagnostics(t, w, udata);
     if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    // output results to disk
-    retval = output_solution(t, w, iout+1, udata, opts);
+    // output results to disk -- get current step from ARKStep first
+    retval = ARKStepGetCurrentStep(arkode_mem, &hcur);
+    if (check_flag(&retval, "ARKStepGetCurrentStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
     tinout += MPI_Wtime() - iostart;
 

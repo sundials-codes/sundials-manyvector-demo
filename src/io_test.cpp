@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
     restart = 5;
     if (udata.myid == 0)  cout << "\nSaving current state to restart file " << restart << endl;
     tout = RCONST(8.5);
-    retval = output_solution(tout, w, restart, udata, opts);
+    retval = output_solution(tout, w, opts.h0, restart, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   
