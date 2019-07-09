@@ -28,7 +28,7 @@ ifeq ($(HOST),longclaw)
   KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
   KLULIBDIR = $(KLUDIR)/lib
 
-  HDF5DIR = /usr/local/hdf5-1.10.5/gnu
+  HDF5DIR = /usr/local/hdf5-1.10.2/gnu
   HDFINCDIRS = -I${HDF5DIR}/include
   HDFLIBDIR = ${HDF5DIR}/lib
 
