@@ -528,7 +528,7 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "zlbc = %i\n", udata.zlbc);
     fprintf(UFID, "zrbc = %i\n", udata.zrbc);
     fprintf(UFID, "cfl = " ESYM "\n", udata.cfl);
-    fprintf(UFID, "nout = %i\n", udata.nout);
+    fprintf(UFID, "nout = %i\n", udata.nout-iout);
     fprintf(UFID, "showstats = %i\n", udata.showstats);
     fprintf(UFID, "order = %i\n", opts.order);
     fprintf(UFID, "dense_order = %i\n", opts.dense_order);

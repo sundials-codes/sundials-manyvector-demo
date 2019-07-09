@@ -80,15 +80,15 @@ else ifeq ($(HOST),descartes.local)
 #    default -- EDIT THESE IF SPECIFYING COMPILERS/LIBRARIES ON YOUR MACHINE
 else
 
-  SUNDIR = ./libs
+  SUNDIR = ./sundials
   SUNLIBDIR = ${SUNDIR}/lib
   SUNINCDIRS = -I${SUNDIR}/include
 
-  KLUDIR = ./libs
+  KLUDIR = ./sundials
   KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
   KLULIBDIR = $(KLUDIR)/lib
 
-  HDF5DIR = ./libs
+  HDF5DIR = ./hdf5
   HDFINCDIRS = -I${HDF5DIR}/include
   HDFLIBDIR = ${HDF5DIR}/lib
 
