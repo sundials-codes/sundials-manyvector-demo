@@ -28,10 +28,10 @@ int main(int argc, char* argv[]) {
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use
-  N_Vector w, wsave, werr;       // empty vectors for storing overall solution
+  N_Vector w, wtest, werr;       // empty vectors for storing overall solution
   N_Vector *wsubvecs;
   realtype tout;
-  w = wsave = werr = NULL;
+  w = wtest = werr = NULL;
   
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -102,27 +102,24 @@ int main(int argc, char* argv[]) {
   }
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
-  wsave = N_VClone(w);
-  if (check_flag((void *) wsave, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
+  wtest = N_VClone(w);
+  if (check_flag((void *) wtest, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   werr = N_VClone(w);
   if (check_flag((void *) werr, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
-  
+
   // set data into subvectors:
-  //   digits 1-2:   MPI task ID
-  //   digit  3:     species index
-  //   digits 4-6:   global x index
-  //   digits 7-9:   global y index
-  //   digits 10-12: global z index
+  //   digit  1:    species index
+  //   digits 2-4:  global x index
+  //   digits 5-7:  global y index
+  //   digits 8-10: global z index
   if (udata.myid == 0)
     cout << "\nAll data uses the following numbering conventions:\n"
-         << "   digits 1-2:   MPI task ID (T)\n"
-         << "   digit  3:     species index (s)\n"
-         << "   digits 4-6:   global x index (X)\n"
-         << "   digits 7-9:   global y index (y)\n"
-         << "   digits 10-12: global z index (Z)\n"
+         << "   digit  1:     species index (s)\n"
+         << "   digits 2-4:   global x index (X)\n"
+         << "   digits 5-7:   global y index (y)\n"
+         << "   digits 8-10:  global z index (Z)\n"
          << "i.e., data value digit convention:\n"
-         << "   0.TTsXXXyyyZZZ\n";
-  realtype myid_value = RCONST(0.01)*udata.myid;
+         << "   0.sXXXyyyZZZ\n";
   realtype *wdata;
   realtype species_value, xloc_value, yloc_value, zloc_value, true_value;
   //   first fill the fluid vectors
@@ -133,10 +130,10 @@ int main(int argc, char* argv[]) {
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
-          xloc_value = RCONST(0.000001)*(i+udata.is);
-          yloc_value = RCONST(0.000000001)*(j+udata.js);
-          zloc_value = RCONST(0.000000000001)*(k+udata.ks);
-          wdata[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = myid_value + species_value
+          xloc_value = RCONST(0.0001)*(i+udata.is);
+          yloc_value = RCONST(0.0000001)*(j+udata.js);
+          zloc_value = RCONST(0.0000000001)*(k+udata.ks);
+          wdata[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = species_value
             + xloc_value + yloc_value + zloc_value;
         }
   }
@@ -145,31 +142,31 @@ int main(int argc, char* argv[]) {
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
-          xloc_value = RCONST(0.000001)*(i+udata.is);
-          yloc_value = RCONST(0.000000001)*(j+udata.js);
-          zloc_value = RCONST(0.000000000001)*(k+udata.ks);
+          xloc_value = RCONST(0.0001)*(i+udata.is);
+          yloc_value = RCONST(0.0000001)*(j+udata.js);
+          zloc_value = RCONST(0.0000000001)*(k+udata.ks);
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
           if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
           for (v=0; v<udata.nchem; v++) {
             species_value = RCONST(0.001)*(5+v);
-            wdata[v] = myid_value + species_value + xloc_value + yloc_value + zloc_value;
+            wdata[v] = species_value + xloc_value + yloc_value + zloc_value;
           }
         }
   }
 
-  // save current state for checking later
-  N_VScale(ONE, w, wsave);
+  // if running test from scratch, output w to disk
+  if (restart < 0) {
+    restart = 5;
+    if (udata.myid == 0)  cout << "\nSaving current state to restart file " << restart << endl;
+    tout = RCONST(8.5);
+    retval = output_solution(tout, w, restart, udata, opts);
+    if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
   
-  // output w to disk
-  if (udata.myid == 0)  cout << "\nSaving current state to restart file 5\n";
-  tout = RCONST(8.5);
-  retval = output_solution(tout, w, 5, udata, opts);
-  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // read w from disk
-  if (udata.myid == 0)  cout << "\nReading state from restart file 5\n";
-  retval = read_restart(5, tout, w, udata);
+  if (udata.myid == 0)  cout << "\nReading state from restart file " << restart << endl;
+  retval = read_restart(restart, tout, wtest, udata);
   if (check_flag(&retval, "read_restart (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // check tout and overall norm of solution difference
@@ -180,7 +177,7 @@ int main(int argc, char* argv[]) {
          << tout << " != " << RCONST(8.5) << endl;
     loc_errs++;
   }
-  N_VLinearSum(-ONE, w, ONE, wsave, werr);
+  N_VLinearSum(-ONE, w, ONE, wtest, werr);
   realtype werr_max = N_VMaxNorm(werr);
   realtype test_tol = 1e-12;
   if (werr_max > test_tol) {
@@ -197,11 +194,10 @@ int main(int argc, char* argv[]) {
       for (k=0; k<udata.nzl; k++)
         for (j=0; j<udata.nyl; j++)
           for (i=0; i<udata.nxl; i++) {
-            xloc_value = RCONST(0.000001)*(i+udata.is);
-            yloc_value = RCONST(0.000000001)*(j+udata.js);
-            zloc_value = RCONST(0.000000000001)*(k+udata.ks);
-            realtype true_value = myid_value + species_value
-              + xloc_value + yloc_value + zloc_value;
+            xloc_value = RCONST(0.0001)*(i+udata.is);
+            yloc_value = RCONST(0.0000001)*(j+udata.js);
+            zloc_value = RCONST(0.0000000001)*(k+udata.ks);
+            realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
             realtype recv_value = wdata[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
             if (abs(recv_value-true_value) > test_tol) {
               cout << "    myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -216,16 +212,15 @@ int main(int argc, char* argv[]) {
       for (k=0; k<udata.nzl; k++)
         for (j=0; j<udata.nyl; j++)
           for (i=0; i<udata.nxl; i++) {
-            xloc_value = RCONST(0.000001)*(i+udata.is);
-            yloc_value = RCONST(0.000000001)*(j+udata.js);
-            zloc_value = RCONST(0.000000000001)*(k+udata.ks);
+            xloc_value = RCONST(0.0001)*(i+udata.is);
+            yloc_value = RCONST(0.0000001)*(j+udata.js);
+            zloc_value = RCONST(0.0000000001)*(k+udata.ks);
             idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
             wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
             if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
             for (v=0; v<udata.nchem; v++) {
               species_value = RCONST(0.001)*(5+v);
-              realtype true_value = myid_value + species_value
-                + xloc_value + yloc_value + zloc_value;
+              realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
               realtype recv_value = wdata[v];
               if (abs(recv_value-true_value) > test_tol) {
                 cout << "    myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -247,7 +242,7 @@ int main(int argc, char* argv[]) {
 
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution vectors
-  N_VDestroy(wsave);
+  N_VDestroy(wtest);
   N_VDestroy(werr);
   for (i=0; i<Nsubvecs; i++)
     N_VDestroy(wsubvecs[i]);

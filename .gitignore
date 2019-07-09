@@ -45,4 +45,5 @@ __pycache__
 output*.hdf5
 diags*.txt
 *.png
+restart_parameters.txt
 
