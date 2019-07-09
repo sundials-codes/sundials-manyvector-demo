@@ -97,7 +97,7 @@ buildclean :
 	\rm -rf *.o
 
 outclean :
-	\rm -rf diags*.txt output*.hdf5 xslice*.png yslice*.png zslice*.png __pycache__
+	\rm -rf diags*.txt restart_parameters.txt output*.hdf5 xslice*.png yslice*.png zslice*.png __pycache__
 
 clean : outclean buildclean
 	\rm -rf *.orig *~
