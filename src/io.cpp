@@ -16,7 +16,9 @@
 // Header files
 #include <euler3D.hpp>
 #include <string.h>
+#ifdef USEHDF5
 #include "hdf5.h"
+#endif
 #include "gopt.h"
 
 
@@ -569,6 +571,8 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
 int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur, 
                     const int& iout, const UserData& udata, const ARKodeParameters& opts)
 {
+#ifdef USEHDF5
+  
   // reusable variables
   char outname[100];
   char chemname[13];
@@ -759,7 +763,8 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   H5Sclose(memspace);
   H5Sclose(filespace);
   H5Fclose(file_identifier);
-
+#endif
+  
   // return with success
   return(0);
 }
@@ -769,6 +774,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
 // "output-<restart>.hdf5"
 int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& udata)
 {
+#ifdef USEHDF5
   // reusable variables
   char inname[100];
   char chemname[13];
@@ -972,6 +978,10 @@ int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& ud
 
   // return with success
   return(0);
+#else
+  cerr << "read_restart error: executable compiled without HDF5 support\n";
+  return(-1);
+#endif
 }
 
 

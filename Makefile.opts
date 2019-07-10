@@ -15,5 +15,8 @@ LIBTYPE = OPT
 # flag to enable/disable OpenMP (1=enable, 0=disable)
 USEOMP = 1
 
+# flag to enable/disable HDF5 I/O (1=enable, 0=disable)
+USEHDF5 = 1
+
 
 ####### End of Makefile.opts #######

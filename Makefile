@@ -23,9 +23,9 @@ include Makefile.in
 
 # set C++ compilation flags based on build type
 ifeq ($(LIBTYPE),OPT)
-  CXXFLAGS = -O3 -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
+  OPTFLAGS = -O3
 else
-  CXXFLAGS = -O0 -g -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX -DDEBUG -fsanitize=address
+  OPTFLAGS = -O0 -g -DDEBUG -fsanitize=address
 endif
 
 # check for OpenMP usage
@@ -34,8 +34,6 @@ ifeq ($(USEOMP),0)
 endif
 
 # shortcuts for include and library paths, etc.
-INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS} ${HDFINCDIRS}
-
 SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_arkode \
            -lsundials_nvecmpimanyvector \
@@ -44,9 +42,20 @@ SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_sunlinsolklu
 KLULIBS = -L$(KLULIBDIR) -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig
 HDFLIBS = -L$(HDFLIBDIR) -lhdf5 -lsz
-LIBS = ${SUNDLIBS} ${KLULIBS} ${HDFLIBS} -lm
+ifeq ($(USEHDF5),1)
+  INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS} ${HDFINCDIRS}
+  LIBS = ${SUNDLIBS} ${KLULIBS} ${HDFLIBS} -lm
+  LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR},-rpath,${HDFLIBDIR}
+  HDFFLAGS = -DUSEHDF5
+else
+  INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS}
+  LIBS = ${SUNDLIBS} ${KLULIBS} -lm
+  LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
+  HDFFLAGS = 
+endif
 
-LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR},-rpath,${HDFLIBDIR}
+# final version of compiler flags
+CXXFLAGS = -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX ${OPTFLAGS} ${HDFFLAGS}
 
 # common source/object files on which all executables depend
 COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.c
