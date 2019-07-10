@@ -46,7 +46,9 @@ specify these installations, and skip the Spack-related steps above.
 
 Additionally, you may edit the `Makefile.opts` file to switch between
 an optimized/debugging build, and to enable/disable OpenMP prior to
-running `make` above. 
+running `make` above.  Also, HDF5-based I/O may be disabled entirely
+(e.g., if HDF5 is unavailable on a given machine) by setting `USEHDF5
+= 0` in `Makefile.opts`.
 
 
 
