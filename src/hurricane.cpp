@@ -29,9 +29,9 @@
  we convert between primitive and conserved variables for the
  initial conditions and accuracy results.
 
- Note3: the "analytical" solution below requires enforcement of 
- these values on the physical boundary; we instead just use 
- homogeneous Neumann boundaries, so the computed error is 
+ Note3: the "analytical" solution below requires enforcement of
+ these values on the physical boundary; we instead just use
+ homogeneous Neumann boundaries, so the computed error is
  expected to be larger near the boundaries.
 
 ---------------------------------------------------------------*/
@@ -63,7 +63,7 @@
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 {
-  
+
   // access data fields
   long int v, i, j, k, idx;
   realtype xloc, yloc, zloc, r, theta, costheta, sintheta;
@@ -78,6 +78,11 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  realtype *chem = NULL;
+  if (udata.nchem > 0) {
+    chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+  }
 
   // output test problem information
   if (udata.myid == 0) {
@@ -119,7 +124,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
     chemstripes[v][0] = -pi + v*TWO*pi/udata.nchem;     // angle lower bound for this stripe
     chemstripes[v][1] = -pi + (v+1)*TWO*pi/udata.nchem; // angle upper bound for this stripe
   }
-  
+
   // iterate over subdomain, setting initial conditions
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
@@ -128,7 +133,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        
+
 #ifdef TEST_XY
         r = SUNRsqrt(xloc*xloc + yloc*yloc);
         theta = atan2(yloc,xloc);
@@ -165,17 +170,15 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 
         // tracer initial conditions
         if (udata.nchem > 0) {
-          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
-          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer_MPIManyVector (initial_conditions)", 0))
-            return -1;
           for (v=0; v<udata.nchem; v++) {
-            chem[v] = ZERO;
+            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            chem[idx] = ZERO;
             if ((theta >= chemstripes[v][0]) && (theta < chemstripes[v][1]))
-              chem[v] = ONE;
+              chem[idx] = ONE;
           }
         }
       }
-  
+
   return 0;
 }
 

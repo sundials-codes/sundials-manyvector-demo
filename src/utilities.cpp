@@ -11,7 +11,7 @@
 // Header files
 #include <euler3D.hpp>
 
-#define STSIZE 6  
+#define STSIZE 6
 
 // Routine to compute the Euler ODE RHS function f(t,y).
 int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
@@ -43,8 +43,15 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   if (check_flag((void *) mzdot, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
   realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
   if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
-  realtype *chemdot;
-  
+  realtype *chem = NULL;
+  realtype *chemdot = NULL;
+  if (udata->nchem > 0) {
+    chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
+    chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
+    if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
+  }
+
   // Exchange boundary data with neighbors
   int retval = udata->ExchangeStart(w);
   if (check_flag(&retval, "ExchangeStart (fEuler)", 1)) return -1;
@@ -72,19 +79,22 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
 
         // pack 1D x-directional array of variable shortcuts
-        udata->pack1D_x(w1d, rho, mx, my, mz, et, w, i, j, k);
+        udata->pack1D_x(w1d, rho, mx, my, mz, et, chem, i, j, k);
         // compute flux at lower x-directional face
-        face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i,j,k,nxl+1,nyl,nzl)]), *udata);
+        idx = BUFIDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
+        face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
 
         // pack 1D y-directional array of variable shortcuts
-        udata->pack1D_y(w1d, rho, mx, my, mz, et, w, i, j, k);
+        udata->pack1D_y(w1d, rho, mx, my, mz, et, chem, i, j, k);
         // compute flux at lower y-directional face
-        face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j,k,nxl,nyl+1,nzl)]), *udata);
+        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
 
         // pack 1D z-directional array of variable shortcuts
-        udata->pack1D_z(w1d, rho, mx, my, mz, et, w, i, j, k);
+        udata->pack1D_z(w1d, rho, mx, my, mz, et, chem, i, j, k);
         // compute flux at lower z-directional face
-        face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
+        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
 
       }
 
@@ -106,33 +116,39 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
 
         // x-directional fluxes at "lower" face
-        udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
-        face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,i,j,k,nxl+1,nyl,nzl)]), *udata);
+        udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        idx = BUFIDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
+        face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
 
         // x-directional fluxes at "upper" boundary face
         if (i == nxl-1) {
-          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, w, nxl, j, k);
-          face_flux(w1d, 0, &(udata->xflux[BUFIDX(0,nxl,j,k,nxl+1,nyl,nzl)]), *udata);
+          idx = BUFIDX(0,nxl,j,k,NVAR,nxl+1,nyl,nzl);
+          udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, chem, nxl, j, k);
+          face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
         }
 
         // y-directional fluxes at "lower" face
-        udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
-        face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,j,k,nxl,nyl+1,nzl)]), *udata);
+        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
 
         // y-directional fluxes at "upper" boundary face
         if (j == nyl-1) {
-          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, w, i, nyl, k);
-          face_flux(w1d, 1, &(udata->yflux[BUFIDX(0,i,nyl,k,nxl,nyl+1,nzl)]), *udata);
+          idx = BUFIDX(0,i,nyl,k,NVAR,nxl,nyl+1,nzl);
+          udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, chem, i, nyl, k);
+          face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
         }
 
         // z-directional fluxes at "lower" face
-        udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, k);
-        face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,k,nxl,nyl,nzl+1)]), *udata);
+        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
 
         // z-directional fluxes at "upper" boundary face
         if (k == nzl-1) {
-          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, w, i, j, nzl);
-          face_flux(w1d, 2, &(udata->zflux[BUFIDX(0,i,j,nzl,nxl,nyl,nzl+1)]), *udata);
+          idx = BUFIDX(0,i,j,nzl,NVAR,nxl,nyl,nzl+1);
+          udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, chem, i, j, nzl);
+          face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
         }
 
       }
@@ -142,50 +158,49 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
         idx = IDX(i,j,k,nxl,nyl,nzl);
-        rhodot[idx] -= ( ( udata->xflux[BUFIDX(0,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(0,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(0,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(0,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(0,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(0,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mxdot[idx]  -= ( ( udata->xflux[BUFIDX(1,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(1,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(1,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(1,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(1,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(1,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mydot[idx]  -= ( ( udata->xflux[BUFIDX(2,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(2,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(2,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(2,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(2,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(2,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mzdot[idx]  -= ( ( udata->xflux[BUFIDX(3,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(3,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(3,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(3,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(3,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(3,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
-        etdot[idx]  -= ( ( udata->xflux[BUFIDX(4,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(4,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(4,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(4,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(4,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(4,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+        rhodot[idx] -= ( ( udata->xflux[BUFIDX(0,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(0,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(0,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(0,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(0,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(0,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mxdot[idx]  -= ( ( udata->xflux[BUFIDX(1,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(1,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(1,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(1,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(1,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(1,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mydot[idx]  -= ( ( udata->xflux[BUFIDX(2,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(2,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(2,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(2,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(2,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(2,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mzdot[idx]  -= ( ( udata->xflux[BUFIDX(3,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(3,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(3,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(3,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(3,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(3,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        etdot[idx]  -= ( ( udata->xflux[BUFIDX(4,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFIDX(4,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFIDX(4,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFIDX(4,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFIDX(4,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFIDX(4,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
 
         // compute RHS for tracer/chemistry species
         if (udata->nchem > 0) {
-          chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5+idx);
-          if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fEuler)", 0)) return -1;
           for (v=0; v<udata->nchem; v++)
-            chemdot[v] -= ( ( udata->xflux[BUFIDX(5+v,i+1,j,  k,  nxl+1,nyl,  nzl  )]
-                            - udata->xflux[BUFIDX(5+v,i,  j,  k,  nxl+1,nyl,  nzl  )])/(udata->dx)
-                          + ( udata->yflux[BUFIDX(5+v,i,  j+1,k,  nxl,  nyl+1,nzl  )]
-                            - udata->yflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl+1,nzl  )])/(udata->dy)
-                          + ( udata->zflux[BUFIDX(5+v,i,  j,  k+1,nxl,  nyl,  nzl+1)]
-                            - udata->zflux[BUFIDX(5+v,i,  j,  k,  nxl,  nyl,  nzl+1)])/(udata->dz) );
+            chemdot[BUFIDX(v,i,j,k,udata->nchem,nxl,nyl,nzl)] -=
+              ( ( udata->xflux[BUFIDX(5+v,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                - udata->xflux[BUFIDX(5+v,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+              + ( udata->yflux[BUFIDX(5+v,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                - udata->yflux[BUFIDX(5+v,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+              + ( udata->zflux[BUFIDX(5+v,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                - udata->zflux[BUFIDX(5+v,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
         }
-        
+
       }
 
   // return with success
@@ -303,7 +318,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   LV[4][3] = -HALF*w*gamm*cinv;
   LV[4][4] = HALF*gamm*cinv;
 
-  
+
   // compute fluxes and max wave speed over stencil
   alpha = ZERO;
   for (j=0; j<(STSIZE); j++) {
@@ -319,14 +334,14 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     alpha = max(alpha, abs(u)+csnd);
   }
 
-  
+
   // fp(x_{i+1/2}):
 
   //   compute right-shifted Lax-Friedrichs flux over left portion of patch
-  for (j=0; j<(STSIZE-1); j++) 
+  for (j=0; j<(STSIZE-1); j++)
     for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j][i] + alpha*w1d[j][i]);
-  
+
   // compute projected flux for fluid fields (copy tracer fluxes)
   for (j=0; j<(STSIZE-1); j++) {
     for (i=0; i<5; i++)
@@ -362,11 +377,11 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
     ff[i] = (f1*w1 + f2*w2 + f3*w3)/(w1 + w2 + w3);
   }
 
-  
+
   // fm(x_{i+1/2}):
-  
+
   //   compute left-shifted Lax-Friedrichs flux over right portion of patch
-  for (j=0; j<(STSIZE-1); j++) 
+  for (j=0; j<(STSIZE-1); j++)
     for (i=0; i<(NVAR); i++)
       fs[j][i] = HALF*(flux[j+1][i] - alpha*w1d[j+1][i]);
 
@@ -413,7 +428,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
   for (i=0; i<udata.nchem; i++)  f_face[5+i] = ff[5+i];
 
   // convert fluxes to direction-independent version
-  if (idir > 0) 
+  if (idir > 0)
     swap(f_face[1], f_face[1+idir]);
 
 }

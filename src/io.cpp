@@ -19,7 +19,7 @@
 #ifdef USEHDF5
 #include "hdf5.h"
 #endif
-#include "gopt.h"
+#include "gopt.hpp"
 
 
 #define MAX_LINE_LENGTH 512
@@ -453,6 +453,11 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  realtype *chem = NULL;
+  if (udata.nchem > 0) {
+    chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
+  }
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   if (firstlast < 2) {
@@ -467,10 +472,10 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
           rmsvals[3] += pow( mz[idx], 2);
           rmsvals[4] += pow( et[idx], 2);
           if (udata.nchem > 0) {
-            realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
-            if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
-            for (v=0; v<udata.nchem; v++)
-              rmsvals[5+v] += SUNRpowerI( chem[v], 2);
+            for (v=0; v<udata.nchem; v++) {
+              idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+              rmsvals[5+v] += SUNRpowerI( chem[idx], 2);
+            }
           }
         }
     retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
@@ -499,7 +504,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 
 
 // Write problem-defining parameters to file
-int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout, 
+int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
                      const UserData& udata, const ARKodeParameters& opts)
 {
   // root process creates restart file
@@ -568,11 +573,11 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
 // Most of the contents of this routine follow from the hdf5_parallel.c
 // example code available at:
 // http://www.astro.sunysb.edu/mzingale/io_tutorial/HDF5_parallel/hdf5_parallel.c
-int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur, 
+int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
                     const int& iout, const UserData& udata, const ARKodeParameters& opts)
 {
 #ifdef USEHDF5
-  
+
   // reusable variables
   char outname[100];
   char chemname[13];
@@ -738,15 +743,15 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   // write each chemical field to disk, and close the associated dataset
   // (note: we first copy these to be contiguous over this MPI task)
   if (udata.nchem > 0) {
+    W = NULL;
+    W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
     Wtmp = new realtype*[udata.nchem];
     for (v=0; v<udata.nchem; v++)
       Wtmp[v] = new realtype[N];
-    for (i=0; i<N; i++) {                                // loop over subdomain
-      W = NULL;
-      W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+i);
-      if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-      for (v=0; v<udata.nchem; v++)  Wtmp[v][i] = W[v];
-    }
+    for (i=0; i<N; i++)      // loop over subdomain
+      for (v=0; v<udata.nchem; v++)
+        Wtmp[v][i] = W[i*udata.nchem+v];
   }
   for (v=0; v<udata.nchem; v++) {
     retval = H5Dwrite(dataset[5+v], h5_realtype, memspace, filespace, H5P_DEFAULT, Wtmp[v]);
@@ -764,7 +769,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   H5Sclose(filespace);
   H5Fclose(file_identifier);
 #endif
-  
+
   // return with success
   return(0);
 }
@@ -873,7 +878,7 @@ int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& ud
   dimens[1] = udata.nyl;
   dimens[2] = udata.nxl;
   memspace = H5Screate_simple(3, dimens, NULL);
-  
+
   // define hyperslab for each field on this process
   start[0] = udata.ks;
   start[1] = udata.js;
@@ -951,6 +956,9 @@ int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& ud
 
   // read remaining chemical fields
   if (udata.nchem > 0) {
+    W = NULL;
+    W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
     Wtmp = new realtype[N];
     for (v=0; v<udata.nchem; v++) {
       sprintf(chemname, "Chemical-%03hu", (unsigned short) v);
@@ -962,12 +970,8 @@ int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& ud
       if (check_flag(&retval, "H5Dread (output_solution)", 3)) return(-1);
       H5Sclose(dataspace);
       H5Dclose(dataset);
-      for (i=0; i<N; i++) {   // loop over subdomain, copying data into vectors
-        W = NULL;
-        W = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+i);
-        if (check_flag((void *) W, "N_VGetSubvectorArrayPointer (output_solution)", 0)) return -1;
-        W[v] = Wtmp[i];
-      }
+      for (i=0; i<N; i++)    // loop over subdomain, copying data into vectors
+        W[i*udata.nchem+v] = Wtmp[i];
     }
     delete[] Wtmp;
   }

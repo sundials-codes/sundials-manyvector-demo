@@ -23,7 +23,8 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem parameters
-  long int N, Ntot, Nsubvecs, i;
+  long int N, Ntot, i;
+  int Nsubvecs;
 
   // general problem variables
   int retval;                    // reusable error-checking flag
@@ -98,17 +99,17 @@ int main(int argc, char* argv[]) {
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
-  Nsubvecs = 5 + udata.nchem*N;
+  Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
   }
-  for (i=5; i<Nsubvecs; i++) {
-    wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Serial(udata.nchem);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+  if (udata.nchem > 0) {
+    wsubvecs[5] = NULL;
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
   }
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);

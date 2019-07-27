@@ -28,10 +28,10 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
-  long int chemstripes[udata.nchem][2];
-  for (v=0; v<udata.nchem; v++) {
-    chemstripes[v][0] = v*udata.nx/udata.nchem;       // index lower bound for this stripe
-    chemstripes[v][1] = (v+1)*udata.nx/udata.nchem;   // index upper bound for this stripe
+  realtype *chem = NULL;
+  if (udata.nchem > 0) {
+    chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   }
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
@@ -50,13 +50,9 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 
         // tracer initial conditions
         if (udata.nchem > 0) {
-          realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
-          if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer_MPIManyVector (initial_conditions)", 0))
-            return -1;
           for (v=0; v<udata.nchem; v++) {
-            chem[v] = ZERO;
-            if ((udata.is+i >= chemstripes[v][0]) && (udata.is+i < chemstripes[v][1]))
-              chem[v] = ONE;
+            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            chem[idx] = ONE*(v+1)/udata.nchem;
           }
         }
       }

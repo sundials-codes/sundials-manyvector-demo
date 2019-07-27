@@ -22,7 +22,8 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem parameters
-  long int N, Ntot, Nsubvecs, i, j, k, l, v, idx;
+  long int N, Ntot, i, j, k, l, v, idx;
+  int Nsubvecs;
 
   // general problem variables
   int retval;                    // reusable error-checking flag
@@ -32,7 +33,7 @@ int main(int argc, char* argv[]) {
   N_Vector *wsubvecs;
   realtype tout;
   w = wtest = werr = NULL;
-  
+
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
   if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
@@ -88,17 +89,17 @@ int main(int argc, char* argv[]) {
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
-  Nsubvecs = 5 + udata.nchem*N;
+  Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
   }
-  for (i=5; i<Nsubvecs; i++) {
-    wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Serial(udata.nchem);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+  if (udata.nchem > 0) {
+    wsubvecs[5] = NULL;
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
   }
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
@@ -126,31 +127,31 @@ int main(int argc, char* argv[]) {
   for (v=0; v<5; v++) {
     wdata = N_VGetArrayPointer(wsubvecs[v]);
     if (check_flag((void *) wdata, "N_VGetArrayPointer (main)", 0)) return -1;
-    species_value = RCONST(0.001)*v;
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
-          xloc_value = RCONST(0.0001)*(i+udata.is);
-          yloc_value = RCONST(0.0000001)*(j+udata.js);
-          zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-          wdata[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = species_value
-            + xloc_value + yloc_value + zloc_value;
-        }
-  }
-  //   then fill the tracer vectors
-  if (udata.nchem > 0) {
-    for (k=0; k<udata.nzl; k++)
-      for (j=0; j<udata.nyl; j++)
-        for (i=0; i<udata.nxl; i++) {
+          species_value = RCONST(0.001)*v;
           xloc_value = RCONST(0.0001)*(i+udata.is);
           yloc_value = RCONST(0.0000001)*(j+udata.js);
           zloc_value = RCONST(0.0000000001)*(k+udata.ks);
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-          wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
-          if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
+          wdata[idx] = species_value + xloc_value + yloc_value + zloc_value;
+        }
+  }
+  //   then fill the tracer vectors
+  if (udata.nchem > 0) {
+    wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+    if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
+    for (k=0; k<udata.nzl; k++)
+      for (j=0; j<udata.nyl; j++)
+        for (i=0; i<udata.nxl; i++) {
           for (v=0; v<udata.nchem; v++) {
             species_value = RCONST(0.001)*(5+v);
-            wdata[v] = species_value + xloc_value + yloc_value + zloc_value;
+            xloc_value = RCONST(0.0001)*(i+udata.is);
+            yloc_value = RCONST(0.0000001)*(j+udata.js);
+            zloc_value = RCONST(0.0000000001)*(k+udata.ks);
+            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            wdata[idx] = species_value + xloc_value + yloc_value + zloc_value;
           }
         }
   }
@@ -163,7 +164,7 @@ int main(int argc, char* argv[]) {
     retval = output_solution(tout, w, opts.h0, restart, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  
+
   // read w from disk
   if (udata.myid == 0)  cout << "\nReading state from restart file " << restart << endl;
   retval = read_restart(restart, tout, wtest, udata);
@@ -184,21 +185,22 @@ int main(int argc, char* argv[]) {
 
     cout << fixed << setprecision(14) << "  restart state max error: "
          << werr_max << " > " << test_tol << ", examining more closely:\n";
-    
+
     // solution vector shows differences; examine more closely
     //   first the fluid vectors
     for (v=0; v<5; v++) {
       wdata = N_VGetArrayPointer(wsubvecs[v]);
       if (check_flag((void *) wdata, "N_VGetArrayPointer (main)", 0)) return -1;
-      species_value = RCONST(0.001)*v;
       for (k=0; k<udata.nzl; k++)
         for (j=0; j<udata.nyl; j++)
           for (i=0; i<udata.nxl; i++) {
+            species_value = RCONST(0.001)*v;
             xloc_value = RCONST(0.0001)*(i+udata.is);
             yloc_value = RCONST(0.0000001)*(j+udata.js);
             zloc_value = RCONST(0.0000000001)*(k+udata.ks);
+            idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
             realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
-            realtype recv_value = wdata[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)];
+            realtype recv_value = wdata[idx];
             if (abs(recv_value-true_value) > test_tol) {
               cout << "    myid = " << udata.myid << ", (v,i,j,k) = ("
                    << v << ", " << i << ", " << j << ", " << k << "), w = "
@@ -209,19 +211,19 @@ int main(int argc, char* argv[]) {
     }
     //   then the tracer vectors
     if (udata.nchem > 0) {
+      wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+      if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
       for (k=0; k<udata.nzl; k++)
         for (j=0; j<udata.nyl; j++)
           for (i=0; i<udata.nxl; i++) {
-            xloc_value = RCONST(0.0001)*(i+udata.is);
-            yloc_value = RCONST(0.0000001)*(j+udata.js);
-            zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-            idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-            wdata = N_VGetSubvectorArrayPointer_MPIManyVector(w,5+idx);
-            if (check_flag((void *) wdata, "N_VGetSubvectorArrayPointer_MPIManyVector (main)", 0)) return -1;
             for (v=0; v<udata.nchem; v++) {
+              xloc_value = RCONST(0.0001)*(i+udata.is);
+              yloc_value = RCONST(0.0000001)*(j+udata.js);
+              zloc_value = RCONST(0.0000000001)*(k+udata.ks);
               species_value = RCONST(0.001)*(5+v);
+              idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
               realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
-              realtype recv_value = wdata[v];
+              realtype recv_value = wdata[idx];
               if (abs(recv_value-true_value) > test_tol) {
                 cout << "    myid = " << udata.myid << ", (v,i,j,k) = ("
                      << 5+v << ", " << i << ", " << j << ", " << k << "), w = "

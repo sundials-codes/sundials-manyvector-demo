@@ -51,14 +51,14 @@ else
   INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS}
   LIBS = ${SUNDLIBS} ${KLULIBS} -lm
   LDFLAGS = -Wl,-rpath,${SUNLIBDIR},-rpath,${KLULIBDIR}
-  HDFFLAGS = 
+  HDFFLAGS =
 endif
 
 # final version of compiler flags
 CXXFLAGS = -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX ${OPTFLAGS} ${HDFFLAGS}
 
 # common source/object files on which all executables depend
-COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.c
+COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.cpp
 COMMONOBJ = euler3D.o utilities.o io.o gopt.o
 
 # listing of all test routines that use 'default' number of fields
@@ -75,10 +75,10 @@ TESTS = compile_test_fluid.exe \
         hurricane_zx.exe \
         hurricane_yz.exe \
         rayleigh_taylor.exe \
-        interacting_bubbles.exe \
-        implosion.exe \
-        explosion.exe \
-        double_mach_reflection.exe
+        #interacting_bubbles.exe \
+        #implosion.exe \
+        #explosion.exe \
+        #double_mach_reflection.exe
 
 # listing of all test routines that use a custom 'NVAR' value
 COLORTESTS = compile_test_tracers.exe \
@@ -93,7 +93,7 @@ VPATH = src
 all : ${TESTS} ${COLORTESTS} buildclean
 
 # general build rules
-gopt.o : gopt.c gopt.h
+gopt.o : gopt.cpp gopt.hpp
 	${CXX} ${CXXFLAGS} -c $<
 
 %.exe : %.o ${COMMONOBJ}
@@ -126,22 +126,22 @@ compile_test_tracers.exe : compile_test.cpp ${COMMONSRC}
 	${CXX} ${CXXFLAGS} -DNVAR=7 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-communication_test_fluid.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+communication_test_fluid.exe : communication_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-communication_test_tracers.exe : communication_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+communication_test_tracers.exe : communication_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-io_test_fluid.exe : io_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+io_test_fluid.exe : io_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-io_test_tracers.exe : io_test.cpp utilities.cpp io.cpp gopt.c compile_test.cpp
+io_test_tracers.exe : io_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
