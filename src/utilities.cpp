@@ -17,7 +17,7 @@
 int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
   // access problem data
-  UserData *udata = (UserData *) user_data;
+  EulerData *udata = (EulerData *) user_data;
 
   // initialize output to zeros
   N_VConst(ZERO, wdot);
@@ -223,7 +223,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 // Schemes and Discontinuous Galerkin Methods for CFD," International Journal of
 // Computational Fluid Dynamics, 17:2, 107-118, DOI: 10.1080/1061856031000104851
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
-               realtype* f_face, const UserData& udata)
+               realtype* f_face, const EulerData& udata)
 {
   // local data
   int i, j;
@@ -438,7 +438,7 @@ void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
 int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
 {
   // access problem data
-  UserData *udata = (UserData *) user_data;
+  EulerData *udata = (EulerData *) user_data;
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);

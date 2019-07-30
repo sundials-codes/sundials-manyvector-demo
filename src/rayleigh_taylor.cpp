@@ -6,33 +6,33 @@
  For details, see the LICENSE file.
  ----------------------------------------------------------------
  Rayleigh-Taylor instability test problem (see section 4.6 of
- R. Liska and B. Wendroff, "Comparison of several difference 
- schemes on 1D and 2D test problems for the Euler equations," 
- SIAM J. Sci. Comput., vol. 25, no. 3, pp 995-1017, 2003.  We 
- use the problem setup described for 'single-mode' test in the 
- ATHENA code, at 
+ R. Liska and B. Wendroff, "Comparison of several difference
+ schemes on 1D and 2D test problems for the Euler equations,"
+ SIAM J. Sci. Comput., vol. 25, no. 3, pp 995-1017, 2003.  We
+ use the problem setup described for 'single-mode' test in the
+ ATHENA code, at
  https://www.astro.princeton.edu/~jstone/Athena/tests/rt/rt.html:
 
  Domain: (x,y) in [-0.25, 0.25] x [-0.75,0.75].
  Boundary conditions: periodic in x, homogeneous Neumann in y.
- 
+
  rho(y) = {2, if y > 0
           {1, if y <= 0
- 
+
  Constant gravitational acceleration g = 0.1 is applied in the -y
  direction.
 
  Pressure is given by the condition of hydrostatic equilibrium:
- 
-    p = p0 - g*rho*y, 
 
- where p0 = 2.5, and gamma = 1.4, resulting in a sound speed of 
+    p = p0 - g*rho*y,
+
+ where p0 = 2.5, and gamma = 1.4, resulting in a sound speed of
  3.5 in the low density medium at the interface.
 
  Initial y-directional velocity perturbation:
 
     v_y = Amp*[1 + cos(4*pi*x)]*[1 + cos(3*pi*y)]
- 
+
  with Amp = 0.0025.
 
  Note: since these are specified in terms of primitive variables,
@@ -53,9 +53,9 @@
 #define Amp    RCONST(0.01)
 
 // Initial conditions
-int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
+int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
-  
+
   // access data fields
   long int i, j, k, idx;
   realtype xloc, yloc;
@@ -72,7 +72,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
 
   // output test problem information
-  if (udata.myid == 0) 
+  if (udata.myid == 0)
     cout << "\nRayleigh-Taylor instability test problem\n";
 
   // return error if input parameters are inappropriate
@@ -109,12 +109,12 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
                                  p0 - grav*rho[idx]*yloc);
 
       }
-  
+
   return 0;
 }
 
 // External forcing terms
-int external_forces(const realtype& t, N_Vector G, const UserData& udata)
+int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
 {
   // iterate over subdomain, applying external forces
   long int i, j, k;
@@ -122,13 +122,13 @@ int external_forces(const realtype& t, N_Vector G, const UserData& udata)
   if (check_flag((void *) Gmy, "N_VGetSubvectorArrayPointer (external_forces)", 0)) return -1;
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) 
+      for (i=0; i<udata.nxl; i++)
         Gmy[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = -grav;
   return 0;
 }
 
 // Diagnostics output for this test
-int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata)
+int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
 {
   // return with success
   return(0);

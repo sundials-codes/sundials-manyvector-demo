@@ -37,7 +37,7 @@
 // Load problem-defining parameters from file: root process
 // reads parameters and broadcasts results to remaining
 // processes
-int load_inputs(int myid, int argc, char* argv[], UserData& udata,
+int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
                 ARKodeParameters& opts, int& restart)
 {
   int retval;
@@ -58,7 +58,7 @@ int load_inputs(int myid, int argc, char* argv[], UserData& udata,
                 iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
-                iemaf, ih0, ihmin, ihmax, irtol, iatol, irest};
+                iemaf, ih0, ihmin, ihmax, irtol, iatol, irest };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -393,7 +393,7 @@ int load_inputs(int myid, int argc, char* argv[], UserData& udata,
 
 // Computes the total of each conserved quantity;
 // the root task then outputs these values to screen
-int check_conservation(const realtype& t, const N_Vector w, const UserData& udata)
+int check_conservation(const realtype& t, const N_Vector w, const EulerData& udata)
 {
   realtype sumvals[] = {ZERO, ZERO};
   realtype totvals[] = {ZERO, ZERO};
@@ -437,7 +437,7 @@ int check_conservation(const realtype& t, const N_Vector w, const UserData& udat
 //    firstlast = 1 indicates a normal output
 //    firstlast = 2 indicates the lastoutput
 int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
-                void *arkode_mem, const UserData& udata)
+                void *arkode_mem, const EulerData& udata)
 {
   realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
@@ -505,7 +505,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 
 // Write problem-defining parameters to file
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
-                     const UserData& udata, const ARKodeParameters& opts)
+                     const EulerData& udata, const ARKodeParameters& opts)
 {
   // root process creates restart file
   if (udata.myid == 0) {
@@ -574,7 +574,7 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
 // example code available at:
 // http://www.astro.sunysb.edu/mzingale/io_tutorial/HDF5_parallel/hdf5_parallel.c
 int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
-                    const int& iout, const UserData& udata, const ARKodeParameters& opts)
+                    const int& iout, const EulerData& udata, const ARKodeParameters& opts)
 {
 #ifdef USEHDF5
 
@@ -777,7 +777,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
 
 // Utility routine to set the time "t" and the state "w" from the restart file
 // "output-<restart>.hdf5"
-int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& udata)
+int read_restart(const int& restart, realtype& t, N_Vector w, const EulerData& udata)
 {
 #ifdef USEHDF5
   // reusable variables

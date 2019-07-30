@@ -6,7 +6,7 @@
  For details, see the LICENSE file.
  ----------------------------------------------------------------
  Header file for shared main routine, utility routines,
- ARKodeParameters and UserData class.
+ ARKodeParameters and EulerData class.
  ---------------------------------------------------------------*/
 
 // only include this file once (if included multiple times)
@@ -32,7 +32,12 @@
 
 using namespace std;
 
-// define default value for total number of variables per spatial location (if undefined)
+// define default for total number of fields (if undefined):
+//   0 - density
+//   1 - x-momentum
+//   2 - y-momentum
+//   3 - z-momentum
+//   4 - total energy
 #ifndef NVAR
 #define NVAR 5
 #endif
@@ -113,9 +118,12 @@ public:
 
 
 // user data class
-class UserData {
+class EulerData {
 
 public:
+  ///// reaction network data structure /////
+  void *RxNetData;
+
   ///// [sub]domain related data /////
   long int nx;          // global number of x grid points
   long int ny;          // global number of y grid points
@@ -190,9 +198,9 @@ public:
 
   ///// class operations /////
   // constructor
-  UserData() :
-      nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0), zl(0.0),
-      zr(1.0), t0(0.0), tf(1.0), xlbc(BC_PERIODIC), xrbc(BC_PERIODIC),
+  EulerData() :
+      RxNetData(NULL), nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0),
+      zl(0.0), zr(1.0), t0(0.0), tf(1.0), xlbc(BC_PERIODIC), xrbc(BC_PERIODIC),
       ylbc(BC_PERIODIC), yrbc(BC_PERIODIC), zlbc(BC_PERIODIC), zrbc(BC_PERIODIC),
       is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1), nxl(-1), nyl(-1), nzl(-1),
       comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
@@ -204,7 +212,7 @@ public:
     nchem = (NVAR) - 5;
   };
   // destructor
-  ~UserData() {
+  ~EulerData() {
     if (Wrecv != NULL)  delete[] Wrecv;
     if (Wsend != NULL)  delete[] Wsend;
     if (Erecv != NULL)  delete[] Erecv;
@@ -252,9 +260,9 @@ public:
 
     // get suggested parallel decomposition
     retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-    if (check_flag(&retval, "MPI_Comm_size (UserData::SetupDecomp)", 3)) return -1;
+    if (check_flag(&retval, "MPI_Comm_size (EulerData::SetupDecomp)", 3)) return -1;
     retval = MPI_Dims_create(nprocs, truedims, dims_suggested);
-    if (check_flag(&retval, "MPI_Dims_create (UserData::SetupDecomp)", 3)) return -1;
+    if (check_flag(&retval, "MPI_Dims_create (EulerData::SetupDecomp)", 3)) return -1;
 
     // adjust dims to match actual problem dimensions
     i=0;
@@ -285,13 +293,13 @@ public:
     periods[1] = (ylbc == BC_PERIODIC) ? 1 : 0;
     periods[2] = (zlbc == BC_PERIODIC) ? 1 : 0;
     retval = MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, 0, &comm);
-    if (check_flag(&retval, "MPI_Cart_create (UserData::SetupDecomp)", 3)) return -1;
+    if (check_flag(&retval, "MPI_Cart_create (EulerData::SetupDecomp)", 3)) return -1;
     retval = MPI_Comm_rank(comm, &myid);
-    if (check_flag(&retval, "MPI_Comm_rank (UserData::SetupDecomp)", 3)) return -1;
+    if (check_flag(&retval, "MPI_Comm_rank (EulerData::SetupDecomp)", 3)) return -1;
 
     // determine local extents
     retval = MPI_Cart_get(comm, 3, dims, periods, coords);
-    if (check_flag(&retval, "MPI_Cart_get (UserData::SetupDecomp)", 3)) return -1;
+    if (check_flag(&retval, "MPI_Cart_get (EulerData::SetupDecomp)", 3)) return -1;
     is = nx*(coords[0])/(dims[0]);
     ie = nx*(coords[0]+1)/(dims[0])-1;
     js = ny*(coords[1])/(dims[1]);
@@ -334,7 +342,7 @@ public:
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2];
       retval = MPI_Cart_rank(comm, nbcoords, &ipW);
-      if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
     Erecv = new realtype[(NVAR)*3*nyl*nzl];
@@ -345,7 +353,7 @@ public:
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2];
       retval = MPI_Cart_rank(comm, nbcoords, &ipE);
-      if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
     Srecv = new realtype[(NVAR)*nxl*3*nzl];
@@ -356,7 +364,7 @@ public:
       nbcoords[1] = coords[1]-1;
       nbcoords[2] = coords[2];
       retval = MPI_Cart_rank(comm, nbcoords, &ipS);
-      if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
     Nrecv = new realtype[(NVAR)*nxl*3*nzl];
@@ -367,7 +375,7 @@ public:
       nbcoords[1] = coords[1]+1;
       nbcoords[2] = coords[2];
       retval = MPI_Cart_rank(comm, nbcoords, &ipN);
-      if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
     Brecv = new realtype[(NVAR)*nxl*nyl*3];
@@ -378,7 +386,7 @@ public:
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2]-1;
       retval = MPI_Cart_rank(comm, nbcoords, &ipB);
-      if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
     Frecv = new realtype[(NVAR)*nxl*nyl*3];
@@ -389,7 +397,7 @@ public:
       nbcoords[1] = coords[1];
       nbcoords[2] = coords[2]+1;
       retval = MPI_Cart_rank(comm, nbcoords, &ipF);
-      if (check_flag(&retval, "MPI_Cart_rank (UserData::SetupDecomp)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
     return 0;     // return with success flag
@@ -425,37 +433,37 @@ public:
     if (ipW != MPI_PROC_NULL) {
       retval = MPI_Irecv(Wrecv, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipW,
                          1, comm, req);
-      if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Irecv (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipE != MPI_PROC_NULL) {
       retval = MPI_Irecv(Erecv, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipE,
                          0, comm, req+1);
-      if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Irecv (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipS != MPI_PROC_NULL) {
       retval = MPI_Irecv(Srecv, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipS,
                          3, comm, req+2);
-      if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Irecv (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipN != MPI_PROC_NULL) {
       retval = MPI_Irecv(Nrecv, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipN,
                          2, comm, req+3);
-      if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Irecv (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipB != MPI_PROC_NULL) {
       retval = MPI_Irecv(Brecv, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipB,
                          5, comm, req+4);
-      if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Irecv (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipF != MPI_PROC_NULL) {
       retval = MPI_Irecv(Frecv, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipF,
                          4, comm, req+5);
-      if (check_flag(&retval, "MPI_Irecv (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Irecv (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     // send data to neighbors
@@ -480,7 +488,7 @@ public:
         }
       retval = MPI_Isend(Wsend, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipW, 0,
                          comm, req+6);
-      if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipE != MPI_PROC_NULL) {
@@ -504,7 +512,7 @@ public:
         }
       retval = MPI_Isend(Esend, (NVAR)*3*nyl*nzl, MPI_SUNREALTYPE, ipE, 1,
                          comm, req+7);
-      if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipS != MPI_PROC_NULL) {
@@ -528,7 +536,7 @@ public:
         }
       retval = MPI_Isend(Ssend, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipS, 2,
                          comm, req+8);
-      if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipN != MPI_PROC_NULL) {
@@ -552,7 +560,7 @@ public:
         }
       retval = MPI_Isend(Nsend, (NVAR)*nxl*3*nzl, MPI_SUNREALTYPE, ipN, 3,
                          comm, req+9);
-      if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipB != MPI_PROC_NULL) {
@@ -576,7 +584,7 @@ public:
         }
       retval = MPI_Isend(Bsend, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipB, 4,
                          comm, req+10);
-      if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     if (ipF != MPI_PROC_NULL) {
@@ -600,7 +608,7 @@ public:
         }
       retval = MPI_Isend(Fsend, (NVAR)*nxl*nyl*3, MPI_SUNREALTYPE, ipF, 5,
                          comm, req+11);
-      if (check_flag(&retval, "MPI_Isend (UserData::ExchangeStart)", 3)) return -1;
+      if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
 
     // if this process owns any external faces, fill ghost zones
@@ -990,7 +998,7 @@ public:
 
     // wait for messages to finish send/receive
     retval = MPI_Waitall(12, req, stat);
-    if (check_flag(&retval, "MPI_Waitall (UserData::ExchangeEnd)", 3)) return -1;
+    if (check_flag(&retval, "MPI_Waitall (EulerData::ExchangeEnd)", 3)) return -1;
 
     return 0;     // return with success flag
   }
@@ -1218,7 +1226,7 @@ public:
     return(dfail+efail+pfail);
   }
 
-};   // end UserData;
+};   // end EulerData;
 
 
 
@@ -1226,39 +1234,39 @@ public:
 // Additional utility routines
 
 //    Load inputs from file
-int load_inputs(int myid, int argc, char* argv[], UserData& udata,
+int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
                 ARKodeParameters& opts, int& restart);
 
 //    Initial conditions
-int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
+int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata);
 
 //    Read initial conditions from restart file
-int read_restart(const int& restart, realtype& t, N_Vector w, const UserData& udata);
+int read_restart(const int& restart, realtype& t, N_Vector w, const EulerData& udata);
 
 //    Forcing terms
-int external_forces(const realtype& t, N_Vector G, const UserData& udata);
+int external_forces(const realtype& t, N_Vector G, const EulerData& udata);
 
 //    Output solution diagnostics
-int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata);
+int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata);
 
 //    Optional conservation checks
-int check_conservation(const realtype& t, const N_Vector w, const UserData& udata);
+int check_conservation(const realtype& t, const N_Vector w, const EulerData& udata);
 
 //    Print solution statistics
 int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
-                void *arkode_mem, const UserData& udata);
+                void *arkode_mem, const EulerData& udata);
 
 //    Output current parameters
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
-                     const UserData& udata, const ARKodeParameters& opts);
+                     const EulerData& udata, const ARKodeParameters& opts);
 
 //    Output current solution
 int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
-                    const int& iout, const UserData& udata, const ARKodeParameters& opts);
+                    const int& iout, const EulerData& udata, const ARKodeParameters& opts);
 
 //    WENO Div(flux(u)) function
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,
-               realtype* f_face, const UserData& udata);
+               realtype* f_face, const EulerData& udata);
 
 //    Routine to compute the Euler ODE RHS function f(t,y).
 int fEuler(realtype t, N_Vector w, N_Vector wdot, void* user_data);

@@ -13,7 +13,7 @@
 #include <euler3D.hpp>
 
 // Initial conditions
-int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
+int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
   // iterate over subdomain, setting initial condition
   long int v, i, j, k, idx;
@@ -62,7 +62,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 
 // External forcing terms -- note that G was previously zeroed out,
 // so only nonzero terms need to be added
-int external_forces(const realtype& t, N_Vector G, const UserData& udata)
+int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
 {
   // iterate over subdomain, applying nonzero external forces
   long int i, j, k, idx;
@@ -94,7 +94,7 @@ int external_forces(const realtype& t, N_Vector G, const UserData& udata)
 }
 
 // Diagnostics output for this test
-int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata)
+int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
 {
   return(0);
 }

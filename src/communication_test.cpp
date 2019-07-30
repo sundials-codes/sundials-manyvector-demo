@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
   }
 
   // read problem and solver parameters from input file / command line
-  UserData udata;
+  EulerData udata;
   ARKodeParameters opts;
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);

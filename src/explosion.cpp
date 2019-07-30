@@ -13,19 +13,19 @@
 
 
 // Initial conditions
-int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
+int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
   return 0;
 }
 
 // External forcing terms
-int external_forces(const realtype& t, N_Vector G, const UserData& udata)
+int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
 {
   return 0;
 }
 
 // Diagnostics output for this test
-int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata)
+int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
 {
   return(0);
 }

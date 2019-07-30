@@ -59,14 +59,14 @@
 #define TWO  RCONST(2.0)
 
 // Initial conditions
-int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
+int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
   // verify that NVAR has been set up properly
   if (NVAR != 5) {
     cerr << "initial_conditions error: incorrect NVAR (check Makefile settings)";
     return -1;
   }
-  
+
   // iterate over subdomain, setting initial condition
   long int i, j, k;
   realtype xloc, yloc, zloc;
@@ -179,7 +179,7 @@ int initial_conditions(const realtype& t, N_Vector w, const UserData& udata)
 }
 
 // External forcing terms
-int external_forces(const realtype& t, N_Vector G, const UserData& udata)
+int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
 {
   // iterate over subdomain, applying external forces
   long int i, j, k;
@@ -230,7 +230,7 @@ realtype fsecant(const realtype& p4, const realtype& p1, const realtype& p5,
   return(p1*fact - p4);
 }
 
-// Exact 1D Riemann problem solver (retrieves domain from UserData structure),
+// Exact 1D Riemann problem solver (retrieves domain from EulerData structure),
 // based on Fortran code at http://cococubed.asu.edu/codes/riemann/exact_riemann.f
 //
 // Inputs: (t,x) location for desired solution,
@@ -380,7 +380,7 @@ int exact_Riemann(const realtype& t, const realtype& x, const realtype &xI,
 
 
 // Diagnostics output for this test
-int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata)
+int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
 {
   // iterate over subdomain, computing solution error
   long int v, i, j, k;
