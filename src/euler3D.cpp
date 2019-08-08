@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
 
-  // set initial conditions (or restart from file -- not yet operational)
+  // set initial conditions (or restart from file)
   if (restart < 0) {
     retval = initial_conditions(udata.t0, w, udata);
     if (check_flag(&retval, "initial_conditions (main)", 1)) MPI_Abort(udata.comm, 1);

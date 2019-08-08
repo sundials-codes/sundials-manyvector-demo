@@ -508,7 +508,7 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
     cerr << "\nMEMORY_ERROR: " << funcname << " failed - returned NULL pointer\n\n";
     return 1; }
 
-  // Check if flag != MPI_SUCCESS
+  // Check MPI return value
   else if (opt == 3) {
     errflag = (int *) flagvalue;
     if (*errflag != MPI_SUCCESS) {
@@ -517,7 +517,7 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
     }
   }
 
-  // Check if flag != MPI_SUCCESS
+  // Check for legal state return value
   else if (opt == 4) {
     errflag = (int *) flagvalue;
     if (*errflag != MPI_SUCCESS) {
