@@ -29,7 +29,7 @@
 #endif
 
 // utility function prototypes
-void print_info(realtype &t, N_Vector w, final__data *network_data, EulerData &udata);
+void print_info(realtype &t, N_Vector w, cvklu_data *network_data, EulerData &udata);
 
 
 // Main Program
@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
     DFID=fopen("diags_primordial_ode.txt","w");
 
   // initialize primordial rate tables, etc
-  final__data *network_data = final__setup_data(NULL, NULL);
+  cvklu_data *network_data = cvklu_setup_data(NULL, NULL);
   //    overwrite internal strip size
   network_data->nstrip = nstrip;
   //    set redshift value for non-cosmological run
@@ -221,11 +221,58 @@ int main(int argc, char* argv[]) {
         atdata[idx+0] = opts.atol;                // ge
       }
 
+  // convert initial conditions from mass densities to number densities
+  for (k=0, idx=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++,idx++) {
+        idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+
+        // H2I
+        wdata[idx2++] /= H2I_weight;
+
+        // H2II
+        wdata[idx2++] /= H2II_weight;
+
+        // HI
+        wdata[idx2++] /= HI_weight;
+
+        // HII
+        wdata[idx2++] /= HII_weight;
+
+        // HM
+        wdata[idx2++] /= HM_weight;
+
+        // HeI
+        wdata[idx2++] /= HeI_weight;
+
+        // HeII
+        wdata[idx2++] /= HeII_weight;
+
+        // HeIII
+        wdata[idx2++] /= HeIII_weight;
+
+        // de
+        wdata[idx2++] /= ONE;
+      }
+
+  // move input solution values into 'scale' components of network_data structure
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++)
+        for (l=0; l<udata.nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          network_data->scale[idx] = wdata[idx];
+          network_data->inv_scale[idx] = ONE / wdata[idx];
+          wdata[idx] = ONE;
+        }
+
+
+  
   // store mass densities in network_data structure, and rescale initial conditions
   for (k=0, idx=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++,idx++) {
-        network_data->mdensity[idx] = ZERO;
+        network_data->mdensity[idx] = 0.0;
         idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
         // H2I
@@ -268,18 +315,6 @@ int main(int argc, char* argv[]) {
         network_data->mdensity[idx] *= mh;
         network_data->inv_mdensity[idx]  = ONE / network_data->mdensity[idx];
       }
-
-  // move input solution values into 'scale' components of network_data structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          network_data->scale[idx] = wdata[idx];
-          network_data->inv_scale[idx] = ONE / wdata[idx];
-          wdata[idx] = ONE;
-        }
-
 
   // initialize the integrator memory
   arkode_mem = ARKStepCreate(NULL, calculate_rhs_final_, udata.t0, w);
@@ -482,7 +517,7 @@ int main(int argc, char* argv[]) {
       }
 
   // re-calculate temperature at the final output
-  final__calculate_temperature(network_data, wdata, nstrip, udata.nchem);
+  cvklu_calculate_temperature(network_data, wdata, nstrip, udata.nchem);
 
   // compute simulation time
   double tsimul = MPI_Wtime() - tstart;
@@ -526,7 +561,7 @@ int main(int argc, char* argv[]) {
 }
 
 
-void print_info(realtype &t, N_Vector w, final__data *network_data, EulerData &udata)
+void print_info(realtype &t, N_Vector w, cvklu_data *network_data, EulerData &udata)
 {
   // indices to print
   long int i1 = udata.nxl/3;
