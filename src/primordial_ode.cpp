@@ -268,7 +268,7 @@ int main(int argc, char* argv[]) {
 
 
   
-  // store mass densities in network_data structure, and rescale initial conditions
+  // store mass densities in network_data structure
   for (k=0, idx=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++,idx++) {
@@ -277,39 +277,30 @@ int main(int argc, char* argv[]) {
 
         // H2I
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= H2I_weight;
 
         // H2II
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= H2II_weight;
 
         // HI
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= HI_weight;
 
         // HII
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= HII_weight;
 
         // HM
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= HM_weight;
 
         // HeI
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= HeI_weight;
 
         // HeII
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= HeII_weight;
 
         // HeIII
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= HeIII_weight;
 
         // de
         network_data->mdensity[idx] += wdata[idx2];
-        wdata[idx2++] /= ONE;
 
         // final values
         network_data->mdensity[idx] *= mh;
