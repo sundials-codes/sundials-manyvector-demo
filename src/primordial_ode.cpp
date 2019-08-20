@@ -690,7 +690,7 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
          network_data->scale[0][idx1+6]*wdata[idx1+6]/units.density_units*HeII_weight,
          network_data->scale[0][idx1+7]*wdata[idx1+7]/units.density_units*HeIII_weight,
          network_data->scale[0][idx1+8]*wdata[idx1+8]/units.density_units*m_amu,
-         network_data->scale[0][idx1+9]*wdata[idx1+9])/UNIT_E_per_M;
+         network_data->scale[0][idx1+9]*wdata[idx1+9]/UNIT_E_per_M);
 
   // print solutions at second location
   printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
@@ -704,7 +704,7 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
          network_data->scale[0][idx2+6]*wdata[idx2+6]/units.density_units*HeII_weight,
          network_data->scale[0][idx2+7]*wdata[idx2+7]/units.density_units*HeIII_weight,
          network_data->scale[0][idx2+8]*wdata[idx2+8]/units.density_units*m_amu,
-         network_data->scale[0][idx2+9]*wdata[idx2+9])/UNIT_E_per_M;
+         network_data->scale[0][idx2+9]*wdata[idx2+9]/UNIT_E_per_M);
 }
 
 
