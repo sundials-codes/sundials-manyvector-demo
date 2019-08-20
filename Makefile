@@ -36,9 +36,11 @@ endif
 # shortcuts for include and library paths, etc.
 SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_arkode \
+           -lsundials_cvode \
            -lsundials_nvecmpimanyvector \
            -lsundials_nvecparallel \
            -lsundials_nvecserial \
+           -lsundials_sunmatrixsparse \
            -lsundials_sunlinsolklu
 KLULIBS = -L$(KLULIBDIR) -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig
 HDFLIBS = -L$(HDFLIBDIR) -lhdf5 -lhdf5_hl -lsz
@@ -76,6 +78,7 @@ TESTS = compile_test_fluid.exe \
         hurricane_yz.exe \
         rayleigh_taylor.exe \
 	primordial_ode.exe \
+	primordial_ode_CVODE.exe \
         #interacting_bubbles.exe \
         #implosion.exe \
         #explosion.exe \
@@ -180,7 +183,10 @@ hurricane_zx_color.exe : hurricane.cpp ${COMMONSRC}
 	\rm -rf *.o
 
 primordial_ode.exe : primordial_ode.cpp dengo_primordial_network.cpp utilities.o io.o gopt.o
-	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+primordial_ode_CVODE.exe : primordial_ode.cpp dengo_primordial_network.cpp utilities.o io.o gopt.o
+	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DUSE_CVODE ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 
 

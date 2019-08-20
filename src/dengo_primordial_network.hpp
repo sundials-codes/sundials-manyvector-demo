@@ -15,9 +15,15 @@
 
  * #undef-ed all Dengo-related preprocessor directives that will not be used by our solvers.
 
- * Wrapped all HDF5 include lines in a test for the USEHDF5 preprocessor directive.
+ * #defined NTHREADS to 1 to disable their threading over strips
 
- * Commented OpenMP and CVODE-specific include lines.
+ * Wrapped all HDF5 include lines in a test for the USEHDF5 preprocessor directive.
+ 
+ * Wrapped OpenMP include line in "#ifdef _OPENMP" block
+
+ * Commented CVODE-specific include lines.
+
+ * Fixed prototype of cvklu_setup_data to match implementation.
 
  ---------------------------------------------------------------*/
 
@@ -29,6 +35,8 @@
 // ensure that unused Dengo-related preprocessor directives are not defined
 #undef CVSPILS
 
+// disable strip-based threading
+#define NTHREADS 1
 
 
 //---- beginning of Dengo header file contents ----//
@@ -42,7 +50,9 @@ The generalized rate data type holders.
 
 /* stdlib, hdf5, local includes */
 
-//#include "omp.h"
+#ifdef _OPENMP
+#include "omp.h"
+#endif
 
 #include "time.h"
 #include "sys/time.h"
@@ -381,7 +391,7 @@ void *setup_cvode_solver( rhs_f f, jac_f Jac,  int NEQ,
 
 int cvode_solver( void *cvode_mem, double *output, int NEQ, double *dt, cvklu_data * data, N_Vector y, double reltol, N_Vector abstol );
 
-cvklu_data *cvklu_setup_data(int *, char***);
+cvklu_data *cvklu_setup_data(const char *, int *, char***);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);

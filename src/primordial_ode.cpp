@@ -24,12 +24,20 @@
 #include <sunlinsol/sunlinsol_dense.h>
 #endif
 
+#ifdef USE_CVODE
+#include <cvode/cvode.h>
+#include <cvode/cvode_ls.h>
+#endif
+
+
 #ifdef DEBUG
 #include "fenv.h"
 #endif
 
 // utility function prototypes
-void print_info(realtype &t, N_Vector w, cvklu_data *network_data, EulerData &udata);
+void print_info(void *arkode_mem, realtype &t, N_Vector w,
+                cvklu_data *network_data, EulerData &udata,
+                code_units &units);
 
 
 // Main Program
@@ -119,7 +127,7 @@ int main(int argc, char* argv[]) {
     DFID=fopen("diags_primordial_ode.txt","w");
 
   // initialize primordial rate tables, etc
-  cvklu_data *network_data = cvklu_setup_data(NULL, NULL);
+  cvklu_data *network_data = cvklu_setup_data("cvklu_tables.h5", NULL, NULL);
   //    overwrite internal strip size
   network_data->nstrip = nstrip;
   //    set redshift value for non-cosmological run
@@ -134,58 +142,68 @@ int main(int argc, char* argv[]) {
   if (check_flag((void *) atols, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // set initial conditions -- essentially-neutral primordial gas
-  realtype density = 1e7;
-  realtype tiny = 1e-10;
-  realtype Hfrac = 0.74;
-  realtype HI_weight = 1.00794;
-  realtype HII_weight = 1.00794;
-  realtype HM_weight = 1.00794;
-  realtype HeI_weight = 4.002602;
-  realtype HeII_weight = 4.002602;
-  realtype HeIII_weight = 4.002602;
+  realtype density = 1e2;   // in g/cm^{-3}
+  realtype Tmean = 2000.0;  // mean temperature in K
+  realtype Tamp = 1800.0;   // temperature amplitude in K
+  realtype tiny = 1e-20;
+  realtype mH = 1.67e-24;
+  realtype Hfrac = 0.76;
+  realtype HI_weight = 1.00794 * mH;
+  realtype HII_weight = 1.00794 * mH;
+  realtype HM_weight = 1.00794 * mH;
+  realtype HeI_weight = 4.002602 * mH;
+  realtype HeII_weight = 4.002602 * mH;
+  realtype HeIII_weight = 4.002602 * mH;
   realtype H2I_weight = 2*HI_weight;
   realtype H2II_weight = 2*HI_weight;
   realtype gamma = 5.0/3.0;
-  realtype tevk = 1.1605e4;
-  realtype mh = 1.67e-24;
-  realtype kboltz = 1.380e-16;
-  realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
+  realtype kboltz = 1.3806488e-16;
   realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
+  realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
+  code_units units;
+  units.comoving_coordinates = 0;
+  units.density_units  = 1.0;
+  units.length_units   = 1.0;
+  units.time_units     = 1.0;
+  units.velocity_units = 1.0;
+  units.a_units        = 0.0;
+  units.a_value        = 0.0;
+  realtype UNIT_E_per_M = pow(units.velocity_units,2);  // code unit in terms of erg/g
+  realtype m_amu = 1.66053904e-24;
+  density *= mH;                                        // convert to number density
   realtype *wdata = NULL;
   wdata = N_VGetArrayPointer(w);
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
 
-        // set desired number densities
-        nH2I = tiny;
-        nH2II = tiny;
-        nHII = tiny;
-        nHM = tiny;
-        nHeII = tiny;
-        nHeIII = tiny;
-
         // set mass densities into local variables
-        H2I = nH2I*H2I_weight;
-        H2II = nH2II*H2II_weight;
-        HII = nHII*HII_weight;
-        HM = nHM*HM_weight;
-        HeII = nHeII*HeII_weight;
-        HeIII = nHeIII*HeIII_weight;
+        H2I = 1.e-3*density;
+        H2II = tiny*density;
+        HII = tiny*density;
+        HM = tiny*density;
+        HeII = tiny*density;
+        HeIII = tiny*density;
         HeI = (ONE-Hfrac)*density - HeII - HeIII;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 
         // compute derived number densities
-        nHeI = HeI/HeI_weight;
-        nHI = HI/HI_weight;
-        ndens = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
-        de = nHII + nHeII + 2*nHeIII - nHM + nH2II;
+        nH2I   = H2I   / H2I_weight;
+        nH2II  = H2II  / H2II_weight;
+        nHII   = HII   / HII_weight;
+        nHM    = HM    / HM_weight;
+        nHeII  = HeII  / HeII_weight;
+        nHeIII = HeIII / HeIII_weight;
+        nHeI   = HeI   / HeI_weight;
+        nHI    = HI    / HI_weight;
+        ndens  = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
+        de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // set varying temperature throughout domain, and convert to gas energy
-        T = 1e3 + 10.0*(i+udata.is-udata.nx/2)/(udata.nx-1)
-                + 10.0*(j+udata.js-udata.ny/2)/(udata.ny-1)
-                + 10.0*(k+udata.ks-udata.nz/2)/(udata.nz-1);
-        ge = (T * ndens * kboltz) / (density * mh * (gamma - ONE));
+        T = Tmean + Tamp/3.0*( 2.0*(i+udata.is-udata.nx/2)/(udata.nx-1) +
+                               2.0*(j+udata.js-udata.ny/2)/(udata.ny-1) +
+                               2.0*(k+udata.ks-udata.nz/2)/(udata.nz-1) );
+        ge = (kboltz * T * ndens) / (density * (gamma - ONE));
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
@@ -202,25 +220,6 @@ int main(int argc, char* argv[]) {
 
       }
 
-  // set absolute tolerance array
-  realtype *atdata = NULL;
-  atdata = N_VGetArrayPointer(atols);
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        atdata[idx+0] = opts.atol * H2I_weight;   // H2I
-        atdata[idx+0] = opts.atol * H2II_weight;  // H2II
-        atdata[idx+0] = opts.atol * HI_weight;    // HI
-        atdata[idx+0] = opts.atol * HII_weight;   // HII
-        atdata[idx+0] = opts.atol * HM_weight;    // HM
-        atdata[idx+0] = opts.atol * HeI_weight;   // HeI
-        atdata[idx+0] = opts.atol * HeII_weight;  // HeII
-        atdata[idx+0] = opts.atol * HeIII_weight; // HeIII
-        atdata[idx+0] = opts.atol;                // de
-        atdata[idx+0] = opts.atol;                // ge
-      }
-
   // convert initial conditions from mass densities to number densities
   for (k=0, idx=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
@@ -228,31 +227,61 @@ int main(int argc, char* argv[]) {
         idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
         // H2I
-        wdata[idx2++] /= H2I_weight;
+        wdata[idx2++] *= units.density_units / H2I_weight;
 
         // H2II
-        wdata[idx2++] /= H2II_weight;
+        wdata[idx2++] *= units.density_units / H2II_weight;
 
         // HI
-        wdata[idx2++] /= HI_weight;
+        wdata[idx2++] *= units.density_units / HI_weight;
 
         // HII
-        wdata[idx2++] /= HII_weight;
+        wdata[idx2++] *= units.density_units / HII_weight;
 
         // HM
-        wdata[idx2++] /= HM_weight;
+        wdata[idx2++] *= units.density_units / HM_weight;
 
         // HeI
-        wdata[idx2++] /= HeI_weight;
+        wdata[idx2++] *= units.density_units / HeI_weight;
 
         // HeII
-        wdata[idx2++] /= HeII_weight;
+        wdata[idx2++] *= units.density_units / HeII_weight;
 
         // HeIII
-        wdata[idx2++] /= HeIII_weight;
+        wdata[idx2++] *= units.density_units / HeIII_weight;
 
         // de
-        wdata[idx2++] /= ONE;
+        wdata[idx2++] *= units.density_units / m_amu;
+
+        // ge
+        wdata[idx2++] *= UNIT_E_per_M;
+      }
+
+  // convert 'time' quantities based on physical unit scaling factor
+  udata.tf *= units.time_units;
+  dTout *= units.time_units;
+
+  // cout << "Internal 'solution' vector prior to solve:\n\n";
+  // N_VPrint_Serial(w);
+  // cout << "\n";
+
+  // set absolute tolerance array
+  realtype *atdata = NULL;
+  atdata = N_VGetArrayPointer(atols);
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++) {
+        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        atdata[idx+0] = opts.atol; // H2I
+        atdata[idx+0] = opts.atol; // H2II
+        atdata[idx+0] = opts.atol; // HI
+        atdata[idx+0] = opts.atol; // HII
+        atdata[idx+0] = opts.atol; // HM
+        atdata[idx+0] = opts.atol; // HeI
+        atdata[idx+0] = opts.atol; // HeII
+        atdata[idx+0] = opts.atol; // HeIII
+        atdata[idx+0] = opts.atol; // de
+        atdata[idx+0] = opts.atol; // ge
       }
 
   // move input solution values into 'scale' components of network_data structure
@@ -261,55 +290,24 @@ int main(int argc, char* argv[]) {
       for (i=0; i<udata.nxl; i++)
         for (l=0; l<udata.nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          network_data->scale[idx] = wdata[idx];
-          network_data->inv_scale[idx] = ONE / wdata[idx];
+          network_data->scale[0][idx] = wdata[idx];
+          network_data->inv_scale[0][idx] = ONE / wdata[idx];
           wdata[idx] = ONE;
         }
 
-
-  
-  // store mass densities in network_data structure
-  for (k=0, idx=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++,idx++) {
-        network_data->mdensity[idx] = 0.0;
-        idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-
-        // H2I
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // H2II
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // HI
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // HII
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // HM
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // HeI
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // HeII
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // HeIII
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // de
-        network_data->mdensity[idx] += wdata[idx2];
-
-        // final values
-        network_data->mdensity[idx] *= mh;
-        network_data->inv_mdensity[idx]  = ONE / network_data->mdensity[idx];
-      }
+  // compute auxiliary values within network_data structure
+  setting_up_extra_variables(network_data, network_data->scale[0], nstrip);
 
   // initialize the integrator memory
-  arkode_mem = ARKStepCreate(NULL, calculate_rhs_final_, udata.t0, w);
+#ifdef USE_CVODE
+  arkode_mem = CVodeCreate(CV_BDF);
+  if (check_flag((void*) arkode_mem, "CVodeCreate (main)", 0)) MPI_Abort(udata.comm, 1);
+  retval = CVodeInit(arkode_mem, calculate_rhs_cvklu, udata.t0, w);
+  if (check_flag(&retval, "CVodeInit (main)", 1)) MPI_Abort(udata.comm, 1);
+#else
+  arkode_mem = ARKStepCreate(NULL, calculate_rhs_cvklu, udata.t0, w);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
+#endif
 
   // create matrix and linear solver modules, and attach to ARKStep
 #ifdef CVKLU
@@ -323,13 +321,59 @@ int main(int argc, char* argv[]) {
   LS = SUNLinSol_Dense(w, A);
   if (check_flag((void*) LS, "SUNLinSol_Dense (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
+#ifdef USE_CVODE
+  retval = CVodeSetLinearSolver(arkode_mem, LS, A);
+  if (check_flag(&retval, "CVodeSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
+  if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+#else
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepSetJacFn(arkode_mem, calculate_sparse_jacobian_final_);
+  retval = ARKStepSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
   if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+#endif
 
   // setup the ARKStep integrator based on inputs
 
+#ifdef USE_CVODE
+  //    pass network_udata to user functions
+  retval = CVodeSetUserData(arkode_mem, network_data);
+  if (check_flag(&retval, "CVodeSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set max order
+  if (opts.order != 0) {
+    retval = CVodeSetMaxOrd(arkode_mem, opts.order);
+    if (check_flag(&retval, "CVodeSetMaxOrd (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+
+  //    set initial time step size
+  retval = CVodeSetInitStep(arkode_mem, opts.h0);
+  if (check_flag(&retval, "CVodeSetInitStep (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set minimum time step size
+  retval = CVodeSetMinStep(arkode_mem, opts.hmin);
+  if (check_flag(&retval, "CVodeSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set maximum time step size
+  retval = CVodeSetMaxStep(arkode_mem, opts.hmax);
+  if (check_flag(&retval, "CVodeSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set maximum allowed error test failures
+  retval = CVodeSetMaxErrTestFails(arkode_mem, opts.maxnef);
+  if (check_flag(&retval, "CVodeSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set maximum allowed hnil warnings
+  retval = CVodeSetMaxHnilWarns(arkode_mem, opts.mxhnil);
+  if (check_flag(&retval, "CVodeSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set maximum allowed steps
+  retval = CVodeSetMaxNumSteps(arkode_mem, opts.mxsteps);
+  if (check_flag(&retval, "CVodeSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set tolerances
+  retval = CVodeSVtolerances(arkode_mem, opts.rtol, atols);
+  if (check_flag(&retval, "CVodeSVtolerances (main)", 1)) MPI_Abort(udata.comm, 1);
+#else
   //    pass network_udata to user functions
   retval = ARKStepSetUserData(arkode_mem, network_data);
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -408,14 +452,14 @@ int main(int argc, char* argv[]) {
   //    set tolerances
   retval = ARKStepSVtolerances(arkode_mem, opts.rtol, atols);
   if (check_flag(&retval, "ARKStepSVtolerances (main)", 1)) MPI_Abort(udata.comm, 1);
-
+#endif
 
   // Initial batch of outputs
   double iostart = MPI_Wtime();
   //    Output initial conditions to disk (IMPLEMENT LATER, IF DESIRED)
 
   //    Output problem-specific diagnostic information
-  print_info(udata.t0, w, network_data, udata);
+  print_info(arkode_mem, udata.t0, w, network_data, udata, units);
   tinout += MPI_Wtime() - iostart;
 
   // If (dense_order == -1), use tstop mode
@@ -428,17 +472,26 @@ int main(int argc, char* argv[]) {
   double tsetup = MPI_Wtime() - tstart;
   tstart = MPI_Wtime();
 
+  N_Vector ele     = N_VNew_Serial(N);
+  N_Vector eweight = N_VNew_Serial(N);
+  N_Vector etest   = N_VNew_Serial(N);
+
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
-  realtype hcur;
   int iout;
   for (iout=restart; iout<restart+udata.nout; iout++) {
 
+#ifdef USE_CVODE
+    if (!idense)
+      retval = CVodeSetStopTime(arkode_mem, tout);
+    retval = CVode(arkode_mem, tout, w, &t, CV_NORMAL);  // call integrator
+#else
     if (!idense)
       retval = ARKStepSetStopTime(arkode_mem, tout);
     retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
+#endif
     if (retval >= 0) {                                            // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
     } else {                                                      // unsuccessful solve: break
@@ -449,11 +502,32 @@ int main(int argc, char* argv[]) {
 
     iostart = MPI_Wtime();
     // output statistics to stdout
-    print_info(t, w, network_data, udata);
+    print_info(arkode_mem, t, w, network_data, udata, units);
+#ifdef USE_CVODE
+    retval = CVodeGetEstLocalErrors(arkode_mem, ele);
+    retval = CVodeGetErrWeights(arkode_mem, eweight);
+#else
+    retval = ARKStepGetEstLocalErrors(arkode_mem, ele);
+    retval = ARKStepGetErrWeights(arkode_mem, eweight);
+#endif
+    N_VProd(ele, eweight, etest);
+    N_VAbs(etest, etest);
+    if (N_VMaxNorm(etest) > 0.2) {
+      cout << "  Main components of local error:\n";
+      for (k=0; k<udata.nzl; k++)
+        for (j=0; j<udata.nyl; j++)
+          for (i=0; i<udata.nxl; i++)
+            for (l=0; l<udata.nchem; l++) {
+              idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+              if (NV_Ith_S(etest, idx) > 0.2) {
+                cout << "    etest(" << i << "," << j << "," << k << "," << l << ") = "
+                     << NV_Ith_S(etest, idx) << "\n";
+              }
+            }
+      cout << "\n";
+    }
 
-    // output results to disk -- get current step from ARKStep first
-    retval = ARKStepGetCurrentStep(arkode_mem, &hcur);
-    if (check_flag(&retval, "ARKStepGetCurrentStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    // output results to disk
     // TODO
     tinout += MPI_Wtime() - iostart;
 
@@ -468,47 +542,44 @@ int main(int argc, char* argv[]) {
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
         // H2I
-        wdata[idx] *= (network_data->scale[idx])*H2I_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * H2I_weight / units.density_units;
         idx++;
 
         // H2II
-        wdata[idx] *= (network_data->scale[idx])*H2II_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * H2II_weight / units.density_units;
         idx++;
 
         // HI
-        wdata[idx] *= (network_data->scale[idx])*HI_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * HI_weight / units.density_units;
         idx++;
 
         // HII
-        wdata[idx] *= (network_data->scale[idx])*HII_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * HII_weight / units.density_units;
         idx++;
 
         // HM
-        wdata[idx] *= (network_data->scale[idx])*HM_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * HM_weight / units.density_units;
         idx++;
 
         // HeI
-        wdata[idx] *= (network_data->scale[idx])*HeI_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * HeI_weight / units.density_units;
         idx++;
 
         // HeII
-        wdata[idx] *= (network_data->scale[idx])*HeII_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * HeII_weight / units.density_units;
         idx++;
 
         // HeIII
-        wdata[idx] *= (network_data->scale[idx])*HeIII_weight;
+        wdata[idx] *= (network_data->scale[0][idx]) * HeIII_weight / units.density_units;
         idx++;
 
         // de
-        wdata[idx] *= (network_data->scale[idx]);
+        wdata[idx] *= (network_data->scale[0][idx]) * m_amu / units.density_units;
         idx++;
 
         // ge
-        wdata[idx] *= (network_data->scale[idx]);
+        wdata[idx] *= (network_data->scale[0][idx]) / UNIT_E_per_M;
       }
-
-  // re-calculate temperature at the final output
-  cvklu_calculate_temperature(network_data, wdata, nstrip, udata.nchem);
 
   // compute simulation time
   double tsimul = MPI_Wtime() - tstart;
@@ -516,6 +587,14 @@ int main(int argc, char* argv[]) {
   // Print some final statistics
   long int nst, nst_a, nfe, nfi, netf;
   nst = nst_a = nfe = nfi = netf = 0;
+#ifdef USE_CVODE
+  retval = CVodeGetNumSteps(arkode_mem, &nst);
+  if (check_flag(&retval, "CVodeGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumRhsEvals(arkode_mem, &nfi);
+  if (check_flag(&retval, "CVodeGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumErrTestFails(arkode_mem, &netf);
+  if (check_flag(&retval, "CVodeGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+#else
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
@@ -524,6 +603,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+#endif
 
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
@@ -546,13 +626,19 @@ int main(int argc, char* argv[]) {
   N_VDestroy(atols);
   SUNLinSolFree(LS);           // Free matrix and linear solver
   SUNMatDestroy(A);
+#ifdef USE_CVODE
+  CVodeFree(&arkode_mem);      // Free integrator memory
+#else
   ARKStepFree(&arkode_mem);    // Free integrator memory
+#endif
   MPI_Finalize();              // Finalize MPI
   return 0;
 }
 
 
-void print_info(realtype &t, N_Vector w, cvklu_data *network_data, EulerData &udata)
+void print_info(void *arkode_mem, realtype &t, N_Vector w,
+                cvklu_data *network_data, EulerData &udata,
+                code_units &units)
 {
   // indices to print
   long int i1 = udata.nxl/3;
@@ -569,43 +655,56 @@ void print_info(realtype &t, N_Vector w, cvklu_data *network_data, EulerData &ud
   if (wdata == NULL)  return;
 
   // set some constants
-  realtype HI_weight = 1.00794;
-  realtype HII_weight = 1.00794;
-  realtype HM_weight = 1.00794;
-  realtype HeI_weight = 4.002602;
-  realtype HeII_weight = 4.002602;
-  realtype HeIII_weight = 4.002602;
+  realtype mH = 1.67e-24;
+  realtype HI_weight = 1.00794 * mH;
+  realtype HII_weight = 1.00794 * mH;
+  realtype HM_weight = 1.00794 * mH;
+  realtype HeI_weight = 4.002602 * mH;
+  realtype HeII_weight = 4.002602 * mH;
+  realtype HeIII_weight = 4.002602 * mH;
   realtype H2I_weight = 2*HI_weight;
   realtype H2II_weight = 2*HI_weight;
+  realtype UNIT_E_per_M = pow(units.velocity_units,2);  // code unit in terms of erg/g
+  realtype m_amu = 1.66053904e-24;
+
+  // get current number of time steps
+  long int nst = 0;
+#ifdef USE_CVODE
+  CVodeGetNumSteps(arkode_mem, &nst);
+#else
+  ARKStepGetNumSteps(arkode_mem, &nst);
+#endif
+
+  // print current time and number of steps
+  printf("\nt = %.3e  (nst = %li)\n", t, nst);
 
   // print solutions at first location
-  printf("\nt = %.3e\n", t);
-  printf("  T[%li,%li,%li] = %.5e\n", i1, j1, k1, network_data->Ts[idx1]);
-  printf("  species: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         network_data->scale[idx1+0]*wdata[idx1+0]*H2I_weight,
-         network_data->scale[idx1+1]*wdata[idx1+1]*H2II_weight,
-         network_data->scale[idx1+2]*wdata[idx1+2]*HI_weight,
-         network_data->scale[idx1+3]*wdata[idx1+3]*HII_weight,
-         network_data->scale[idx1+4]*wdata[idx1+4]*HM_weight,
-         network_data->scale[idx1+5]*wdata[idx1+5]*HeI_weight,
-         network_data->scale[idx1+6]*wdata[idx1+6]*HeII_weight,
-         network_data->scale[idx1+7]*wdata[idx1+7]*HeIII_weight,
-         network_data->scale[idx1+8]*wdata[idx1+8],
-         network_data->scale[idx1+9]*wdata[idx1+9]);
+  printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         i1, j1, k1,
+         network_data->scale[0][idx1+0]*wdata[idx1+0]/units.density_units*H2I_weight,
+         network_data->scale[0][idx1+1]*wdata[idx1+1]/units.density_units*H2II_weight,
+         network_data->scale[0][idx1+2]*wdata[idx1+2]/units.density_units*HI_weight,
+         network_data->scale[0][idx1+3]*wdata[idx1+3]/units.density_units*HII_weight,
+         network_data->scale[0][idx1+4]*wdata[idx1+4]/units.density_units*HM_weight,
+         network_data->scale[0][idx1+5]*wdata[idx1+5]/units.density_units*HeI_weight,
+         network_data->scale[0][idx1+6]*wdata[idx1+6]/units.density_units*HeII_weight,
+         network_data->scale[0][idx1+7]*wdata[idx1+7]/units.density_units*HeIII_weight,
+         network_data->scale[0][idx1+8]*wdata[idx1+8]/units.density_units*m_amu,
+         network_data->scale[0][idx1+9]*wdata[idx1+9])/UNIT_E_per_M;
 
   // print solutions at second location
-  printf("  T[%li,%li,%li] = %.5e\n", i2, j2, k2, network_data->Ts[idx2]);
-  printf("  species: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         network_data->scale[idx2+0]*wdata[idx2+0]*H2I_weight,
-         network_data->scale[idx2+1]*wdata[idx2+1]*H2II_weight,
-         network_data->scale[idx2+2]*wdata[idx2+2]*HI_weight,
-         network_data->scale[idx2+3]*wdata[idx2+3]*HII_weight,
-         network_data->scale[idx2+4]*wdata[idx2+4]*HM_weight,
-         network_data->scale[idx2+5]*wdata[idx2+5]*HeI_weight,
-         network_data->scale[idx2+6]*wdata[idx2+6]*HeII_weight,
-         network_data->scale[idx2+7]*wdata[idx2+7]*HeIII_weight,
-         network_data->scale[idx2+8]*wdata[idx2+8],
-         network_data->scale[idx2+9]*wdata[idx2+9]);
+  printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         i2, j2, k2,
+         network_data->scale[0][idx2+0]*wdata[idx2+0]/units.density_units*H2I_weight,
+         network_data->scale[0][idx2+1]*wdata[idx2+1]/units.density_units*H2II_weight,
+         network_data->scale[0][idx2+2]*wdata[idx2+2]/units.density_units*HI_weight,
+         network_data->scale[0][idx2+3]*wdata[idx2+3]/units.density_units*HII_weight,
+         network_data->scale[0][idx2+4]*wdata[idx2+4]/units.density_units*HM_weight,
+         network_data->scale[0][idx2+5]*wdata[idx2+5]/units.density_units*HeI_weight,
+         network_data->scale[0][idx2+6]*wdata[idx2+6]/units.density_units*HeII_weight,
+         network_data->scale[0][idx2+7]*wdata[idx2+7]/units.density_units*HeIII_weight,
+         network_data->scale[0][idx2+8]*wdata[idx2+8]/units.density_units*m_amu,
+         network_data->scale[0][idx2+9]*wdata[idx2+9])/UNIT_E_per_M;
 }
 
 

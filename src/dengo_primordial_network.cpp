@@ -820,8 +820,6 @@ int dengo_evolve_cvklu (double dtf, double &dt, double z, double *input,
 
 }
  
-#endif
-
 
 
 
@@ -908,6 +906,7 @@ double evolve_in_batches( void * cvode_mem, N_Vector y_vec, N_Vector abstol,
     return ttot;
 }
 
+#endif
 
 
 
@@ -6660,6 +6659,3 @@ void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip )
 
 
 }
-
-
-#endif
