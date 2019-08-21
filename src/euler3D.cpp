@@ -209,6 +209,18 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSStolerances(arkode_mem, opts.rtol, opts.atol);
   if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  //    set implicit predictor method
+  retval = ARKStepSetPredictorMethod(arkode_mem, opts.predictor);
+  if (check_flag(&retval, "ARKStepSetPredictorMethod (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set max nonlinear iterations
+  retval = ARKStepSetMaxNonlinIters(arkode_mem, opts.maxniters);
+  if (check_flag(&retval, "ARKStepSetMaxNonlinIters (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set nonlinear tolerance safety factor
+  retval = ARKStepSetNonlinConvCoef(arkode_mem, opts.nlconvcoef);
+  if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
+
   //    supply cfl-stable step routine (if requested)
   if (udata.cfl > ZERO) {
     retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
@@ -296,8 +308,8 @@ int main(int argc, char* argv[]) {
   double tsimul = MPI_Wtime() - tstart;
 
   // Print some final statistics
-  long int nst, nst_a, nfe, nfi, netf;
-  nst = nst_a = nfe = nfi = netf = 0;
+  long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
+  nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
@@ -306,12 +318,22 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
+  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+  if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
 
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
+    if (nls > 0)
+      cout << "   Total number of lin solv setups = " << nls << "\n";
+    if (nni > 0) {
+      cout << "   Total number of nonlin iters = " << nni << "\n";
+      cout << "   Total number of nonlin conv fails = " << ncf << "\n";
+    }
     cout << "   Total setup time = " << tsetup << "\n";
     cout << "   Total I/O time = " << tinout << "\n";
     cout << "   Total simulation time = " << tsimul << "\n";

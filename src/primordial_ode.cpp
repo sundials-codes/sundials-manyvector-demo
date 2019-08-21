@@ -389,7 +389,7 @@ int main(int argc, char* argv[]) {
     retval = ARKStepSetOrder(arkode_mem, opts.order);
     if (check_flag(&retval, "ARKStepSetOrder (main)", 1)) MPI_Abort(udata.comm, 1);
   } else if (opts.btable != -1) {
-    retval = ARKStepSetTableNum(arkode_mem, -1, opts.btable);
+    retval = ARKStepSetTableNum(arkode_mem, opts.btable, -1);
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
@@ -452,6 +452,18 @@ int main(int argc, char* argv[]) {
   //    set tolerances
   retval = ARKStepSVtolerances(arkode_mem, opts.rtol, atols);
   if (check_flag(&retval, "ARKStepSVtolerances (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set implicit predictor method
+  retval = ARKStepSetPredictorMethod(arkode_mem, opts.predictor);
+  if (check_flag(&retval, "ARKStepSetPredictorMethod (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set max nonlinear iterations
+  retval = ARKStepSetMaxNonlinIters(arkode_mem, opts.maxniters);
+  if (check_flag(&retval, "ARKStepSetMaxNonlinIters (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  //    set nonlinear tolerance safety factor
+  retval = ARKStepSetNonlinConvCoef(arkode_mem, opts.nlconvcoef);
+  if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
 
   // Initial batch of outputs
@@ -585,8 +597,8 @@ int main(int argc, char* argv[]) {
   double tsimul = MPI_Wtime() - tstart;
 
   // Print some final statistics
-  long int nst, nst_a, nfe, nfi, netf;
-  nst = nst_a = nfe = nfi = netf = 0;
+  long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
+  nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
 #ifdef USE_CVODE
   retval = CVodeGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "CVodeGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -594,6 +606,12 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "CVodeGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = CVodeGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "CVodeGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumLinSolvSetups(arkode_mem, &nls);
+  if (check_flag(&retval, "CVodeGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumNonlinSolvIters(arkode_mem, &nni);
+  if (check_flag(&retval, "CVodeGetNumNonlinSolvIters (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumNonlinSolvConvFails(arkode_mem, &ncf);
+  if (check_flag(&retval, "CVodeGetNumNonlinSolvConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -603,6 +621,10 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
+  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+  if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
 
   if (outproc) {
@@ -610,15 +632,15 @@ int main(int argc, char* argv[]) {
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
+    if (nls > 0)
+      cout << "   Total number of lin solv setups = " << nls << "\n";
+    if (nni > 0) {
+      cout << "   Total number of nonlin iters = " << nni << "\n";
+      cout << "   Total number of nonlin conv fails = " << ncf << "\n";
+    }
     cout << "   Total setup time = " << tsetup << "\n";
     cout << "   Total I/O time = " << tinout << "\n";
     cout << "   Total simulation time = " << tsimul << "\n";
-  }
-
-  // Output mass/energy conservation error
-  if (udata.showstats) {
-    retval = check_conservation(t, w, udata);
-    if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
   // Clean up and return with successful completion

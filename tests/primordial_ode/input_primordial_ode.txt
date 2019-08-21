@@ -39,17 +39,17 @@ showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #
 #
 #### ARKStep Options ####
-order = 4           # temporal order of accuracy
+order = 0           # temporal order of accuracy
 dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
-btable = -1         # specific built-in Butcher table to use (<0 => default)
-adapt_method = 0    # temporal adaptivity algorithm to use
+btable = 112        # specific built-in Butcher table to use (<0 => default)
+adapt_method = 2    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)
-mxsteps = 50000     # max internal steps per 'evolve' call (0 => default)
-safety = 0          # temporal step size safety factor (0 => default)
+mxsteps = 5000      # max internal steps per 'evolve' call (0 => default)
+safety = 0.99       # temporal step size safety factor (0 => default)
 cfl  = 0.0          # max CFL fraction: cfl (disabled if set to zero)
-bias = 0            # temporal error bias factor (0 => default)
-growth = 0          # max temporal growth/step (0 => default)
+bias = 2.0          # temporal error bias factor (0 => default)
+growth = 2.0        # max temporal growth/step (0 => default)
 pq = 0              # use of method/embedding order for adaptivity (0 => default)
 k1 = 0              # temporal adaptivity parameters (0 => default)
 k2 = 0
@@ -59,5 +59,8 @@ etamxf = 0          # max change on a general internal step (0 => default)
 h0 = 0.0            # initial time step size (0 => default)
 hmin = 0.0          # minimum time step size (0 => default)
 hmax = 0.0          # maximum time step size (0 => infinite)
+predictor = 0       # algorithm for implicit predictor (0 => default)
+maxniters = 5       # max number nonlinear iterations (0 => default)
+nlconvcoef = 0.001  # nonlinear tolerance safety factor (0 => default)
 rtol = 1e-4         # relative solution tolerance (0 => default)
 atol = 1e-8         # absolute solution tolerance (0 => default)

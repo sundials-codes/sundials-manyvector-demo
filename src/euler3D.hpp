@@ -103,6 +103,9 @@ public:
   double h0;           // initial time step size (0 => default)
   double hmin;         // minimum time step size (0 => default)
   double hmax;         // maximum time step size (0 => infinite)
+  int predictor;       // algorithm for implicit predictor (0 => default)
+  int maxniters;       // max number nonlinear iterations (0 => default)
+  double nlconvcoef;   // nonlinear tolerance safety factor (0 => default)
   double rtol;         // relative solution tolerance (0 => default)
   double atol;         // absolute solution tolerance (0 => default)
 
@@ -111,7 +114,8 @@ public:
     order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
     mxhnil(0), mxsteps(5000), cflfac(0.0), safety(0.0), bias(0.0),
     growth(0.0), pq(0), k1(0.0), k2(0.0), k3(0.0), etamx1(0.0),
-    etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), rtol(1e-8), atol(1e-12)
+    etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), predictor(0),
+    maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12)
   {};
 
 };   // end ARKodeParameters;

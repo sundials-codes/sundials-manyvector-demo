@@ -41,8 +41,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
                 ARKodeParameters& opts, int& restart)
 {
   int retval;
-  double dbuff[23];
-  long int ibuff[20];
+  double dbuff[24];
+  long int ibuff[22];
 
   // disable 'restart' by default
   restart = -1;
@@ -51,14 +51,15 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   if (myid == 0) {
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 45;
+    const int nopt = 48;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
                 itf, igam, inx, iny, inz, ixlb, ixrb, iylb,
                 iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
-                iemaf, ih0, ihmin, ihmax, irtol, iatol, irest };
+                iemaf, ih0, ihmin, ihmax, irtol, iatol, irest,
+                ipred, imxnit, inlcoef };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -113,6 +114,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[irtol].long_name = "rtol";
     options[iatol].long_name = "atol";
     options[irest].long_name = "restart";
+    options[ipred].long_name = "predictor";
+    options[imxnit].long_name = "maxniters";
+    options[inlcoef].long_name = "nlconvcoef";
     argc = gopt(argv, options);
 
     // handle help request
@@ -171,6 +175,10 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "   --hmax=<float>       (" << opts.hmax << ")\n"
            << "   --rtol=<float>       (" << opts.rtol << ")\n"
            << "   --atol=<float>       (" << opts.atol << ")\n"
+           << "\nAvailable nonlinear solver options (and the default if not provided):\n"
+           << "   --predictor=<int>    (" << opts.predictor << ")\n"
+           << "   --maxniters=<int>    (" << opts.maxniters << ")\n"
+           << "   --nlconvcoef=<float> (" << opts.nlconvcoef << ")\n"
            << "\nAlternately, all of these options may be specified in a single\n"
            << "input file (with command-line arguments taking precedence if an\n"
            << "option is multiply-defined) via:"
@@ -233,6 +241,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"rtol = %lf", &opts.rtol);
         retval += sscanf(line,"atol = %lf", &opts.atol);
         retval += sscanf(line,"restart = %i", &restart);
+        retval += sscanf(line,"predictor = %i", &opts.predictor);
+        retval += sscanf(line,"maxniters = %i", &opts.maxniters);
+        retval += sscanf(line,"nlconvcoef = %lf", &opts.nlconvcoef);
 
         /* if unable to read the line (and it looks suspicious) issue a warning */
         if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
@@ -243,49 +254,52 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     }
 
     // replace any current option with a value specified on the command line
-    if (options[ixl].count)    udata.xl          = atof(options[ixl].argument);
-    if (options[ixr].count)    udata.xr          = atof(options[ixr].argument);
-    if (options[iyl].count)    udata.yl          = atof(options[iyl].argument);
-    if (options[iyr].count)    udata.yr          = atof(options[iyr].argument);
-    if (options[izl].count)    udata.zl          = atof(options[izl].argument);
-    if (options[izr].count)    udata.zr          = atof(options[izr].argument);
-    if (options[it0].count)    udata.t0          = atof(options[it0].argument);
-    if (options[itf].count)    udata.tf          = atof(options[itf].argument);
-    if (options[igam].count)   udata.gamma       = atof(options[igam].argument);
-    if (options[inx].count)    udata.nx          = atoi(options[inx].argument);
-    if (options[iny].count)    udata.ny          = atoi(options[iny].argument);
-    if (options[inz].count)    udata.nz          = atoi(options[inz].argument);
-    if (options[ixlb].count)   udata.xlbc        = atoi(options[ixlb].argument);
-    if (options[ixrb].count)   udata.xrbc        = atoi(options[ixrb].argument);
-    if (options[iylb].count)   udata.ylbc        = atoi(options[iylb].argument);
-    if (options[iyrb].count)   udata.yrbc        = atoi(options[iyrb].argument);
-    if (options[izlb].count)   udata.zlbc        = atoi(options[izlb].argument);
-    if (options[izrb].count)   udata.zrbc        = atoi(options[izrb].argument);
-    if (options[icfl].count)   udata.cfl         = atof(options[icfl].argument);
-    if (options[inout].count)  udata.nout        = atoi(options[inout].argument);
-    if (options[ishow].count)  udata.showstats = 1;
-    if (options[iord].count)   opts.order        = atoi(options[iord].argument);
-    if (options[idord].count)  opts.dense_order  = atoi(options[idord].argument);
-    if (options[ibt].count)    opts.btable       = atoi(options[ibt].argument);
-    if (options[iadmth].count) opts.adapt_method = atoi(options[iadmth].argument);
-    if (options[imnef].count)  opts.maxnef       = atoi(options[imnef].argument);
-    if (options[imhnil].count) opts.mxhnil       = atoi(options[imhnil].argument);
-    if (options[imaxst].count) opts.mxsteps      = atoi(options[imaxst].argument);
-    if (options[isfty].count)  opts.safety       = atof(options[isfty].argument);
-    if (options[ibias].count)  opts.bias         = atof(options[ibias].argument);
-    if (options[igrow].count)  opts.growth       = atof(options[igrow].argument);
-    if (options[ipq].count)    opts.pq           = atoi(options[ipq].argument);
-    if (options[ik1].count)    opts.k1           = atof(options[ik1].argument);
-    if (options[ik2].count)    opts.k2           = atof(options[ik2].argument);
-    if (options[ik3].count)    opts.k3           = atof(options[ik3].argument);
-    if (options[iemx1].count)  opts.etamx1       = atof(options[iemx1].argument);
-    if (options[iemaf].count)  opts.etamxf       = atof(options[iemaf].argument);
-    if (options[ih0].count)    opts.h0           = atof(options[ih0].argument);
-    if (options[ihmin].count)  opts.hmin         = atof(options[ihmin].argument);
-    if (options[ihmax].count)  opts.hmax         = atof(options[ihmax].argument);
-    if (options[irtol].count)  opts.rtol         = atof(options[irtol].argument);
-    if (options[iatol].count)  opts.atol         = atof(options[iatol].argument);
-    if (options[irest].count)  restart           = atoi(options[irest].argument);
+    if (options[ixl].count)     udata.xl          = atof(options[ixl].argument);
+    if (options[ixr].count)     udata.xr          = atof(options[ixr].argument);
+    if (options[iyl].count)     udata.yl          = atof(options[iyl].argument);
+    if (options[iyr].count)     udata.yr          = atof(options[iyr].argument);
+    if (options[izl].count)     udata.zl          = atof(options[izl].argument);
+    if (options[izr].count)     udata.zr          = atof(options[izr].argument);
+    if (options[it0].count)     udata.t0          = atof(options[it0].argument);
+    if (options[itf].count)     udata.tf          = atof(options[itf].argument);
+    if (options[igam].count)    udata.gamma       = atof(options[igam].argument);
+    if (options[inx].count)     udata.nx          = atoi(options[inx].argument);
+    if (options[iny].count)     udata.ny          = atoi(options[iny].argument);
+    if (options[inz].count)     udata.nz          = atoi(options[inz].argument);
+    if (options[ixlb].count)    udata.xlbc        = atoi(options[ixlb].argument);
+    if (options[ixrb].count)    udata.xrbc        = atoi(options[ixrb].argument);
+    if (options[iylb].count)    udata.ylbc        = atoi(options[iylb].argument);
+    if (options[iyrb].count)    udata.yrbc        = atoi(options[iyrb].argument);
+    if (options[izlb].count)    udata.zlbc        = atoi(options[izlb].argument);
+    if (options[izrb].count)    udata.zrbc        = atoi(options[izrb].argument);
+    if (options[icfl].count)    udata.cfl         = atof(options[icfl].argument);
+    if (options[inout].count)   udata.nout        = atoi(options[inout].argument);
+    if (options[ishow].count)   udata.showstats   = 1;
+    if (options[iord].count)    opts.order        = atoi(options[iord].argument);
+    if (options[idord].count)   opts.dense_order  = atoi(options[idord].argument);
+    if (options[ibt].count)     opts.btable       = atoi(options[ibt].argument);
+    if (options[iadmth].count)  opts.adapt_method = atoi(options[iadmth].argument);
+    if (options[imnef].count)   opts.maxnef       = atoi(options[imnef].argument);
+    if (options[imhnil].count)  opts.mxhnil       = atoi(options[imhnil].argument);
+    if (options[imaxst].count)  opts.mxsteps      = atoi(options[imaxst].argument);
+    if (options[isfty].count)   opts.safety       = atof(options[isfty].argument);
+    if (options[ibias].count)   opts.bias         = atof(options[ibias].argument);
+    if (options[igrow].count)   opts.growth       = atof(options[igrow].argument);
+    if (options[ipq].count)     opts.pq           = atoi(options[ipq].argument);
+    if (options[ik1].count)     opts.k1           = atof(options[ik1].argument);
+    if (options[ik2].count)     opts.k2           = atof(options[ik2].argument);
+    if (options[ik3].count)     opts.k3           = atof(options[ik3].argument);
+    if (options[iemx1].count)   opts.etamx1       = atof(options[iemx1].argument);
+    if (options[iemaf].count)   opts.etamxf       = atof(options[iemaf].argument);
+    if (options[ih0].count)     opts.h0           = atof(options[ih0].argument);
+    if (options[ihmin].count)   opts.hmin         = atof(options[ihmin].argument);
+    if (options[ihmax].count)   opts.hmax         = atof(options[ihmax].argument);
+    if (options[irtol].count)   opts.rtol         = atof(options[irtol].argument);
+    if (options[iatol].count)   opts.atol         = atof(options[iatol].argument);
+    if (options[irest].count)   restart           = atoi(options[irest].argument);
+    if (options[ipred].count)   opts.predictor    = atoi(options[ipred].argument);
+    if (options[imxnit].count)  opts.maxniters    = atoi(options[imxnit].argument);
+    if (options[inlcoef].count) opts.nlconvcoef   = atof(options[inlcoef].argument);
 
     // pack buffers with final parameter values
     ibuff[0]  = udata.nx;
@@ -308,6 +322,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     ibuff[17] = opts.mxsteps;
     ibuff[18] = opts.pq;
     ibuff[19] = restart;
+    ibuff[20] = opts.predictor;
+    ibuff[21] = opts.maxniters;
 
     dbuff[0]  = udata.xl;
     dbuff[1]  = udata.xr;
@@ -332,12 +348,13 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     dbuff[20] = opts.hmax;
     dbuff[21] = opts.rtol;
     dbuff[22] = opts.atol;
+    dbuff[23] = opts.nlconvcoef;
   }
 
   // perform broadcast and unpack results
-  retval = MPI_Bcast(dbuff, 23, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(dbuff, 24, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 20, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 22, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
@@ -361,6 +378,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.mxsteps = ibuff[17];
   opts.pq = ibuff[18];
   restart = ibuff[19];
+  opts.predictor = ibuff[20];
+  opts.maxniters = ibuff[21];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -385,6 +404,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.hmax = dbuff[20];
   opts.rtol = dbuff[21];
   opts.atol = dbuff[22];
+  opts.nlconvcoef = dbuff[23];
 
   // return with success
   return(0);
