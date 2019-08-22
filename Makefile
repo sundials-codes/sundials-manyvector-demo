@@ -63,39 +63,37 @@ CXXFLAGS = -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX ${OPTFLAGS} ${HDFFLAGS}
 COMMONSRC = utilities.cpp io.cpp gopt.cpp
 COMMONOBJ = utilities.o io.o gopt.o
 
-# listing of all test routines that use 'default' number of fields
-HYDROTESTS = compile_test_fluid.exe \
-             communication_test_fluid.exe \
-             io_test_fluid.exe \
-             linear_advection_x.exe \
-             linear_advection_y.exe \
-             linear_advection_z.exe \
-             sod_x.exe \
-             sod_y.exe \
-             sod_z.exe \
-             hurricane_xy.exe \
-             hurricane_zx.exe \
-             hurricane_yz.exe \
-             rayleigh_taylor.exe \
-             primordial_ode.exe \
-             primordial_ode_CVODE.exe \
-             #interacting_bubbles.exe \
-             #implosion.exe \
-             #explosion.exe \
-             #double_mach_reflection.exe
-
-# listing of all test routines that use a custom 'NVAR' value
-COLORTESTS = compile_test_tracers.exe \
-             communication_test_tracers.exe \
-             io_test_tracers.exe \
-             hurricane_zx_color.exe \
-             primordial_static.exe \
+# listing of all test routines
+TESTS = communication_test_fluid.exe \
+        communication_test_tracers.exe \
+        compile_test_fluid.exe \
+        compile_test_tracers.exe \
+        hurricane_xy.exe \
+        hurricane_yz.exe \
+        hurricane_zx.exe \
+        hurricane_zx_color.exe \
+        io_test_fluid.exe \
+        io_test_tracers.exe \
+        linear_advection_x.exe \
+        linear_advection_y.exe \
+        linear_advection_z.exe \
+        primordial_ode.exe \
+        primordial_ode_CVODE.exe \
+        primordial_static.exe \
+        rayleigh_taylor.exe \
+        sod_x.exe \
+        sod_y.exe \
+        sod_z.exe \
+        #interacting_bubbles.exe \
+        #implosion.exe \
+        #explosion.exe \
+        #double_mach_reflection.exe
 
 # instruct Make to look in 'src' for source code files
 VPATH = src
 
 # target to build all test executables
-all : ${HYDROTESTS} ${COLORTESTS}
+all : ${TESTS}
 
 # general build rules
 gopt.o : gopt.cpp gopt.hpp
