@@ -60,8 +60,8 @@ endif
 CXXFLAGS = -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX ${OPTFLAGS} ${HDFFLAGS}
 
 # common source/object files on which all executables depend
-COMMONSRC = euler3D.cpp utilities.cpp io.cpp gopt.cpp
-COMMONOBJ = euler3D.o utilities.o io.o gopt.o
+COMMONSRC = utilities.cpp io.cpp gopt.cpp
+COMMONOBJ = utilities.o io.o gopt.o
 
 # listing of all test routines that use 'default' number of fields
 TESTS = compile_test_fluid.exe \
@@ -100,7 +100,7 @@ all : ${TESTS} ${COLORTESTS} buildclean
 gopt.o : gopt.cpp gopt.hpp
 	${CXX} ${CXXFLAGS} -c $<
 
-%.exe : %.o ${COMMONOBJ}
+%.exe : %.o ${COMMONOBJ} euler3D_main.o
 	${CXX} ${CXXFLAGS} ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 .cpp.o : include/euler3D.hpp
@@ -120,72 +120,72 @@ realclean : clean
 
 
 # build rules for specific tests
-compile_test_fluid.exe : compile_test.cpp ${COMMONSRC}
+compile_test_fluid.exe : compile_test.cpp euler3D_main.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-compile_test_tracers.exe : compile_test.cpp ${COMMONSRC}
+compile_test_tracers.exe : compile_test.cpp euler3D_main.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=7 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-communication_test_fluid.exe : communication_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
+communication_test_fluid.exe : communication_test_main.cpp compile_test.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-communication_test_tracers.exe : communication_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
+communication_test_tracers.exe : communication_test_main.cpp compile_test.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-io_test_fluid.exe : io_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
+io_test_fluid.exe : io_test_main.cpp compile_test.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-io_test_tracers.exe : io_test.cpp utilities.cpp io.cpp gopt.cpp compile_test.cpp
+io_test_tracers.exe : io_test_main.cpp compile_test.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DNVAR=9 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-linear_advection_x.exe : linear_advection.cpp ${COMMONOBJ}
+linear_advection_x.exe : linear_advection.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-linear_advection_y.exe : linear_advection.cpp ${COMMONOBJ}
+linear_advection_y.exe : linear_advection.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-linear_advection_z.exe : linear_advection.cpp ${COMMONOBJ}
+linear_advection_z.exe : linear_advection.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-sod_x.exe : sod.cpp ${COMMONOBJ}
+sod_x.exe : sod.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_X ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-sod_y.exe : sod.cpp ${COMMONOBJ}
+sod_y.exe : sod.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Y ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-sod_z.exe : sod.cpp ${COMMONOBJ}
+sod_z.exe : sod.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DADVECTION_Z ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_xy.exe : hurricane.cpp ${COMMONOBJ}
+hurricane_xy.exe : hurricane.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_XY ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_yz.exe : hurricane.cpp ${COMMONOBJ}
+hurricane_yz.exe : hurricane.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_YZ ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_zx.exe : hurricane.cpp ${COMMONOBJ}
+hurricane_zx.exe : hurricane.cpp euler3D_main.o ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DTEST_ZX ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-hurricane_zx_color.exe : hurricane.cpp ${COMMONSRC}
+hurricane_zx_color.exe : hurricane.cpp euler3D_main.cpp ${COMMONSRC}
 	\rm -rf *.o
 	${CXX} ${CXXFLAGS} -DTEST_ZX -DNVAR=11 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 	\rm -rf *.o
 
-primordial_ode.exe : primordial_ode.cpp dengo_primordial_network.cpp utilities.o io.o gopt.o
+primordial_ode.exe : primordial_ode_main.cpp dengo_primordial_network.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-primordial_ode_CVODE.exe : primordial_ode.cpp dengo_primordial_network.cpp utilities.o io.o gopt.o
+primordial_ode_CVODE.exe : primordial_ode_main.cpp dengo_primordial_network.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DUSE_CVODE ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 

@@ -5,7 +5,7 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Implementation file for shared main routine
+ Main Euler equation driver
  ---------------------------------------------------------------*/
 
 // Header files
