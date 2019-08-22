@@ -36,8 +36,7 @@
 
 // utility function prototypes
 void print_info(void *arkode_mem, realtype &t, N_Vector w,
-                cvklu_data *network_data, EulerData &udata,
-                code_units &units);
+                cvklu_data *network_data, EulerData &udata);
 
 
 // Main Program
@@ -127,7 +126,7 @@ int main(int argc, char* argv[]) {
     DFID=fopen("diags_primordial_ode.txt","w");
 
   // initialize primordial rate tables, etc
-  cvklu_data *network_data = cvklu_setup_data("cvklu_tables.h5", NULL, NULL);
+  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
   //    overwrite internal strip size
   network_data->nstrip = nstrip;
   //    set redshift value for non-cosmological run
@@ -142,7 +141,6 @@ int main(int argc, char* argv[]) {
   if (check_flag((void *) atols, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // set initial conditions -- essentially-neutral primordial gas
-  realtype density = 1e2;   // in g/cm^{-3}
   realtype Tmean = 2000.0;  // mean temperature in K
   realtype Tamp = 1800.0;   // temperature amplitude in K
   realtype tiny = 1e-20;
@@ -168,9 +166,8 @@ int main(int argc, char* argv[]) {
   units.velocity_units = 1.0;
   units.a_units        = 0.0;
   units.a_value        = 0.0;
-  realtype UNIT_E_per_M = pow(units.velocity_units,2);  // code unit in terms of erg/g
   realtype m_amu = 1.66053904e-24;
-  density *= mH;                                        // convert to number density
+  realtype density = 1e2 * mH;   // in g/cm^{-3}
   realtype *wdata = NULL;
   wdata = N_VGetArrayPointer(w);
   for (k=0; k<udata.nzl; k++)
@@ -205,65 +202,21 @@ int main(int argc, char* argv[]) {
                                2.0*(k+udata.ks-udata.nz/2)/(udata.nz-1) );
         ge = (kboltz * T * ndens) / (density * (gamma - ONE));
 
-        // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge
+        // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
+        // converting to 'dimensionless' electron number density
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        wdata[idx+0] = H2I;
-        wdata[idx+1] = H2II;
-        wdata[idx+2] = HI;
-        wdata[idx+3] = HII;
-        wdata[idx+4] = HM;
-        wdata[idx+5] = HeI;
-        wdata[idx+6] = HeII;
-        wdata[idx+7] = HeIII;
-        wdata[idx+8] = de;
+        wdata[idx+0] = nH2I;
+        wdata[idx+1] = nH2II;
+        wdata[idx+2] = nHI;
+        wdata[idx+3] = nHII;
+        wdata[idx+4] = nHM;
+        wdata[idx+5] = nHeI;
+        wdata[idx+6] = nHeII;
+        wdata[idx+7] = nHeIII;
+        wdata[idx+8] = de / m_amu;
         wdata[idx+9] = ge;
 
       }
-
-  // convert initial conditions from mass densities to number densities
-  for (k=0, idx=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++,idx++) {
-        idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-
-        // H2I
-        wdata[idx2++] *= units.density_units / H2I_weight;
-
-        // H2II
-        wdata[idx2++] *= units.density_units / H2II_weight;
-
-        // HI
-        wdata[idx2++] *= units.density_units / HI_weight;
-
-        // HII
-        wdata[idx2++] *= units.density_units / HII_weight;
-
-        // HM
-        wdata[idx2++] *= units.density_units / HM_weight;
-
-        // HeI
-        wdata[idx2++] *= units.density_units / HeI_weight;
-
-        // HeII
-        wdata[idx2++] *= units.density_units / HeII_weight;
-
-        // HeIII
-        wdata[idx2++] *= units.density_units / HeIII_weight;
-
-        // de
-        wdata[idx2++] *= units.density_units / m_amu;
-
-        // ge
-        wdata[idx2++] *= UNIT_E_per_M;
-      }
-
-  // convert 'time' quantities based on physical unit scaling factor
-  udata.tf *= units.time_units;
-  dTout *= units.time_units;
-
-  // cout << "Internal 'solution' vector prior to solve:\n\n";
-  // N_VPrint_Serial(w);
-  // cout << "\n";
 
   // set absolute tolerance array
   realtype *atdata = NULL;
@@ -273,15 +226,15 @@ int main(int argc, char* argv[]) {
       for (i=0; i<udata.nxl; i++) {
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         atdata[idx+0] = opts.atol; // H2I
-        atdata[idx+0] = opts.atol; // H2II
-        atdata[idx+0] = opts.atol; // HI
-        atdata[idx+0] = opts.atol; // HII
-        atdata[idx+0] = opts.atol; // HM
-        atdata[idx+0] = opts.atol; // HeI
-        atdata[idx+0] = opts.atol; // HeII
-        atdata[idx+0] = opts.atol; // HeIII
-        atdata[idx+0] = opts.atol; // de
-        atdata[idx+0] = opts.atol; // ge
+        atdata[idx+1] = opts.atol; // H2II
+        atdata[idx+2] = opts.atol; // HI
+        atdata[idx+3] = opts.atol; // HII
+        atdata[idx+4] = opts.atol; // HM
+        atdata[idx+5] = opts.atol; // HeI
+        atdata[idx+6] = opts.atol; // HeII
+        atdata[idx+7] = opts.atol; // HeIII
+        atdata[idx+8] = opts.atol; // de
+        atdata[idx+9] = opts.atol; // ge
       }
 
   // move input solution values into 'scale' components of network_data structure
@@ -471,7 +424,7 @@ int main(int argc, char* argv[]) {
   //    Output initial conditions to disk (IMPLEMENT LATER, IF DESIRED)
 
   //    Output problem-specific diagnostic information
-  print_info(arkode_mem, udata.t0, w, network_data, udata, units);
+  print_info(arkode_mem, udata.t0, w, network_data, udata);
   tinout += MPI_Wtime() - iostart;
 
   // If (dense_order == -1), use tstop mode
@@ -514,7 +467,7 @@ int main(int argc, char* argv[]) {
 
     iostart = MPI_Wtime();
     // output statistics to stdout
-    print_info(arkode_mem, t, w, network_data, udata, units);
+    print_info(arkode_mem, t, w, network_data, udata);
 #ifdef USE_CVODE
     retval = CVodeGetEstLocalErrors(arkode_mem, ele);
     retval = CVodeGetErrWeights(arkode_mem, eweight);
@@ -547,50 +500,50 @@ int main(int argc, char* argv[]) {
   if (outproc) fclose(DFID);
 
 
-  // reconstruct overall solution values
+  // reconstruct overall solution values, converting back to mass densities
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
         // H2I
-        wdata[idx] *= (network_data->scale[0][idx]) * H2I_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * H2I_weight;
         idx++;
 
         // H2II
-        wdata[idx] *= (network_data->scale[0][idx]) * H2II_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * H2II_weight;
         idx++;
 
         // HI
-        wdata[idx] *= (network_data->scale[0][idx]) * HI_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * HI_weight;
         idx++;
 
         // HII
-        wdata[idx] *= (network_data->scale[0][idx]) * HII_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * HII_weight;
         idx++;
 
         // HM
-        wdata[idx] *= (network_data->scale[0][idx]) * HM_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * HM_weight;
         idx++;
 
         // HeI
-        wdata[idx] *= (network_data->scale[0][idx]) * HeI_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * HeI_weight;
         idx++;
 
         // HeII
-        wdata[idx] *= (network_data->scale[0][idx]) * HeII_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * HeII_weight;
         idx++;
 
         // HeIII
-        wdata[idx] *= (network_data->scale[0][idx]) * HeIII_weight / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * HeIII_weight;
         idx++;
 
         // de
-        wdata[idx] *= (network_data->scale[0][idx]) * m_amu / units.density_units;
+        wdata[idx] *= (network_data->scale[0][idx]) * m_amu;
         idx++;
 
         // ge
-        wdata[idx] *= (network_data->scale[0][idx]) / UNIT_E_per_M;
+        wdata[idx] *= (network_data->scale[0][idx]);
       }
 
   // compute simulation time
@@ -658,9 +611,10 @@ int main(int argc, char* argv[]) {
 }
 
 
+// Prints out solution values at two locations (converting from
+// number densities to mass units)
 void print_info(void *arkode_mem, realtype &t, N_Vector w,
-                cvklu_data *network_data, EulerData &udata,
-                code_units &units)
+                cvklu_data *network_data, EulerData &udata)
 {
   // indices to print
   long int i1 = udata.nxl/3;
@@ -686,7 +640,6 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   realtype HeIII_weight = 4.002602 * mH;
   realtype H2I_weight = 2*HI_weight;
   realtype H2II_weight = 2*HI_weight;
-  realtype UNIT_E_per_M = pow(units.velocity_units,2);  // code unit in terms of erg/g
   realtype m_amu = 1.66053904e-24;
 
   // get current number of time steps
@@ -703,30 +656,50 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   // print solutions at first location
   printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
          i1, j1, k1,
-         network_data->scale[0][idx1+0]*wdata[idx1+0]/units.density_units*H2I_weight,
-         network_data->scale[0][idx1+1]*wdata[idx1+1]/units.density_units*H2II_weight,
-         network_data->scale[0][idx1+2]*wdata[idx1+2]/units.density_units*HI_weight,
-         network_data->scale[0][idx1+3]*wdata[idx1+3]/units.density_units*HII_weight,
-         network_data->scale[0][idx1+4]*wdata[idx1+4]/units.density_units*HM_weight,
-         network_data->scale[0][idx1+5]*wdata[idx1+5]/units.density_units*HeI_weight,
-         network_data->scale[0][idx1+6]*wdata[idx1+6]/units.density_units*HeII_weight,
-         network_data->scale[0][idx1+7]*wdata[idx1+7]/units.density_units*HeIII_weight,
-         network_data->scale[0][idx1+8]*wdata[idx1+8]/units.density_units*m_amu,
-         network_data->scale[0][idx1+9]*wdata[idx1+9]/UNIT_E_per_M);
+         network_data->scale[0][idx1+0]*wdata[idx1+0],
+         network_data->scale[0][idx1+1]*wdata[idx1+1],
+         network_data->scale[0][idx1+2]*wdata[idx1+2],
+         network_data->scale[0][idx1+3]*wdata[idx1+3],
+         network_data->scale[0][idx1+4]*wdata[idx1+4],
+         network_data->scale[0][idx1+5]*wdata[idx1+5],
+         network_data->scale[0][idx1+6]*wdata[idx1+6],
+         network_data->scale[0][idx1+7]*wdata[idx1+7],
+         network_data->scale[0][idx1+8]*wdata[idx1+8],
+         network_data->scale[0][idx1+9]*wdata[idx1+9]);
+         // network_data->scale[0][idx1+0]*wdata[idx1+0]*H2I_weight,
+         // network_data->scale[0][idx1+1]*wdata[idx1+1]*H2II_weight,
+         // network_data->scale[0][idx1+2]*wdata[idx1+2]*HI_weight,
+         // network_data->scale[0][idx1+3]*wdata[idx1+3]*HII_weight,
+         // network_data->scale[0][idx1+4]*wdata[idx1+4]*HM_weight,
+         // network_data->scale[0][idx1+5]*wdata[idx1+5]*HeI_weight,
+         // network_data->scale[0][idx1+6]*wdata[idx1+6]*HeII_weight,
+         // network_data->scale[0][idx1+7]*wdata[idx1+7]*HeIII_weight,
+         // network_data->scale[0][idx1+8]*wdata[idx1+8]*m_amu,
+         // network_data->scale[0][idx1+9]*wdata[idx1+9]);
 
   // print solutions at second location
   printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
          i2, j2, k2,
-         network_data->scale[0][idx2+0]*wdata[idx2+0]/units.density_units*H2I_weight,
-         network_data->scale[0][idx2+1]*wdata[idx2+1]/units.density_units*H2II_weight,
-         network_data->scale[0][idx2+2]*wdata[idx2+2]/units.density_units*HI_weight,
-         network_data->scale[0][idx2+3]*wdata[idx2+3]/units.density_units*HII_weight,
-         network_data->scale[0][idx2+4]*wdata[idx2+4]/units.density_units*HM_weight,
-         network_data->scale[0][idx2+5]*wdata[idx2+5]/units.density_units*HeI_weight,
-         network_data->scale[0][idx2+6]*wdata[idx2+6]/units.density_units*HeII_weight,
-         network_data->scale[0][idx2+7]*wdata[idx2+7]/units.density_units*HeIII_weight,
-         network_data->scale[0][idx2+8]*wdata[idx2+8]/units.density_units*m_amu,
-         network_data->scale[0][idx2+9]*wdata[idx2+9]/UNIT_E_per_M);
+         network_data->scale[0][idx2+0]*wdata[idx2+0],
+         network_data->scale[0][idx2+1]*wdata[idx2+1],
+         network_data->scale[0][idx2+2]*wdata[idx2+2],
+         network_data->scale[0][idx2+3]*wdata[idx2+3],
+         network_data->scale[0][idx2+4]*wdata[idx2+4],
+         network_data->scale[0][idx2+5]*wdata[idx2+5],
+         network_data->scale[0][idx2+6]*wdata[idx2+6],
+         network_data->scale[0][idx2+7]*wdata[idx2+7],
+         network_data->scale[0][idx2+8]*wdata[idx2+8],
+         network_data->scale[0][idx2+9]*wdata[idx2+9]);
+         // network_data->scale[0][idx2+0]*wdata[idx2+0]*H2I_weight,
+         // network_data->scale[0][idx2+1]*wdata[idx2+1]*H2II_weight,
+         // network_data->scale[0][idx2+2]*wdata[idx2+2]*HI_weight,
+         // network_data->scale[0][idx2+3]*wdata[idx2+3]*HII_weight,
+         // network_data->scale[0][idx2+4]*wdata[idx2+4]*HM_weight,
+         // network_data->scale[0][idx2+5]*wdata[idx2+5]*HeI_weight,
+         // network_data->scale[0][idx2+6]*wdata[idx2+6]*HeII_weight,
+         // network_data->scale[0][idx2+7]*wdata[idx2+7]*HeIII_weight,
+         // network_data->scale[0][idx2+8]*wdata[idx2+8]*m_amu,
+         // network_data->scale[0][idx2+9]*wdata[idx2+9]);
 }
 
 
