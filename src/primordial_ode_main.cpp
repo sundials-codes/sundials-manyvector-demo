@@ -27,6 +27,8 @@
 #ifdef USE_CVODE
 #include <cvode/cvode.h>
 #include <cvode/cvode_ls.h>
+#else
+#include <arkode/arkode_arkstep.h>
 #endif
 
 
@@ -134,7 +136,6 @@ int main(int argc, char* argv[]) {
 
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
-  w = atols = NULL;
   w = N_VNew_Serial(N);
   if (check_flag((void *) w, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
   atols = N_VNew_Serial(N);
@@ -158,14 +159,6 @@ int main(int argc, char* argv[]) {
   realtype kboltz = 1.3806488e-16;
   realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-  code_units units;
-  units.comoving_coordinates = 0;
-  units.density_units  = 1.0;
-  units.length_units   = 1.0;
-  units.time_units     = 1.0;
-  units.velocity_units = 1.0;
-  units.a_units        = 0.0;
-  units.a_value        = 0.0;
   realtype m_amu = 1.66053904e-24;
   realtype density = 1e2 * mH;   // in g/cm^{-3}
   realtype *wdata = NULL;
@@ -334,7 +327,7 @@ int main(int argc, char* argv[]) {
   //    set diagnostics file
   if (outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
-    if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (check_flag(&retval, "ARKStepSetDiagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
   //    set RK order, or specify individual Butcher table -- "order" overrides "btable"
