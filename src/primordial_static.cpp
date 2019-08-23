@@ -17,9 +17,26 @@
 #include <dengo_primordial_network.hpp>
 
 
-// Define global structures for Dengo-based calculations
-code_units units;
+// Define global structure for Dengo-based calculations
 cvklu_data *network_data;
+
+
+// Utility routine to initialize global Dengo data structures
+int initialize_Dengo_structures(const EulerData& udata) {
+
+  // initialize primordial rate tables, etc
+  network_data = NULL;
+  network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
+  if (network_data == NULL)  return(1);
+
+  // overwrite internal strip size
+  network_data->nstrip = udata.nxl * udata.nyl * udata.nzl;
+
+  // set redshift value for non-cosmological run
+  network_data->current_z = -1.0;
+
+  return(0);
+}
 
 
 // Initial conditions
@@ -87,14 +104,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     return -1;
   }
 
-  // initialize primordial rate tables, etc
-  network_data = NULL;
-  network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
-  //    overwrite internal strip size
-  network_data->nstrip = udata.nxl * udata.nyl * udata.nzl;
-  //    set redshift value for non-cosmological run
-  network_data->current_z = -1.0;
-
   // initial condition values -- essentially-neutral primordial gas
   realtype Tmean = 2000.0;  // mean temperature in K
   realtype Tamp = 1800.0;   // temperature amplitude in K
@@ -113,13 +122,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   realtype kboltz = 1.3806488e-16;
   realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-  units.comoving_coordinates = 0;
-  units.density_units  = 1.0;
-  units.length_units   = 1.0;
-  units.time_units     = 1.0;
-  units.velocity_units = 1.0;
-  units.a_units        = 0.0;
-  units.a_value        = 0.0;
   realtype m_amu = 1.66053904e-24;
   realtype density = 1e2 * mH;   // in g/cm^{-3}
 
