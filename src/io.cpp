@@ -15,6 +15,7 @@
 
 // Header files
 #include <euler3D.hpp>
+#include <arkode/arkode_arkstep.h>
 #include <string.h>
 #ifdef USEHDF5
 #include "hdf5.h"

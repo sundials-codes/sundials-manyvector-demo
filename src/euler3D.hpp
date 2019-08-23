@@ -20,8 +20,6 @@
 #include <string>
 #include <stdlib.h>
 #include <math.h>
-#include <arkode/arkode_arkstep.h>
-#include <arkode/arkode_ls.h>
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_manyvector.h>
 #include <nvector/nvector_parallel.h>

@@ -10,6 +10,7 @@
 
 // Header files
 #include <euler3D.hpp>
+#include <arkode/arkode_arkstep.h>
 
 #ifdef DEBUG
 #include "fenv.h"
