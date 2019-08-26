@@ -36,11 +36,9 @@
 
  REMAINING TO-DO ITEMS:
 
- 1. Pre/Post-processing functions for preparing fast solver, and for
-    converting fast solver data back to slow scale.  These should
-    bring the disparate fast/slow energy definitions into harmony,
-    and update the relevant Dengo data structures ("scale" and
-    "inv_scale" arrays) for the ensuing fast step.
+ 1. Need MRIStep "Set" routines for user-supplied Pre/Post-processing
+    functions to prepare fast solver, and to convert fast solver data
+    back to slow scale.
  ---------------------------------------------------------------*/
 
 // Header files
