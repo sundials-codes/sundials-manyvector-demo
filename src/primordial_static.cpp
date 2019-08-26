@@ -179,7 +179,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         my[idx]  = ZERO;
         mz[idx]  = ZERO;
         rho[idx] = density;
-        et[idx]  = ge;
+        et[idx]  = ge + 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
 
       }
 
