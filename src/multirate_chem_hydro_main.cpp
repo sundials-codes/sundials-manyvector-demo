@@ -36,11 +36,11 @@
 
  REMAINING TO-DO ITEMS:
 
- 1. Post-processing function for steps at the slow time scale
-    (PostprocessStep).  This should bring the disparate fast/slow
-    energy definitions into harmony, and update the relevant
-    Dengo data structures ("scale" and "inv_scale" arrays) for
-    the ensuing step.
+ 1. Pre/Post-processing functions for preparing fast solver, and for
+    converting fast solver data back to slow scale.  These should
+    bring the disparate fast/slow energy definitions into harmony,
+    and update the relevant Dengo data structures ("scale" and
+    "inv_scale" arrays) for the ensuing fast step.
  ---------------------------------------------------------------*/
 
 // Header files
@@ -66,7 +66,8 @@ int initialize_Dengo_structures(const EulerData& udata);
 static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data);
 static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                  void *user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
-static int PostprocessStep(realtype t, N_Vector y, void *user_data);
+static int PrepareFast(realtype t, N_Vector y, void *user_data);
+static int PostprocessFast(realtype t, N_Vector y, void *user_data);
 
 // custom Block-Diagonal MPIManyVector SUNLinearSolver module
 typedef struct _BDMPIMVContent {
@@ -222,22 +223,6 @@ int main(int argc, char* argv[]) {
     retval = read_restart(restart, udata.t0, w, udata);
     if (check_flag(&retval, "read_restart (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-
-  // move input chemical solution values into 'scale' components of network_data structure
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (main)", 0)) return -1;
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          network_data->scale[0][idx] = chem[idx];
-          network_data->inv_scale[0][idx] = ONE / chem[idx];
-          chem[idx] = ONE;
-        }
-
-  // compute auxiliary values within network_data structure
-  setting_up_extra_variables(network_data, network_data->scale[0], N);
 
 
   //--- create the fast integrator and set options ---//
@@ -443,7 +428,10 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
   if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = MRIStepSetPostprocessStepFn(outer_arkode_mem, PostprocessStep);
+  // retval = MRIStepSetFastPreparationFn(outer_arkode_mem, PrepareFast);
+  // if (check_flag(&retval, "MRIStepSetFastPreparationFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  // retval = MRIStepSetFastPostprocessFn(outer_arkode_mem, PostprocessFast);
+  // if (check_flag(&retval, "MRIStepSetFastPostprocessFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Get some fast integrator statistics
   long int nstf, nstf_a, nfe, nfi, netf, nls, nni, ncf, nje;
@@ -543,14 +531,102 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 }
 
 
-//---- slow step post-processing function ----
-// This routine brings the disparate fast/slow energy definitions into harmony, and
-// updates the relevant Dengo data structures for the ensuing step
+//---- prepare/postprocess routines for fast time scale solver ----
+// These routines bring the disparate fast/slow energy definitions into harmony,
+// and update the relevant Dengo data structures for the ensuing evolution
 
-static int PostprocessStep(realtype t, N_Vector y, void *user_data)
+static int PrepareFast(realtype t, N_Vector w, void *user_data)
 {
+  long int i, j, k, l, idx;
+  realtype ge;
 
-  //--- FILL THIS IN --//
+  // access user_data structure
+  EulerData *udata = (EulerData*) user_data;
+
+  // access solution fields
+  realtype *rho  = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho,  "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  realtype *mx   = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  realtype *my   = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  realtype *mz   = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  realtype *et   = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+
+  // set chemistry gas energy (always the last field in chem) to match fluid total energy
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++) {
+        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        ge = et[idx] - 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
+        if (ge < ZERO)  return(-1);
+        chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)] = ge;
+      }
+
+  // ??? Update chemistry density fields to match total density field      ???
+  // ??? (this should not be necessary if chemistry is advected correctly) ???
+
+  // move current chemical solution values into 'network_data->scale' structure
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++)
+        for (l=0; l<udata->nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+          network_data->scale[0][idx] = chem[idx];
+          network_data->inv_scale[0][idx] = ONE / chem[idx];
+          chem[idx] = ONE;
+        }
+
+  // compute auxiliary values within network_data structure
+  setting_up_extra_variables( network_data, network_data->scale[0],
+                              (udata->nxl)*(udata->nyl)*(udata->nzl) );
+
+  return(0);
+}
+
+
+static int PostprocessFast(realtype t, N_Vector w, void *user_data)
+{
+  long int i, j, k, l, idx, idx2;
+
+  // access user_data structure
+  EulerData *udata = (EulerData*) user_data;
+
+  // access fluid data fields
+  realtype *rho  = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho,  "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+  realtype *mx   = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+  realtype *my   = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+  realtype *mz   = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+  realtype *et   = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+
+  // move 'scale' values back into N_Vector data
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++)
+        for (l=0; l<udata->nchem; l++) {
+          idx = BUFIDX(0,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+          chem[idx] *= (network_data->scale[0][idx]);
+        }
+
+  // update fluid total energy to match current value of chemistry gas energy
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++) {
+        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[idx] = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)]
+                + 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
+      }
 
   return(0);
 }
