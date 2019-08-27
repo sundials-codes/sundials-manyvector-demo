@@ -17,15 +17,11 @@
 #include <dengo_primordial_network.hpp>
 
 
-// Define global structure for Dengo-based calculations
-cvklu_data *network_data;
-
-
 // Utility routine to initialize global Dengo data structures
-int initialize_Dengo_structures(const EulerData& udata) {
+int initialize_Dengo_structures(EulerData& udata) {
 
   // initialize primordial rate tables, etc
-  network_data = NULL;
+  cvklu_data *network_data = NULL;
   network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
   if (network_data == NULL)  return(1);
 
@@ -35,6 +31,8 @@ int initialize_Dengo_structures(const EulerData& udata) {
   // set redshift value for non-cosmological run
   network_data->current_z = -1.0;
 
+  // store pointer to network_data in udata, and return
+  udata.RxNetData = (void*) network_data;
   return(0);
 }
 
@@ -208,6 +206,9 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
   long int j2 = 2*udata.nyl/3;
   long int k2 = 2*udata.nzl/3;
   long int idx2 = BUFIDX(0,i2,j2,k2,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+
+  // access Dengo data structure
+  cvklu_data* network_data = (cvklu_data*) udata.RxNetData;
 
   // access chemistry N_Vector data
   realtype *chem = NULL;

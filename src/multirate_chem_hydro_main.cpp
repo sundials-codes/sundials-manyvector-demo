@@ -56,8 +56,7 @@
 
 // Access externally-defined Dengo data structure (declared in specific
 // test problem initializer), and associated initialization routine
-extern cvklu_data *network_data;
-int initialize_Dengo_structures(const EulerData& udata);
+int initialize_Dengo_structures(EulerData& udata);
 
 
 // user-provided functions called by the fast integrators
@@ -208,7 +207,7 @@ int main(int argc, char* argv[]) {
   if (check_flag((void *) atols, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   N_VConst(opts.atol, atols);
 
-  // initialize Dengo data structure, "network_data"
+  // initialize Dengo data structure, "network_data" (stored within udata)
   retval = initialize_Dengo_structures(udata);
   if (check_flag(&retval, "initialize_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -225,7 +224,7 @@ int main(int argc, char* argv[]) {
 
   //--- create the fast integrator and set options ---//
 
-  // initialize the fast integrator.
+  // initialize the fast integrator
   inner_arkode_mem = ARKStepCreate(NULL, ffast, udata.t0, w);
   if (check_flag((void*) inner_arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
@@ -242,7 +241,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // pass network_udata to user functions
-  retval = ARKStepSetUserData(inner_arkode_mem, network_data);
+  retval = ARKStepSetUserData(inner_arkode_mem, udata.RxNetData);
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set diagnostics file
@@ -538,8 +537,9 @@ static int PrepareFast(realtype t, N_Vector w, void *user_data)
   long int i, j, k, l, idx;
   realtype ge;
 
-  // access user_data structure
+  // access user_data structure and Dengo data structure
   EulerData *udata = (EulerData*) user_data;
+  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
 
   // access solution fields
   realtype *rho  = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
@@ -591,8 +591,9 @@ static int PostprocessFast(realtype t, N_Vector w, void *user_data)
 {
   long int i, j, k, l, idx, idx2;
 
-  // access user_data structure
+ // access user_data structure and Dengo data structure
   EulerData *udata = (EulerData*) user_data;
+  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
 
   // access fluid data fields
   realtype *rho  = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
