@@ -5,14 +5,14 @@ executables to run correctly (or even compile) at present.]
 
 This is a SUNDIALS-based demonstration application to assess and
 demonstrate the large-scale parallel performance of new capabilities
-that have been added to SUNDIALS in recent years.  Namely: 
+that have been added to SUNDIALS in recent years.  Namely:
 
 1. SUNDIALS' new MPIManyVector module, that allows extreme flexibility
    in how a solution "vector" is staged on computational resources.
 
 2. ARKode's new multirate integration module, MRIStep, allowing
    high-order accurate calculations that subcycle "fast" processes
-   within "slow" ones. 
+   within "slow" ones.
 
 3. (eventually) SUNDIALS' new flexible linear solver interfaces, to
    enable streamlined use of scalable linear solver libraries (e.g.,
@@ -38,11 +38,11 @@ are installed in-place using [Spack](https://github.com/spack/spack).
 
 The above steps will build all codes in 'production' mode, with
 optimization enabled, and both OpenMP and debugging symbols turned
-off. 
+off.
 
 Alternately, if you already have MPI, SUNDIALS, parallel HDF5, and
 KLU/SuiteSparse installed, you can edit the file `Makefile.in` to
-specify these installations, and skip the Spack-related steps above. 
+specify these installations, and skip the Spack-related steps above.
 
 Additionally, you may edit the `Makefile.opts` file to switch between
 an optimized/debugging build, and to enable/disable OpenMP prior to
@@ -55,20 +55,21 @@ running `make` above.  Also, HDF5-based I/O may be disabled entirely
 ## (Current) Documentation
 
 This code simulates a 3D nonlinear inviscid compressible Euler
-equation with tracers, 
-<p align="center"><img src="/tex/d9863f826c2348e733804a7429c419ad.svg?invert_in_darkmode&sanitize=true" align=middle width=148.6959507pt height=16.438356pt/></p>
+equation with advection and reaction of chemical species,
+<p align="center"><img src="/tex/77d55513ca92983b2a16bf2c0d217d53.svg?invert_in_darkmode&sanitize=true" align=middle width=208.23551595pt height=16.438356pt/></p>
 for independent variables
 <p align="center"><img src="/tex/b1fb667c457471aa9a6fe9b8a16c5c51.svg?invert_in_darkmode&sanitize=true" align=middle width=227.07922545pt height=17.031940199999998pt/></p>
 where the spatial domain is a three-dimensional cube,
 <p align="center"><img src="/tex/724344359d58ffb008954bfadd390bc2.svg?invert_in_darkmode&sanitize=true" align=middle width=210.46034459999998pt height=16.438356pt/></p>
-The differential equation is completed using initial condition 
-<p align="center"><img src="/tex/bbc622f3dae0f361808755f8d67af6a7.svg?invert_in_darkmode&sanitize=true" align=middle width=129.27608594999998pt height=16.438356pt/></p>
+The differential equation is completed using initial condition
+<p align="center"><img src="/tex/5270774dab046199071bafaa705bfac0.svg?invert_in_darkmode&sanitize=true" align=middle width=128.36284064999998pt height=16.438356pt/></p>
 and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x
-[zlbc, zrbc], where each may be any one of 
+[zlbc, zrbc], where each may be any one of
 
 * periodic (0),
-* homogeneous Neumann (1), or
-* homogeneous Dirichlet (2),
+* homogeneous Neumann (1),
+* homogeneous Dirichlet (2), or
+* reflecting (3)
 
 under the restriction that if any boundary is set to "periodic" then
 the opposite face must also indicate a periodic condition.
@@ -76,14 +77,14 @@ the opposite face must also indicate a periodic condition.
 Here, the 'solution' is given by
 <img src="/tex/28187201df21690b7d306712905d18e4.svg?invert_in_darkmode&sanitize=true" align=middle width=468.60549779999997pt height=35.5436301pt/>,
 that corresponds to the density, x,y,z-momentum, total energy
-per unit volume, and any number of chemical 'tracers'
+per unit volume, and any number of chemical densities
 <img src="/tex/b8b6bd2b662b75b8e135f6da0bd323ce.svg?invert_in_darkmode&sanitize=true" align=middle width=79.96356884999999pt height=27.91243950000002pt/> that are advected along with the
 fluid.  The fluxes are given by
 <p align="center"><img src="/tex/3a03e5f8f13d64219de34f4e89ece974.svg?invert_in_darkmode&sanitize=true" align=middle width=425.4109365pt height=23.5253469pt/></p>
 <p align="center"><img src="/tex/6de6c35f4b2af691b7c615d7455c9eb9.svg?invert_in_darkmode&sanitize=true" align=middle width=423.2250824999999pt height=23.9085792pt/></p>
 <p align="center"><img src="/tex/9ab5c11c75414d0f6469ee8b93a5d46b.svg?invert_in_darkmode&sanitize=true" align=middle width=429.71667914999995pt height=23.5253469pt/></p>
-The external force <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal
-gas equation of state gives 
+The external force <img src="/tex/fdd8b43797ed57d5386562a0b6c3a124.svg?invert_in_darkmode&sanitize=true" align=middle width=72.46420829999998pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal
+gas equation of state gives
 <p align="center"><img src="/tex/272a02648ae7ce4db259539aa98655dc.svg?invert_in_darkmode&sanitize=true" align=middle width=218.4856146pt height=36.09514755pt/></p>
 and
 <p align="center"><img src="/tex/fcab1314e35d6d578ef90227b587c829.svg?invert_in_darkmode&sanitize=true" align=middle width=200.67741375pt height=29.47417935pt/></p>
@@ -92,20 +93,20 @@ or equivalently,
 and
 <p align="center"><img src="/tex/bb93cc09da34e3117795a4e98a4e4db6.svg?invert_in_darkmode&sanitize=true" align=middle width=215.21714114999997pt height=32.6705313pt/></p>
 
-We have the parameters:
+We have the physical parameters:
 
 * R is the specific ideal gas constant (287.14 J/kg/K).
 
 * <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/> is the specific heat capacity at constant volume (717.5
   J/kg/K),
-  
-* <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/f8415659af3e4a9e110591f46cc2875e.svg?invert_in_darkmode&sanitize=true" align=middle width=113.34245999999997pt height=28.670654099999997pt/> (1.4), 
+
+* <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/f8415659af3e4a9e110591f46cc2875e.svg?invert_in_darkmode&sanitize=true" align=middle width=113.34245999999997pt height=28.670654099999997pt/> (1.4),
 
 corresponding to air (predominantly an ideal diatomic gas). The speed
-of sound in the gas is then given by 
+of sound in the gas is then given by
 <p align="center"><img src="/tex/e55dd025376e04a1ada428d642da3089.svg?invert_in_darkmode&sanitize=true" align=middle width=67.10942039999999pt height=39.452455349999994pt/></p>
 The fluid variables above are non-dimensionalized; in standard SI
-units these would be: 
+units these would be:
 
 * [rho] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>,
 
@@ -113,39 +114,50 @@ units these would be:
 
 * [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
+* [\mathbf{c}_i] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+
 Note: the fluid portion of the above description follows section 7.3.1-7.3.3 of
 https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
-This program solves the problem using a finite volume spatial
+This program solves the above problem using a finite volume spatial
 semi-discretization over a uniform grid of dimensions
-`nx` x `ny` x `nz`, with fluxes calculated using a 5th-order WENO
+`nx` x `ny` x `nz`, with fluxes calculated using a 5th-order FD-WENO
 reconstruction. The spatial domain uses a 3D domain decomposition
 approach for parallelism over `nprocs` MPI processes, with layout
-`npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create` 
+`npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create`
 utility routine.  The minimum size for any dimension is 3, so to run a
 two-dimensional test in the yz-plane, one could specify `nx=3` and
 `ny=nz=200` -- when run in parallel, only 'active' spatial dimensions
 (those with extent greater than 3) will be parallelized.  Each fluid
 field (<img src="/tex/6dec54c48a0438a5fcde6053bdb9d712.svg?invert_in_darkmode&sanitize=true" align=middle width=8.49888434999999pt height=14.15524440000002pt/>, <img src="/tex/f8eec81a1374c2e08228fb574a0e5fdf.svg?invert_in_darkmode&sanitize=true" align=middle width=21.88747274999999pt height=14.15524440000002pt/>, <img src="/tex/e4c6c96061743e44c44edafd6e06abe7.svg?invert_in_darkmode&sanitize=true" align=middle width=21.512706599999987pt height=14.15524440000002pt/>, <img src="/tex/b9034568c7237b47ca94b79611bd9fd9.svg?invert_in_darkmode&sanitize=true" align=middle width=21.18545879999999pt height=14.15524440000002pt/> and <img src="/tex/71c0437a67c94e48f18cc11d0c17a38c.svg?invert_in_darkmode&sanitize=true" align=middle width=12.61992929999999pt height=14.15524440000002pt/>) is stored in its own
-parallel `N_Vector` object.  Chemical tracers at a given spatial
-location are collocated into a single serial `N_Vector` object.  The
-five fluid vectors and the array of tracer vectors are combined
-together to form the full "solution" vector <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/> using the
-`MPIManyVector` `N_Vector` module.  The resulting initial-value
-problem is solved using a temporally-adaptive explicit Runge Kutta
-method from ARKode's ARKStep module.  The solution is output to disk
-using parallel HDF5, and solution statistics are optionally output to
-the screen at specified frequencies, and run statistics are printed at
-the end.
+parallel `N_Vector` object.  Chemical species at all spatial
+locations over a single MPI rank are collocated into a single serial
+`N_Vector` object.  The five fluid vectors and the chemical species
+vector are combined together to form the full "solution" vector <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/>
+using the `MPIManyVector` `N_Vector` module.  For non-reactive flows,
+the resulting initial-value problem is solved using a
+temporally-adaptive explicit Runge Kutta method from ARKode's ARKStep
+module.  For problems involving [typically stiff] chemical reactions,
+the multirate initial-value problem is solved using ARKode's MRIStep
+module, wherein the gas dynamics equations are evolved explicitly at
+the 'slow' time scale, while the chemical kinetics are evolved
+using a temporally-adaptive, diagonally-implicit Runge--Kutta method
+from ARKode's ARKStep module.  These MPI rank-local implicit systems
+are solved using the default modified Newton nonlinear solver, with a
+custom linear solver that solves each rank-local linear system using
+the SUNLinSol_KLU sparse-direct linear solver module.  Solutions are
+output to disk using parallel HDF5, solution statistics are
+optionally output to the screen at specified frequencies, and run
+statistics are printed at the end of the simulation.
 
-Individual test problems may be uniquely specified through an input
+Individual test problems are uniquely specified through an input
 file and auxiliarly source code file(s) that should be linked with
 this main routine at compile time.  By default, all codes are built
-with no chemical tracers; however, this may be controlled at
+with no chemical species; however, this may be controlled at
 compilation time using the `NVAR` preprocessor directive,
 corresponding to the number of unknowns at any spatial location.
 Hence, the [default] minimum value for `NVAR` is 5, so for a
-calculation with 4 chemical tracers the code should be compiled with
+calculation with 4 chemical species the code should be compiled with
 the preprocessor flag `-DNVAR=9`.  An example of this is provided in
 the `Makefile` when building `compile_test.exe`, and may be emulated
 for user-defined problems.
@@ -195,7 +207,7 @@ command line, e.g.
 The auxiliary source code files must contain three functions.  Each of
 these must return an integer flag indicating success (0) or failure
 (nonzero). The initial condition function <img src="/tex/d3cb4393199b89ca003e78d3486fa147.svg?invert_in_darkmode&sanitize=true" align=middle width=46.837068299999984pt height=24.65753399999998pt/> must have the
-signature: 
+signature:
 
 ```C++
    int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
@@ -245,4 +257,3 @@ run, but it may use a different number of MPI tasks if desired.
 
 ## Authors
 [Daniel R. Reynolds](http://faculty.smu.edu/reynolds)
-
