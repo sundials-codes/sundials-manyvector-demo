@@ -6,13 +6,18 @@
 #  For details, see the LICENSE file.
 ###################################################################
 #  Machine-specific Makefile definitions
+#
+#  New machines may be added via an 'else ifeq' block below.
 ###################################################################
 
 # read build options
 include Makefile.opts
 
-# machine-specific compilers and installation locations
-HOST=$(shell hostname)
+# determine machine "name" based on 'HOST' environment variable, or
+# if that is unset, then via the shell 'hostname' command
+ifeq ($(HOST),)
+  HOST=$(shell hostname)
+endif
 
 #    longclaw
 ifeq ($(HOST),longclaw)
@@ -77,7 +82,8 @@ else ifeq ($(HOST),descartes.local)
   CXX = /usr/local/mpich-3.3/gnu/bin/mpicxx --std=c++11
   OMPFLAGS = -fopenmp
 
-#    default -- EDIT THESE IF SPECIFYING COMPILERS/LIBRARIES ON YOUR MACHINE
+#    default -- assume that spack-related build instructions
+#    from README.md have been followed
 else
 
   SUNDIR = ./sundials

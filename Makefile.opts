@@ -5,18 +5,27 @@
 #  All rights reserved.
 #  For details, see the LICENSE file.
 ###################################################################
-#  Build options
+#  Build option defaults; any may be overridden by environment
+#  variables
 ###################################################################
 
 # flag to decide between optimized and debugging libraries
-#LIBTYPE = DBG
-LIBTYPE = OPT
+#   available options: OPT (optimized) and DBG (debugging)
+ifeq ($(LIBTYPE),)
+   LIBTYPE = OPT
+endif
 
-# flag to enable/disable OpenMP (1=enable, 0=disable)
-USEOMP = 1
+# flag to enable/disable OpenMP
+#   available options: 1 (enable) and 0 (disable)
+ifeq ($(USEOMP),)
+   USEOMP = 1
+endif
 
-# flag to enable/disable HDF5 I/O (1=enable, 0=disable)
-USEHDF5 = 1
+# flag to enable/disable HDF5 I/O
+#   available options: 1 (enable) and 0 (disable)
+ifeq ($(USEHDF5),)
+   USEHDF5 = 1
+endif
 
 
 ####### End of Makefile.opts #######
