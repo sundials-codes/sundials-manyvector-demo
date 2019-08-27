@@ -5,14 +5,14 @@ executables to run correctly (or even compile) at present.]
 
 This is a SUNDIALS-based demonstration application to assess and
 demonstrate the large-scale parallel performance of new capabilities
-that have been added to SUNDIALS in recent years.  Namely: 
+that have been added to SUNDIALS in recent years.  Namely:
 
 1. SUNDIALS' new MPIManyVector module, that allows extreme flexibility
    in how a solution "vector" is staged on computational resources.
 
 2. ARKode's new multirate integration module, MRIStep, allowing
    high-order accurate calculations that subcycle "fast" processes
-   within "slow" ones. 
+   within "slow" ones.
 
 3. (eventually) SUNDIALS' new flexible linear solver interfaces, to
    enable streamlined use of scalable linear solver libraries (e.g.,
@@ -38,11 +38,11 @@ are installed in-place using [Spack](https://github.com/spack/spack).
 
 The above steps will build all codes in 'production' mode, with
 optimization enabled, and both OpenMP and debugging symbols turned
-off. 
+off.
 
 Alternately, if you already have MPI, SUNDIALS, parallel HDF5, and
 KLU/SuiteSparse installed, you can edit the file `Makefile.in` to
-specify these installations, and skip the Spack-related steps above. 
+specify these installations, and skip the Spack-related steps above.
 
 Additionally, you may edit the `Makefile.opts` file to switch between
 an optimized/debugging build, and to enable/disable OpenMP prior to
@@ -55,9 +55,9 @@ running `make` above.  Also, HDF5-based I/O may be disabled entirely
 ## (Current) Documentation
 
 This code simulates a 3D nonlinear inviscid compressible Euler
-equation with tracers, 
+equation with advection and reaction of chemical species,
 $$
-  w_t = -\nabla\cdot F(w) + G
+  w_t = -\nabla\cdot F(w) + G(X,t,w)
 $$
 for independent variables
 $$
@@ -67,16 +67,17 @@ where the spatial domain is a three-dimensional cube,
 $$
   \Omega = [x_l, x_r] \times [y_l, y_r] \times [z_l,z_r]
 $$
-The differential equation is completed using initial condition 
+The differential equation is completed using initial condition
 $$
-  w(t_0,X) = w_0(X)
+  w(X,t_0) = w_0(X)
 $$
 and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x
-[zlbc, zrbc], where each may be any one of 
+[zlbc, zrbc], where each may be any one of
 
 * periodic (0),
-* homogeneous Neumann (1), or
-* homogeneous Dirichlet (2),
+* homogeneous Neumann (1),
+* homogeneous Dirichlet (2), or
+* reflecting (3)
 
 under the restriction that if any boundary is set to "periodic" then
 the opposite face must also indicate a periodic condition.
@@ -85,7 +86,7 @@ Here, the 'solution' is given by
 $w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T
 = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c}\end{bmatrix}^T$,
 that corresponds to the density, x,y,z-momentum, total energy
-per unit volume, and any number of chemical 'tracers'
+per unit volume, and any number of chemical densities
 $\mathbf{c}\in\mathbb{R}^{nchem}$ that are advected along with the
 fluid.  The fluxes are given by
 $$
@@ -97,8 +98,8 @@ $$
 $$
   F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.
 $$
-The external force $G(X,t)$ is test-problem-dependent, and the ideal
-gas equation of state gives 
+The external force $G(X,t,w)$ is test-problem-dependent, and the ideal
+gas equation of state gives
 $$
   p = \frac{R}{c_v}\left(e_t - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2)\right)
 $$
@@ -115,23 +116,23 @@ $$
   e_t = \frac{p}{\gamma-1} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2).
 $$
 
-We have the parameters:
+We have the physical parameters:
 
 * R is the specific ideal gas constant (287.14 J/kg/K).
 
 * $c_v$ is the specific heat capacity at constant volume (717.5
   J/kg/K),
-  
+
 * $\gamma$ is the ratio of specific heats, $\gamma = \frac{c_p}{c_v} =
-  1 + \frac{R}{c_v}$ (1.4), 
+  1 + \frac{R}{c_v}$ (1.4),
 
 corresponding to air (predominantly an ideal diatomic gas). The speed
-of sound in the gas is then given by 
+of sound in the gas is then given by
 $$
   c = \sqrt{\frac{\gamma p}{\rho}}
 $$
 The fluid variables above are non-dimensionalized; in standard SI
-units these would be: 
+units these would be:
 
 * [rho] = kg / m$^3$,
 
@@ -139,39 +140,50 @@ units these would be:
 
 * [et] = kg / m / s$^2$
 
+* [\mathbf{c}_i] = kg / m$^3$
+
 Note: the fluid portion of the above description follows section 7.3.1-7.3.3 of
 https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
-This program solves the problem using a finite volume spatial
+This program solves the above problem using a finite volume spatial
 semi-discretization over a uniform grid of dimensions
-`nx` x `ny` x `nz`, with fluxes calculated using a 5th-order WENO
+`nx` x `ny` x `nz`, with fluxes calculated using a 5th-order FD-WENO
 reconstruction. The spatial domain uses a 3D domain decomposition
 approach for parallelism over `nprocs` MPI processes, with layout
-`npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create` 
+`npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create`
 utility routine.  The minimum size for any dimension is 3, so to run a
 two-dimensional test in the yz-plane, one could specify `nx=3` and
 `ny=nz=200` -- when run in parallel, only 'active' spatial dimensions
 (those with extent greater than 3) will be parallelized.  Each fluid
 field ($\rho$, $m_x$, $m_y$, $m_z$ and $e_t$) is stored in its own
-parallel `N_Vector` object.  Chemical tracers at a given spatial
-location are collocated into a single serial `N_Vector` object.  The
-five fluid vectors and the array of tracer vectors are combined
-together to form the full "solution" vector $w$ using the
-`MPIManyVector` `N_Vector` module.  The resulting initial-value
-problem is solved using a temporally-adaptive explicit Runge Kutta
-method from ARKode's ARKStep module.  The solution is output to disk
-using parallel HDF5, and solution statistics are optionally output to
-the screen at specified frequencies, and run statistics are printed at
-the end.
+parallel `N_Vector` object.  Chemical species at all spatial
+locations over a single MPI rank are collocated into a single serial
+`N_Vector` object.  The five fluid vectors and the chemical species
+vector are combined together to form the full "solution" vector $w$
+using the `MPIManyVector` `N_Vector` module.  For non-reactive flows,
+the resulting initial-value problem is solved using a
+temporally-adaptive explicit Runge Kutta method from ARKode's ARKStep
+module.  For problems involving [typically stiff] chemical reactions,
+the multirate initial-value problem is solved using ARKode's MRIStep
+module, wherein the gas dynamics equations are evolved explicitly at
+the 'slow' time scale, while the chemical kinetics are evolved
+using a temporally-adaptive, diagonally-implicit Runge--Kutta method
+from ARKode's ARKStep module.  These MPI rank-local implicit systems
+are solved using the default modified Newton nonlinear solver, with a
+custom linear solver that solves each rank-local linear system using
+the SUNLinSol_KLU sparse-direct linear solver module.  Solutions are
+output to disk using parallel HDF5, solution statistics are
+optionally output to the screen at specified frequencies, and run
+statistics are printed at the end of the simulation.
 
-Individual test problems may be uniquely specified through an input
+Individual test problems are uniquely specified through an input
 file and auxiliarly source code file(s) that should be linked with
 this main routine at compile time.  By default, all codes are built
-with no chemical tracers; however, this may be controlled at
+with no chemical species; however, this may be controlled at
 compilation time using the `NVAR` preprocessor directive,
 corresponding to the number of unknowns at any spatial location.
 Hence, the [default] minimum value for `NVAR` is 5, so for a
-calculation with 4 chemical tracers the code should be compiled with
+calculation with 4 chemical species the code should be compiled with
 the preprocessor flag `-DNVAR=9`.  An example of this is provided in
 the `Makefile` when building `compile_test.exe`, and may be emulated
 for user-defined problems.
@@ -221,7 +233,7 @@ command line, e.g.
 The auxiliary source code files must contain three functions.  Each of
 these must return an integer flag indicating success (0) or failure
 (nonzero). The initial condition function $w_0(X)$ must have the
-signature: 
+signature:
 
 ```C++
    int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
@@ -271,4 +283,3 @@ run, but it may use a different number of MPI tasks if desired.
 
 ## Authors
 [Daniel R. Reynolds](http://faculty.smu.edu/reynolds)
-
