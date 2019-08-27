@@ -478,13 +478,13 @@ int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
 //  opt == 0 means SUNDIALS function allocates memory so check if
 //           returned NULL pointer
 //  opt == 1 means SUNDIALS function returns a flag so check if
-//           flag >= 0
+//           flag <= 0
 //  opt == 2 means function allocates memory so check if returned
 //           NULL pointer
 //  opt == 3 means MPI function returns a flag, so check if
 //           flag != MPI_SUCCESS
 //  opt == 4 corresponds to a check for an illegal state, so check if
-//           flag >= 0
+//           flag != 0
 int check_flag(const void *flagvalue, const string funcname, const int opt)
 {
   int *errflag;
@@ -520,7 +520,7 @@ int check_flag(const void *flagvalue, const string funcname, const int opt)
   // Check for legal state return value
   else if (opt == 4) {
     errflag = (int *) flagvalue;
-    if (*errflag != MPI_SUCCESS) {
+    if (*errflag != 0) {
       cerr << "\nSTATE_ERROR: " << funcname << " failed with flag = " << *errflag;
       if (*errflag == 1)  cerr << "  (illegal density)\n\n";
       if (*errflag == 2)  cerr << "  (illegal energy)\n\n";
