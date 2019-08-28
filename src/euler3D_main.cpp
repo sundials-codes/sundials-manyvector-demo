@@ -31,13 +31,14 @@ int main(int argc, char* argv[]) {
   int retval;                    // reusable error-checking flag
   int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int imex;                      // flag denoting class of method (0=implicit, 1=explicit, 2=IMEX)
   int fixedpt;                   // flag denoting use of fixed-point nonlinear solver
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vectors for storing overall solution
   N_Vector *wsubvecs;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
+  EulerData udata;               // solver data structures
+  ARKodeParameters opts;
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -45,17 +46,19 @@ int main(int argc, char* argv[]) {
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  // start run timer
-  double tstart = MPI_Wtime();
+  // start various code profilers
+  retval = udata.profile[PR_SETUP].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_IO].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  // read problem and solver parameters from input file / command line
-  EulerData udata;
-  ARKodeParameters opts;
+   // read problem and solver parameters from input file / command line
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
   realtype dTout = (udata.tf-udata.t0)/(udata.nout);
-  realtype tinout = MPI_Wtime() - tstart;
+  retval = udata.profile[PR_IO].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // set up udata structure
   retval = udata.SetupDecomp();
@@ -121,8 +124,12 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "initial_conditions (main)", 1)) MPI_Abort(udata.comm, 1);
     restart = 0;
   } else {
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
     retval = read_restart(restart, udata.t0, w, udata);
     if (check_flag(&retval, "read_restart (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
   // initialize the integrator memory
@@ -210,18 +217,6 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSStolerances(arkode_mem, opts.rtol, opts.atol);
   if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  //    set implicit predictor method
-  retval = ARKStepSetPredictorMethod(arkode_mem, opts.predictor);
-  if (check_flag(&retval, "ARKStepSetPredictorMethod (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set max nonlinear iterations
-  retval = ARKStepSetMaxNonlinIters(arkode_mem, opts.maxniters);
-  if (check_flag(&retval, "ARKStepSetMaxNonlinIters (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set nonlinear tolerance safety factor
-  retval = ARKStepSetNonlinConvCoef(arkode_mem, opts.nlconvcoef);
-  if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
-
   //    supply cfl-stable step routine (if requested)
   if (udata.cfl > ZERO) {
     retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
@@ -229,7 +224,9 @@ int main(int argc, char* argv[]) {
   }
 
   // Initial batch of outputs
-  double iostart = MPI_Wtime();
+  retval = udata.profile[PR_IO].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   //    Output initial conditions to disk
   retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -243,7 +240,8 @@ int main(int argc, char* argv[]) {
   //    Output problem-specific diagnostic information
   retval = output_diagnostics(udata.t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
-  tinout += MPI_Wtime() - iostart;
+  retval = udata.profile[PR_IO].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // If (dense_order == -1), use tstop mode
   if (opts.dense_order == -1)
@@ -251,17 +249,19 @@ int main(int argc, char* argv[]) {
   else   // otherwise tell integrator to use dense output
     idense = 1;
 
-  // compute overall setup time
-  double tsetup = MPI_Wtime() - tstart;
-  tstart = MPI_Wtime();
+  // stop problem setup profiler
+  retval = udata.profile[PR_SETUP].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
+  retval = udata.profile[PR_SIMUL].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
   realtype hcur;
   if (udata.showstats) {
-    retval = print_stats(t, w, 0, arkode_mem, udata);
+    retval = print_stats(t, w, 0, 0, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   int iout;
@@ -278,37 +278,44 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-    iostart = MPI_Wtime();
-    // output statistics to stdout
+    // periodic output of solution/statistics
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+    //    output statistics to stdout
     if (udata.showstats) {
-      retval = print_stats(t, w, 1, arkode_mem, udata);
+      retval = print_stats(t, w, 1, 0, arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     }
 
-    // output diagnostic information (if applicable)
+    //    output diagnostic information (if applicable)
     retval = output_diagnostics(t, w, udata);
     if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    // output results to disk -- get current step from ARKStep first
+    //    output results to disk -- get current step from ARKStep first
     retval = ARKStepGetCurrentStep(arkode_mem, &hcur);
     if (check_flag(&retval, "ARKStepGetCurrentStep (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
-    tinout += MPI_Wtime() - iostart;
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   }
   if (udata.showstats) {
-    iostart = MPI_Wtime();
-    retval = print_stats(t, w, 2, arkode_mem, udata);
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    retval = print_stats(t, w, 2, 0, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
-    tinout += MPI_Wtime() - iostart;
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   }
   if (outproc) fclose(DFID);
 
   // compute simulation time
-  double tsimul = MPI_Wtime() - tstart;
+  retval = udata.profile[PR_SIMUL].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  // Print some final statistics
+  // Get some integrator statistics
   long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
   nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
@@ -324,6 +331,27 @@ int main(int argc, char* argv[]) {
   retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
   if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  // Get profiling information
+  double tinit_av, tio_av, tsim_av, tmpi_av, tpack_av, tflux_av, trhs_av, tstab_av;
+  double tinit_mn, tio_mn, tsim_mn, tmpi_mn, tpack_mn, tflux_mn, trhs_mn, tstab_mn;
+  double tinit_mx, tio_mx, tsim_mx, tmpi_mx, tpack_mx, tflux_mx, trhs_mx, tstab_mx;
+  retval = udata.profile[PR_SETUP].cumulative_times(udata.comm, tinit_av, tinit_mn, tinit_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_IO].cumulative_times(udata.comm, tio_av, tio_mn, tio_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_SIMUL].cumulative_times(udata.comm, tsim_av, tsim_mn, tsim_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_MPI].cumulative_times(udata.comm, tmpi_av, tmpi_mn, tmpi_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_PACKDATA].cumulative_times(udata.comm, tpack_av, tpack_mn, tpack_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_FACEFLUX].cumulative_times(udata.comm, tflux_av, tflux_mn, tflux_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_RHSEULER].cumulative_times(udata.comm, trhs_av, trhs_mn, trhs_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_DTSTAB].cumulative_times(udata.comm, tstab_av, tstab_mn, tstab_mx);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
@@ -335,13 +363,28 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of nonlin iters = " << nni << "\n";
       cout << "   Total number of nonlin conv fails = " << ncf << "\n";
     }
-    cout << "   Total setup time = " << tsetup << "\n";
-    cout << "   Total I/O time = " << tinout << "\n";
-    cout << "   Total simulation time = " << tsimul << "\n";
+    cout << "\nProfiling Results:\n"
+         << "   Total setup time      = " << tinit_av
+         << "  \t(min/max = " << tinit_mn << "/" << tinit_mx << ")\n"
+         << "   Total I/O time        = " << tio_av
+         << "  \t(min/max = " << tio_mn << "/" << tio_mx << ")\n"
+         << "   Total MPI time        = " << tmpi_av
+         << "  \t(min/max = " << tmpi_mn << "/" << tmpi_mx << ")\n"
+         << "   Total pack time       = " << tpack_av
+         << "  \t(min/max = " << tpack_mn << "/" << tpack_mx << ")\n"
+         << "   Total flux time       = " << tflux_av
+         << "  \t(min/max = " << tflux_mn << "/" << tflux_mx << ")\n"
+         << "   Total RHS time        = " << trhs_av
+         << "  \t(min/max = " << trhs_mn << "/" << trhs_mx << ")\n"
+         << "   Total dt_stab time    = " << tstab_av
+         << "  \t(min/max = " << tstab_mn << "/" << tstab_mx << ")\n"
+         << "   Total simulation time = " << tsim_av
+         << "  \t(min/max = " << tsim_mn << "/" << tsim_mx << ")\n";
   }
 
   // Output mass/energy conservation error
   if (udata.showstats) {
+    if (outproc)  cout << "\nConservation Check:\n";
     retval = check_conservation(t, w, udata);
     if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
   }

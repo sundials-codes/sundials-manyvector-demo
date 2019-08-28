@@ -65,6 +65,8 @@ int main(int argc, char* argv[]) {
   SUNLinearSolver LS = NULL;     // empty linear solver and matrix structures
   SUNMatrix A = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
+  EulerData udata;               // solver data structures
+  ARKodeParameters opts;
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -82,17 +84,18 @@ int main(int argc, char* argv[]) {
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  // start run timer
-  double tstart = MPI_Wtime();
+  // start various code profilers
+  retval = udata.profile[PR_SETUP].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_IO].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // read problem and solver parameters from input file / command line
-  EulerData udata;
-  ARKodeParameters opts;
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-  if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
   realtype dTout = (udata.tf-udata.t0)/(udata.nout);
-  realtype tinout = MPI_Wtime() - tstart;
+  retval = udata.profile[PR_IO].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // set up udata structure
   retval = udata.SetupDecomp();
@@ -143,7 +146,8 @@ int main(int argc, char* argv[]) {
 
   // set initial conditions -- essentially-neutral primordial gas
   realtype Tmean = 2000.0;  // mean temperature in K
-  realtype Tamp = 1800.0;   // temperature amplitude in K
+  //  realtype Tamp = 3600.0;   // temperature amplitude in K
+  realtype Tamp = 0.0;   // temperature amplitude in K
   realtype tiny = 1e-20;
   realtype mH = 1.67e-24;
   realtype Hfrac = 0.76;
@@ -190,9 +194,9 @@ int main(int argc, char* argv[]) {
         de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // set varying temperature throughout domain, and convert to gas energy
-        T = Tmean + Tamp/3.0*( 2.0*(i+udata.is-udata.nx/2)/(udata.nx-1) +
-                               2.0*(j+udata.js-udata.ny/2)/(udata.ny-1) +
-                               2.0*(k+udata.ks-udata.nz/2)/(udata.nz-1) );
+        T = Tmean + ( Tamp*(i+udata.is-udata.nx/2)/(udata.nx-1) +
+                      Tamp*(j+udata.js-udata.ny/2)/(udata.ny-1) +
+                      Tamp*(k+udata.ks-udata.nz/2)/(udata.nz-1) )/3.0;
         ge = (kboltz * T * ndens) / (density * (gamma - ONE));
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
@@ -410,15 +414,18 @@ int main(int argc, char* argv[]) {
   //    set nonlinear tolerance safety factor
   retval = ARKStepSetNonlinConvCoef(arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
+
 #endif
 
   // Initial batch of outputs
-  double iostart = MPI_Wtime();
+  retval = udata.profile[PR_IO].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   //    Output initial conditions to disk (IMPLEMENT LATER, IF DESIRED)
 
   //    Output problem-specific diagnostic information
   print_info(arkode_mem, udata.t0, w, network_data, udata);
-  tinout += MPI_Wtime() - iostart;
+  retval = udata.profile[PR_IO].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // If (dense_order == -1), use tstop mode
   if (opts.dense_order == -1)
@@ -426,16 +433,18 @@ int main(int argc, char* argv[]) {
   else   // otherwise tell integrator to use dense output
     idense = 1;
 
-  // compute overall setup time
-  double tsetup = MPI_Wtime() - tstart;
-  tstart = MPI_Wtime();
+  // stop problem setup profiler
+  retval = udata.profile[PR_SETUP].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  N_Vector ele     = N_VNew_Serial(N);
-  N_Vector eweight = N_VNew_Serial(N);
-  N_Vector etest   = N_VNew_Serial(N);
+  // N_Vector ele     = N_VNew_Serial(N);
+  // N_Vector eweight = N_VNew_Serial(N);
+  // N_Vector etest   = N_VNew_Serial(N);
 
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
+  retval = udata.profile[PR_SIMUL].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
   int iout;
@@ -458,36 +467,40 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-    iostart = MPI_Wtime();
-    // output statistics to stdout
-    print_info(arkode_mem, t, w, network_data, udata);
-#ifdef USE_CVODE
-    retval = CVodeGetEstLocalErrors(arkode_mem, ele);
-    retval = CVodeGetErrWeights(arkode_mem, eweight);
-#else
-    retval = ARKStepGetEstLocalErrors(arkode_mem, ele);
-    retval = ARKStepGetErrWeights(arkode_mem, eweight);
-#endif
-    N_VProd(ele, eweight, etest);
-    N_VAbs(etest, etest);
-    if (N_VMaxNorm(etest) > 0.2) {
-      cout << "  Main components of local error:\n";
-      for (k=0; k<udata.nzl; k++)
-        for (j=0; j<udata.nyl; j++)
-          for (i=0; i<udata.nxl; i++)
-            for (l=0; l<udata.nchem; l++) {
-              idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-              if (NV_Ith_S(etest, idx) > 0.2) {
-                cout << "    etest(" << i << "," << j << "," << k << "," << l << ") = "
-                     << NV_Ith_S(etest, idx) << "\n";
-              }
-            }
-      cout << "\n";
-    }
+    // periodic output of solution/statistics
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-    // output results to disk
-    // TODO
-    tinout += MPI_Wtime() - iostart;
+    //    output statistics to stdout
+    print_info(arkode_mem, t, w, network_data, udata);
+// #ifdef USE_CVODE
+//     retval = CVodeGetEstLocalErrors(arkode_mem, ele);
+//     retval = CVodeGetErrWeights(arkode_mem, eweight);
+// #else
+//     retval = ARKStepGetEstLocalErrors(arkode_mem, ele);
+//     retval = ARKStepGetErrWeights(arkode_mem, eweight);
+// #endif
+//     N_VProd(ele, eweight, etest);
+//     N_VAbs(etest, etest);
+//     if (N_VMaxNorm(etest) > 0.2) {
+//       cout << "  Main components of local error:\n";
+//       for (k=0; k<udata.nzl; k++)
+//         for (j=0; j<udata.nyl; j++)
+//           for (i=0; i<udata.nxl; i++)
+//             for (l=0; l<udata.nchem; l++) {
+//               idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+//               if (NV_Ith_S(etest, idx) > 0.2) {
+//                 cout << "    etest(" << i << "," << j << "," << k << "," << l << ") = "
+//                      << NV_Ith_S(etest, idx) << "\n";
+//               }
+//             }
+//       cout << "\n";
+//     }
+
+    //    output results to disk
+    //    TODO
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   }
   if (outproc) fclose(DFID);
@@ -540,10 +553,12 @@ int main(int argc, char* argv[]) {
       }
 
   // compute simulation time
-  double tsimul = MPI_Wtime() - tstart;
+  retval = udata.profile[PR_SIMUL].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // Print some final statistics
   long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
+  double tsetup, tinout, tsimul, dtmp;
   nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
 #ifdef USE_CVODE
   retval = CVodeGetNumSteps(arkode_mem, &nst);
@@ -572,6 +587,12 @@ int main(int argc, char* argv[]) {
   retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
   if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
+  retval = udata.profile[PR_SETUP].cumulative_times(udata.comm, tsetup, dtmp, dtmp);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_IO].cumulative_times(udata.comm, tinout, dtmp, dtmp);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_SIMUL].cumulative_times(udata.comm, tsimul, dtmp, dtmp);
+  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
 
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
@@ -592,6 +613,9 @@ int main(int argc, char* argv[]) {
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
+  // N_VDestroy(ele);
+  // N_VDestroy(eweight);
+  // N_VDestroy(etest);
   SUNLinSolFree(LS);           // Free matrix and linear solver
   SUNMatDestroy(A);
 #ifdef USE_CVODE

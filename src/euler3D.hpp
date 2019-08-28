@@ -28,6 +28,7 @@
 #include <sundials/sundials_math.h>
 #include <mpi.h>
 #include <exception>
+#include <profiler.hpp>
 
 using namespace std;
 
@@ -71,6 +72,25 @@ using namespace std;
 #define  BC_NEUMANN    1
 #define  BC_DIRICHLET  2
 #define  BC_REFLECTING 3
+
+
+// profiler IDs used in code
+#define  MAXPROFILES  20
+
+#define  PR_MPI        0
+#define  PR_SETUP      1
+#define  PR_IO         2
+#define  PR_PACKDATA   3
+#define  PR_FACEFLUX   4
+#define  PR_RHSEULER   5
+#define  PR_RHSCHEM    6
+#define  PR_JACCHEM    7
+#define  PR_PREPFAST   8
+#define  PR_POSTFAST   9
+#define  PR_SIMUL     10
+#define  PR_DTSTAB    11
+//#define  PR_LSETUP    12   // add these later?? (would need user_data structure inside custom linear solver)
+//#define  PR_LSOLVE    13
 
 
 // Utility routine to check function return values:
@@ -126,6 +146,9 @@ class EulerData {
 public:
   ///// reaction network data structure /////
   void *RxNetData;
+
+  ///// code profilers /////
+  Profile profile[MAXPROFILES];
 
   ///// [sub]domain related data /////
   long int nx;          // global number of x grid points
@@ -260,6 +283,10 @@ public:
     truedims += (nx > 3) ? 1 : 0;
     truedims += (ny > 3) ? 1 : 0;
     truedims += (nz > 3) ? 1 : 0;
+
+    // start MPI profiler
+    retval = profile[PR_MPI].start();
+    if (check_flag(&retval, "Profile::start (SetupDecomp)", 1)) return -1;
 
     // get suggested parallel decomposition
     retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -403,6 +430,10 @@ public:
       if (check_flag(&retval, "MPI_Cart_rank (EulerData::SetupDecomp)", 3)) return -1;
     }
 
+    // stop MPI profiler
+    retval = profile[PR_MPI].stop();
+    if (check_flag(&retval, "Profile::stop (SetupDecomp)", 1)) return -1;
+
     return 0;     // return with success flag
   }
 
@@ -428,6 +459,10 @@ public:
       chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
       if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (ExchangeStart)", 0)) return -1;
     }
+
+    // start MPI profiler
+    retval = profile[PR_MPI].start();
+    if (check_flag(&retval, "Profile::start (ExchangeStart)", 1)) return -1;
 
     // initialize all requests in array
     for (i=0; i<12; i++)  req[i] = MPI_REQUEST_NULL;
@@ -613,6 +648,11 @@ public:
                          comm, req+11);
       if (check_flag(&retval, "MPI_Isend (EulerData::ExchangeStart)", 3)) return -1;
     }
+
+    // stop MPI profiler
+    retval = profile[PR_MPI].stop();
+    if (check_flag(&retval, "Profile::stop (ExchangeStart)", 1)) return -1;
+
 
     // if this process owns any external faces, fill ghost zones
     // to satisfy homogeneous Neumann boundary conditions
@@ -999,9 +1039,17 @@ public:
     MPI_Status stat[12];
     int retval;
 
+    // start MPI profiler
+    retval = profile[PR_MPI].start();
+    if (check_flag(&retval, "Profile::stop (ExchangeEnd)", 1)) return -1;
+
     // wait for messages to finish send/receive
     retval = MPI_Waitall(12, req, stat);
     if (check_flag(&retval, "MPI_Waitall (EulerData::ExchangeEnd)", 3)) return -1;
+
+    // stop MPI profiler
+    retval = profile[PR_MPI].stop();
+    if (check_flag(&retval, "Profile::stop (ExchangeEnd)", 1)) return -1;
 
     return 0;     // return with success flag
   }
@@ -1257,7 +1305,7 @@ int check_conservation(const realtype& t, const N_Vector w, const EulerData& uda
 
 //    Print solution statistics
 int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
-                void *arkode_mem, const EulerData& udata);
+                const int& scientific, void *arkode_mem, const EulerData& udata);
 
 //    Output current parameters
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,

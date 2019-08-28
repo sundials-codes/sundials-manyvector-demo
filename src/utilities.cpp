@@ -19,6 +19,11 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // access problem data
   EulerData *udata = (EulerData *) user_data;
 
+  // start Euler RHS timer
+  int retval;
+  retval = udata->profile[PR_RHSEULER].start();
+  if (check_flag(&retval, "Profile::start (fEuler)", 1)) return -1;
+
   // initialize output to zeros
   N_VConst(ZERO, wdot);
 
@@ -53,7 +58,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   }
 
   // Exchange boundary data with neighbors
-  int retval = udata->ExchangeStart(w);
+  retval = udata->ExchangeStart(w);
   if (check_flag(&retval, "ExchangeStart (fEuler)", 1)) return -1;
 
   // Initialize wdot with external forcing terms
@@ -79,22 +84,34 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
 
         // pack 1D x-directional array of variable shortcuts
+        udata->profile[PR_PACKDATA].start();
         udata->pack1D_x(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        udata->profile[PR_PACKDATA].stop();
         // compute flux at lower x-directional face
         idx = BUFIDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
+        udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
+        udata->profile[PR_FACEFLUX].stop();
 
         // pack 1D y-directional array of variable shortcuts
+        udata->profile[PR_PACKDATA].start();
         udata->pack1D_y(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        udata->profile[PR_PACKDATA].stop();
         // compute flux at lower y-directional face
         idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
+        udata->profile[PR_FACEFLUX].stop();
 
         // pack 1D z-directional array of variable shortcuts
+        udata->profile[PR_PACKDATA].start();
         udata->pack1D_z(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        udata->profile[PR_PACKDATA].stop();
         // compute flux at lower z-directional face
         idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
+        udata->profile[PR_FACEFLUX].stop();
 
       }
 
@@ -113,42 +130,65 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         // return with failure on non-positive density, energy or pressure
         idx = IDX(i,j,k,nxl,nyl,nzl);
         retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
-        if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
 
         // x-directional fluxes at "lower" face
+        udata->profile[PR_PACKDATA].start();
         udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        udata->profile[PR_PACKDATA].stop();
         idx = BUFIDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
+        udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
+        udata->profile[PR_FACEFLUX].stop();
 
         // x-directional fluxes at "upper" boundary face
         if (i == nxl-1) {
-          idx = BUFIDX(0,nxl,j,k,NVAR,nxl+1,nyl,nzl);
+          udata->profile[PR_PACKDATA].start();
           udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, chem, nxl, j, k);
+          udata->profile[PR_PACKDATA].stop();
+          idx = BUFIDX(0,nxl,j,k,NVAR,nxl+1,nyl,nzl);
+          udata->profile[PR_FACEFLUX].start();
           face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
+          udata->profile[PR_FACEFLUX].stop();
         }
 
         // y-directional fluxes at "lower" face
-        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        udata->profile[PR_PACKDATA].start();
         udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        udata->profile[PR_PACKDATA].stop();
+        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
+        udata->profile[PR_FACEFLUX].stop();
 
         // y-directional fluxes at "upper" boundary face
         if (j == nyl-1) {
-          idx = BUFIDX(0,i,nyl,k,NVAR,nxl,nyl+1,nzl);
+          udata->profile[PR_PACKDATA].start();
           udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, chem, i, nyl, k);
+          udata->profile[PR_PACKDATA].stop();
+          idx = BUFIDX(0,i,nyl,k,NVAR,nxl,nyl+1,nzl);
+          udata->profile[PR_FACEFLUX].start();
           face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
+          udata->profile[PR_FACEFLUX].stop();
         }
 
         // z-directional fluxes at "lower" face
-        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        udata->profile[PR_PACKDATA].start();
         udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
+        udata->profile[PR_PACKDATA].stop();
+        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
+        udata->profile[PR_FACEFLUX].stop();
 
         // z-directional fluxes at "upper" boundary face
         if (k == nzl-1) {
-          idx = BUFIDX(0,i,j,nzl,NVAR,nxl,nyl,nzl+1);
+          udata->profile[PR_PACKDATA].start();
           udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, chem, i, j, nzl);
+          udata->profile[PR_PACKDATA].stop();
+          idx = BUFIDX(0,i,j,nzl,NVAR,nxl,nyl,nzl+1);
+          udata->profile[PR_FACEFLUX].start();
           face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
+          udata->profile[PR_FACEFLUX].stop();
         }
 
       }
@@ -202,6 +242,10 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         }
 
       }
+
+  // stop Euler RHS timer
+  retval = udata->profile[PR_RHSEULER].stop();
+  if (check_flag(&retval, "Profile::stop (fEuler)", 1)) return -1;
 
   // return with success
   return 0;
@@ -440,6 +484,11 @@ int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
   // access problem data
   EulerData *udata = (EulerData *) user_data;
 
+  // start timer
+  int retval;
+  retval = udata->profile[PR_DTSTAB].start();
+  if (check_flag(&retval, "Profile::start (stability)", 1)) return -1;
+
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (stability)", 0)) return -1;
@@ -463,11 +512,15 @@ int stability(N_Vector w, realtype t, realtype* dt_stab, void* user_data)
   }
 
   // determine maximum wave speed over entire domain
-  int retval = MPI_Allreduce(MPI_IN_PLACE, &alpha, 1, MPI_SUNREALTYPE, MPI_MAX, udata->comm);
+  retval = MPI_Allreduce(MPI_IN_PLACE, &alpha, 1, MPI_SUNREALTYPE, MPI_MAX, udata->comm);
   if (check_flag(&retval, "MPI_Alleduce (stability)", 3)) MPI_Abort(udata->comm, 1);
 
   // compute maximum stable step size
   *dt_stab = (udata->cfl) * min(min(udata->dx, udata->dy), udata->dz) / alpha;
+
+  // stop timer
+  retval = udata->profile[PR_DTSTAB].stop();
+  if (check_flag(&retval, "Profile::stop (stability)", 1)) return -1;
 
   // return with success
   return(0);
