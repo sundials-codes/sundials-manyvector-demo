@@ -26,7 +26,13 @@ int initialize_Dengo_structures(EulerData& udata) {
   if (network_data == NULL)  return(1);
 
   // overwrite internal strip size
-  network_data->nstrip = udata.nxl * udata.nyl * udata.nzl;
+  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
+
+  // initialize 'scale' and 'inv_scale' to valid values
+  for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
+    network_data->scale[0][i] = ONE;
+    network_data->inv_scale[0][i] = ONE;
+  }
 
   // set redshift value for non-cosmological run
   network_data->current_z = -1.0;
@@ -42,7 +48,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
 
   // access data fields
-  long int v, i, j, k, idx;
+  long int i, j, k, idx;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -104,7 +110,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // initial condition values -- essentially-neutral primordial gas
   realtype Tmean = 2000.0;  // mean temperature in K
-  realtype Tamp = 1800.0;   // temperature amplitude in K
+  realtype Tamp = 0.0;      // temperature amplitude in K
   realtype tiny = 1e-20;
   realtype mH = 1.67e-24;
   realtype Hfrac = 0.76;
@@ -151,14 +157,14 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // set varying temperature throughout domain, and convert to gas energy
-        T = Tmean + Tamp/3.0*( 2.0*(i+udata.is-udata.nx/2)/(udata.nx-1) +
-                               2.0*(j+udata.js-udata.ny/2)/(udata.ny-1) +
-                               2.0*(k+udata.ks-udata.nz/2)/(udata.nz-1) );
+        T = Tmean + ( Tamp*(i+udata.is-udata.nx/2)/(udata.nx-1) +
+                      Tamp*(j+udata.js-udata.ny/2)/(udata.ny-1) +
+                      Tamp*(k+udata.ks-udata.nz/2)/(udata.nz-1) )/3.0;
         ge = (kboltz * T * ndens) / (density * (gamma - ONE));
 
         // insert chemical fields into initial condition vector,
         // converting to 'dimensionless' electron number density
-        idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         chem[idx+0] = nH2I;
         chem[idx+1] = nH2II;
         chem[idx+2] = nHI;
@@ -171,12 +177,12 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         chem[idx+9] = ge;
 
         // hydrodynamic fields share density and energy with chemical network;
-        // all velocities are zero.
+        // all velocities are zero.  However, we must convert units appropriately
         idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         mx[idx]  = ZERO;
         my[idx]  = ZERO;
         mz[idx]  = ZERO;
-        rho[idx] = density;
+        rho[idx] = density;   // STILL NEED TO CONVERT UNITS??
         et[idx]  = ge + 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
 
       }
@@ -227,8 +233,8 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
   realtype H2II_weight = 2*HI_weight;
   realtype m_amu = 1.66053904e-24;
 
-  // print current time and number of steps
-    printf("\nt = %.3e\n", t);
+  // print current time
+  printf("\nt = %.3e\n", t);
 
   // print solutions at first location
   printf("  chem[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",

@@ -454,11 +454,13 @@ int check_conservation(const realtype& t, const N_Vector w, const EulerData& uda
 
 
 // Utility routine to print solution statistics
-//    firstlast = 0 indicates the first output
-//    firstlast = 1 indicates a normal output
-//    firstlast = 2 indicates the lastoutput
+//   firstlast = { 0 indicates the first output
+//               { 1 indicates a normal output
+//               { 2 indicates the lastoutput
+//   scientific = { 0 use fixed-point notation
+//                { 1 use scientific notation
 int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
-                void *arkode_mem, const EulerData& udata)
+                const int& scientific, void *arkode_mem, const EulerData& udata)
 {
   realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
@@ -505,20 +507,26 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
   }
   if (!outproc)  return(0);
   if (firstlast == 0) {
-    cout << "\n        t     ||rho||_rms  ||mx||_rms  ||my||_rms  ||mz||_rms  ||et||_rms";
-    for (v=0; v<udata.nchem; v++)  cout << "  ||c" << v << "||_rms";
-    cout << "     nst\n";
+    cout << "\n      t       ||rho||   ||mx||    ||my||    ||mz||    ||et||   ";
+    for (v=0; v<udata.nchem; v++)  cout << " ||c" << v << "||   ";
+    cout << "   nst\n";
   }
   if (firstlast != 1) {
-    cout << "   -----------------------------------------------------------------------";
-    for (v=0; v<udata.nchem; v++)  cout << "------------";
-    cout << "----------\n";
+    cout <<   "   ------------------------------------------------------------";
+    for (v=0; v<udata.nchem; v++)  cout << "----------";
+    cout << "-------\n";
   }
   if (firstlast<2) {
-    printf("  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f  %10.6f", t,
-           totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
-    for (v=0; v<udata.nchem; v++)  printf("  %10.6f", totrms[5+v]);
-    printf("   %6li\n", nst);
+    if (scientific) {
+      printf("  %9.1e %9.1e %9.1e %9.1e %9.1e %9.1e", t,
+             totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
+      for (v=0; v<udata.nchem; v++)  printf(" %9.1e", totrms[5+v]);
+    } else {
+      printf(" %9.5f %9.5f %9.5f %9.5f %9.5f %9.5f", t,
+             totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
+      for (v=0; v<udata.nchem; v++)  printf(" %9.5f", totrms[5+v]);
+    }
+    printf("  %6li\n", nst);
   }
   return(0);
 }
