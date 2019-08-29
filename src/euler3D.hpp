@@ -83,9 +83,9 @@ using namespace std;
 #define  PR_PACKDATA   3
 #define  PR_FACEFLUX   4
 #define  PR_RHSEULER   5
-#define  PR_RHSCHEM    6
-#define  PR_JACCHEM    7
-#define  PR_PREPFAST   8
+#define  PR_RHSSLOW    6
+#define  PR_RHSFAST    7
+#define  PR_JACFAST    8
 #define  PR_POSTFAST   9
 #define  PR_SIMUL     10
 #define  PR_DTSTAB    11
