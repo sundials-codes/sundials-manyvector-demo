@@ -81,7 +81,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         // (only check this first time)
         idx = IDX(i,j,k,nxl,nyl,nzl);
         retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
-        if (check_flag(&retval, "legal_state (fEuler)", 1)) return -1;
+        if (check_flag(&retval, "legal_state (fEuler)", 4)) return -1;
 
         // pack 1D x-directional array of variable shortcuts
         udata->profile[PR_PACKDATA].start();
@@ -130,6 +130,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         // return with failure on non-positive density, energy or pressure
         idx = IDX(i,j,k,nxl,nyl,nzl);
         retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
+        if (check_flag(&retval, "legal_state (fEuler)", 4)) return -1;
 
         // x-directional fluxes at "lower" face
         udata->profile[PR_PACKDATA].start();
