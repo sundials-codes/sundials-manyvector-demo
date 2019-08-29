@@ -437,10 +437,6 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_SETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  // N_Vector ele     = N_VNew_Serial(N);
-  // N_Vector eweight = N_VNew_Serial(N);
-  // N_Vector etest   = N_VNew_Serial(N);
-
   /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
   retval = udata.profile[PR_SIMUL].start();
@@ -473,29 +469,6 @@ int main(int argc, char* argv[]) {
 
     //    output statistics to stdout
     print_info(arkode_mem, t, w, network_data, udata);
-// #ifdef USE_CVODE
-//     retval = CVodeGetEstLocalErrors(arkode_mem, ele);
-//     retval = CVodeGetErrWeights(arkode_mem, eweight);
-// #else
-//     retval = ARKStepGetEstLocalErrors(arkode_mem, ele);
-//     retval = ARKStepGetErrWeights(arkode_mem, eweight);
-// #endif
-//     N_VProd(ele, eweight, etest);
-//     N_VAbs(etest, etest);
-//     if (N_VMaxNorm(etest) > 0.2) {
-//       cout << "  Main components of local error:\n";
-//       for (k=0; k<udata.nzl; k++)
-//         for (j=0; j<udata.nyl; j++)
-//           for (i=0; i<udata.nxl; i++)
-//             for (l=0; l<udata.nchem; l++) {
-//               idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-//               if (NV_Ith_S(etest, idx) > 0.2) {
-//                 cout << "    etest(" << i << "," << j << "," << k << "," << l << ") = "
-//                      << NV_Ith_S(etest, idx) << "\n";
-//               }
-//             }
-//       cout << "\n";
-//     }
 
     //    output results to disk
     //    TODO
@@ -613,9 +586,6 @@ int main(int argc, char* argv[]) {
   // Clean up and return with successful completion
   N_VDestroy(w);               // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
-  // N_VDestroy(ele);
-  // N_VDestroy(eweight);
-  // N_VDestroy(etest);
   SUNLinSolFree(LS);           // Free matrix and linear solver
   SUNMatDestroy(A);
 #ifdef USE_CVODE
