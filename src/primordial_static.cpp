@@ -17,32 +17,6 @@
 #include <dengo_primordial_network.hpp>
 
 
-// Utility routine to initialize global Dengo data structures
-int initialize_Dengo_structures(EulerData& udata) {
-
-  // initialize primordial rate tables, etc
-  cvklu_data *network_data = NULL;
-  network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
-  if (network_data == NULL)  return(1);
-
-  // overwrite internal strip size
-  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
-
-  // initialize 'scale' and 'inv_scale' to valid values
-  for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
-    network_data->scale[0][i] = ONE;
-    network_data->inv_scale[0][i] = ONE;
-  }
-
-  // set redshift value for non-cosmological run
-  network_data->current_z = -1.0;
-
-  // store pointer to network_data in udata, and return
-  udata.RxNetData = (void*) network_data;
-  return(0);
-}
-
-
 // Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
@@ -183,7 +157,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         my[idx]  = ZERO;
         mz[idx]  = ZERO;
         rho[idx] = density;   // STILL NEED TO CONVERT UNITS??
-        et[idx]  = ge + 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
+        et[idx]  = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
 
       }
 
@@ -195,6 +169,62 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
 {
   N_VConst(ZERO, G);
   return 0;
+}
+
+// Utility routine to initialize global Dengo data structures
+int initialize_Dengo_structures(EulerData& udata) {
+
+  // initialize primordial rate tables, etc
+  cvklu_data *network_data = NULL;
+  network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
+  if (network_data == NULL)  return(1);
+
+  // overwrite internal strip size
+  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
+
+  // initialize 'scale' and 'inv_scale' to valid values
+  for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
+    network_data->scale[0][i] = ONE;
+    network_data->inv_scale[0][i] = ONE;
+  }
+
+  // set redshift value for non-cosmological run
+  network_data->current_z = -1.0;
+
+  // store pointer to network_data in udata, and return
+  udata.RxNetData = (void*) network_data;
+  return(0);
+}
+
+
+// Utility routine to prepare N_Vector solution and Dengo data structures
+// for subsequent chemical evolution
+int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
+{
+  long int i, j, k, l, idx;
+
+  // access Dengo data structure
+  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // access chemical solution fields
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+
+  // move current chemical solution values into 'network_data->scale' structure
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++)
+        for (l=0; l<udata.nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          network_data->scale[0][idx] = chem[idx];
+          network_data->inv_scale[0][idx] = ONE / chem[idx];
+          chem[idx] = ONE;
+        }
+
+  // compute auxiliary values within network_data structure
+  setting_up_extra_variables( network_data, network_data->scale[0], udata.nxl*udata.nyl*udata.nzl );
+
+  return(0);
 }
 
 // Diagnostics output for this test
@@ -220,18 +250,6 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
   realtype *chem = NULL;
   chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
-
-  // set some constants
-  realtype mH = 1.67e-24;
-  realtype HI_weight = 1.00794 * mH;
-  realtype HII_weight = 1.00794 * mH;
-  realtype HM_weight = 1.00794 * mH;
-  realtype HeI_weight = 4.002602 * mH;
-  realtype HeII_weight = 4.002602 * mH;
-  realtype HeIII_weight = 4.002602 * mH;
-  realtype H2I_weight = 2*HI_weight;
-  realtype H2II_weight = 2*HI_weight;
-  realtype m_amu = 1.66053904e-24;
 
   // print current time
   printf("\nt = %.3e\n", t);

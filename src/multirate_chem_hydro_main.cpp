@@ -54,17 +54,18 @@
 #endif
 
 
-// Initialization routine for Dengo data structure (provided in
-// specific test problem initializer)
+// Initialization and preparation routines for Dengo data structure
+// (provided in specific test problem initializer)
 int initialize_Dengo_structures(EulerData& udata);
+int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata);
 
 
 // user-provided functions called by the fast integrators
-static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data);
+static int ffast(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
-                 void *user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
-static int PrepareFast(realtype t, N_Vector y, void *user_data);
-static int PostprocessFast(realtype t, N_Vector y, void *user_data);
+                 void* user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
+static int fslow(realtype t, N_Vector w, N_Vector wdot, void* user_data);
+// static int PostprocessFast(realtype t, N_Vector y, void* user_data);
 
 // custom Block-Diagonal MPIManyVector SUNLinearSolver module
 typedef struct _BDMPIMVContent {
@@ -90,7 +91,7 @@ long int SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
 int main(int argc, char* argv[]) {
 
 #ifdef DEBUG
-  //feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
   // general problem parameters
@@ -222,12 +223,16 @@ int main(int argc, char* argv[]) {
     restart = 0;
   } else {
     retval = udata.profile[PR_IO].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = read_restart(restart, udata.t0, w, udata);
     if (check_flag(&retval, "read_restart (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
+
+  // prepare Dengo structures and initial condition vector for fast time scale evolution
+  retval = prepare_Dengo_structures(udata.t0, w, udata);
+  if (check_flag(&retval, "prepare_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
   //--- create the fast integrator and set options ---//
@@ -329,7 +334,7 @@ int main(int argc, char* argv[]) {
   //--- create the slow integrator and set options ---//
 
   // initialize the integrator memory
-  outer_arkode_mem = MRIStepCreate(fEuler, udata.t0, w, MRISTEP_ARKSTEP, inner_arkode_mem);
+  outer_arkode_mem = MRIStepCreate(fslow, udata.t0, w, MRISTEP_ARKSTEP, inner_arkode_mem);
   if (check_flag((void*) outer_arkode_mem, "MRIStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -346,16 +351,14 @@ int main(int argc, char* argv[]) {
   retval = MRIStepSetFixedStep(outer_arkode_mem, hslow);
   if (check_flag(&retval, "MRIStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // set routines to transfer information between slow/fast scales
-  retval = MRIStepSetPreInnerFn(outer_arkode_mem, PrepareFast);
-  if (check_flag(&retval, "MRIStepSetPreInnerFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = MRIStepSetPostInnerFn(outer_arkode_mem, PostprocessFast);
-  if (check_flag(&retval, "MRIStepSetPostInnerFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  // // set routine to transfer solution information from fast to slow scale
+  // retval = MRIStepSetPostInnerFn(outer_arkode_mem, PostprocessFast);
+  // if (check_flag(&retval, "MRIStepSetPostInnerFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
   //--- Initial batch of outputs ---//
   retval = udata.profile[PR_IO].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    Output initial conditions to disk
   retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
@@ -371,27 +374,32 @@ int main(int argc, char* argv[]) {
   retval = output_diagnostics(udata.t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_IO].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // stop problem setup profiler
   retval = udata.profile[PR_SETUP].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
   /* Main time-stepping loop: calls MRIStepEvolve to perform the integration, then
      prints results.  Stops when the final time has been reached */
   retval = udata.profile[PR_SIMUL].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
   realtype hcur;
   if (udata.showstats) {
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = print_stats(t, w, 0, 1, outer_arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   int iout;
   for (iout=restart; iout<restart+udata.nout; iout++) {
 
+    cout << "Calling MRIStepEvolve with tout = " << tout << " (hslow = " << hslow << ")\n";
     retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
     if (retval >= 0) {                                            // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
@@ -403,7 +411,7 @@ int main(int argc, char* argv[]) {
 
     // periodic output of solution/statistics
     retval = udata.profile[PR_IO].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
     //    output statistics to stdout
     if (udata.showstats) {
@@ -421,16 +429,16 @@ int main(int argc, char* argv[]) {
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   }
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = print_stats(t, w, 2, 1, outer_arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (outproc) {
     fclose(DFID_OUTER);
@@ -439,7 +447,7 @@ int main(int argc, char* argv[]) {
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Get some slow integrator statistics
   long int nsts, nfs;
@@ -468,12 +476,12 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Get profiling information
-  double tmpi_av, tinit_av, tio_av, tpack_av, tflux_av, tfs_av, tff_av, tJf_av,
-    tprep_av, tpost_av, tsim_av, tstab_av;
-  double tmpi_mn, tinit_mn, tio_mn, tpack_mn, tflux_mn, tfs_mn, tff_mn, tJf_mn,
-    tprep_mn, tpost_mn, tsim_mn, tstab_mn;
-  double tmpi_mx, tinit_mx, tio_mx, tpack_mx, tflux_mx, tfs_mx, tff_mx, tJf_mx,
-    tprep_mx, tpost_mx, tsim_mx, tstab_mx;
+  double tmpi_av, tinit_av, tio_av, tpack_av, tflux_av, tfs_av, tfE_av, tff_av, tJf_av,
+    tpost_av, tsim_av, tstab_av;
+  double tmpi_mn, tinit_mn, tio_mn, tpack_mn, tflux_mn, tfs_mn, tfE_mn, tff_mn, tJf_mn,
+    tpost_mn, tsim_mn, tstab_mn;
+  double tmpi_mx, tinit_mx, tio_mx, tpack_mx, tflux_mx, tfs_mx, tfE_mx, tff_mx, tJf_mx,
+    tpost_mx, tsim_mx, tstab_mx;
   retval = udata.profile[PR_MPI].cumulative_times(udata.comm, tmpi_av, tmpi_mn, tmpi_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP].cumulative_times(udata.comm, tinit_av, tinit_mn, tinit_mx);
@@ -484,13 +492,13 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_FACEFLUX].cumulative_times(udata.comm, tflux_av, tflux_mn, tflux_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_RHSEULER].cumulative_times(udata.comm, tfs_av, tfs_mn, tfs_mx);
+  retval = udata.profile[PR_RHSEULER].cumulative_times(udata.comm, tfE_av, tfE_mn, tfE_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_RHSCHEM].cumulative_times(udata.comm, tff_av, tff_mn, tff_mx);
+  retval = udata.profile[PR_RHSSLOW].cumulative_times(udata.comm, tfs_av, tfs_mn, tfs_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_JACCHEM].cumulative_times(udata.comm, tJf_av, tJf_mn, tJf_mx);
+  retval = udata.profile[PR_RHSFAST].cumulative_times(udata.comm, tff_av, tff_mn, tff_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_PREPFAST].cumulative_times(udata.comm, tprep_av, tprep_mn, tprep_mx);
+  retval = udata.profile[PR_JACFAST].cumulative_times(udata.comm, tJf_av, tJf_mn, tJf_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_POSTFAST].cumulative_times(udata.comm, tpost_av, tpost_mn, tpost_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -508,8 +516,6 @@ int main(int argc, char* argv[]) {
     cout << "   Total number of fast error test failures = " << netf << "\n";
     if (nls > 0)
       cout << "   Total number of fast lin solv setups = " << nls << "\n";
-    if (nls > 0)
-      cout << "   Total number of fast lin solv setups = " << nls << "\n";
     if (nni > 0) {
       cout << "   Total number of fast nonlin iters = " << nni << "\n";
       cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
@@ -525,14 +531,14 @@ int main(int argc, char* argv[]) {
          << "  \t(min/max = " << tpack_mn << "/" << tpack_mx << ")\n"
          << "   Total flux time       = " << tflux_av
          << "  \t(min/max = " << tflux_mn << "/" << tflux_mx << ")\n"
+         << "   Total Euler RHS time  = " << tfE_av
+         << "  \t(min/max = " << tfE_mn << "/" << tfE_mx << ")\n"
          << "   Total slow RHS time   = " << tfs_av
          << "  \t(min/max = " << tfs_mn << "/" << tfs_mx << ")\n"
          << "   Total fast RHS time   = " << tff_av
          << "  \t(min/max = " << tff_mn << "/" << tff_mx << ")\n"
          << "   Total fast Jac time   = " << tJf_av
          << "  \t(min/max = " << tJf_mn << "/" << tJf_mx << ")\n"
-         << "   Total fast prep time  = " << tprep_av
-         << "  \t(min/max = " << tprep_mn << "/" << tprep_mx << ")\n"
          << "   Total fast post time  = " << tpost_av
          << "  \t(min/max = " << tpost_mn << "/" << tpost_mx << ")\n"
          << "   Total dt_stab time    = " << tstab_av
@@ -570,11 +576,11 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
   // start timer
   EulerData *udata = (EulerData*) user_data;
-  int retval = udata->profile[PR_RHSCHEM].start();
+  int retval = udata->profile[PR_RHSFAST].start();
   if (check_flag(&retval, "Profile::start (ffast)", 1)) return(-1);
 
-  // initialize all outputs to zero (necessary??)
-  //N_VConst(ZERO, wdot);
+  // initialize all outputs to zero (necessary!!)
+  N_VConst(ZERO, wdot);
 
   // unpack chemistry subvectors
   N_Vector wchem = NULL;
@@ -589,7 +595,7 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   if (check_flag(&retval, "calculate_rhs_cvklu (ffast)", 1)) return(retval);
 
   // stop timer and return
-  retval = udata->profile[PR_RHSCHEM].stop();
+  retval = udata->profile[PR_RHSFAST].stop();
   if (check_flag(&retval, "Profile::stop (ffast)", 1)) return(-1);
   return(0);
 }
@@ -599,7 +605,7 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 {
   // start timer
   EulerData *udata = (EulerData*) user_data;
-  int retval = udata->profile[PR_JACCHEM].start();
+  int retval = udata->profile[PR_JACFAST].start();
   if (check_flag(&retval, "Profile::start (Jfast)", 1)) return(-1);
 
   // unpack chemistry subvectors
@@ -624,131 +630,117 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                                            tmp1chem, tmp2chem, tmp3chem);
 
   // stop timer and return
-  retval = udata->profile[PR_JACCHEM].stop();
+  retval = udata->profile[PR_JACFAST].stop();
   if (check_flag(&retval, "Profile::stop (Jfast)", 1)) return(-1);
   return(0);
 }
 
-
-//---- prepare/postprocess routines for fast time scale solver ----
-// These routines bring the disparate fast/slow energy definitions into harmony,
-// and update the relevant Dengo data structures for the ensuing evolution
-
-static int PrepareFast(realtype t, N_Vector w, void *user_data)
+static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, l, idx;
-  realtype ge;
-
-  cout << "Entering PrepareFast\n";
-
-  // access user_data structure and Dengo data structure
-  EulerData *udata = (EulerData*) user_data;
-  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
+  long int i, j, k, l, idx, idx2;
 
   // start timer
-  int retval = udata->profile[PR_PREPFAST].start();
-  if (check_flag(&retval, "Profile::start (PrepareFast)", 1)) return(-1);
+  EulerData *udata = (EulerData*) user_data;
+  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
+  int retval = udata->profile[PR_RHSSLOW].start();
+  if (check_flag(&retval, "Profile::start (fslow)", 1)) return(-1);
 
-  // access solution fields
-  realtype *rho  = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho,  "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
-  realtype *mx   = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
-  realtype *my   = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
-  realtype *mz   = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
-  realtype *et   = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et,   "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  // initialize all outputs to zero (necessary??)
+  N_VConst(ZERO, wdot);
+
+  // access data arrays
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PrepareFast)", 0)) return -1;
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *rhodot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,0);
+  if (check_flag((void *) rhodot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *mxdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,1);
+  if (check_flag((void *) mxdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *mydot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,2);
+  if (check_flag((void *) mydot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *mzdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,3);
+  if (check_flag((void *) mzdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
+  if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  realtype *chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
+  if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
 
-  // set chemistry gas energy (always the last field in chem) to match fluid total energy
+  // update chem to include network_data->scale, and fill total fluid energy field (internal energy + kinetic energy)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
+        for (l=0; l<udata->nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+          chem[idx] *= network_data->scale[0][idx];
+        }
+        realtype ge = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)];
         idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        ge = et[idx] - 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
-        if (ge < ZERO)  return(-1);
-        chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)] = ge;
+        et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
       }
 
-  // ??? Update chemistry density fields to match total density field      ???
-  // ??? (this should not be necessary if chemistry is advected correctly) ???
+  // call fEuler as usual
+  retval = fEuler(t, w, wdot, user_data);
+  if (check_flag(&retval, "fEuler (fslow)", 1)) return(retval);
 
-  // move current chemical solution values into 'network_data->scale' structure
+  // overwrite chemistry energy "fslow" with total energy "fslow", with
+  // appropriate unit scaling (unnecessary??), and zero out total energy fslow
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++) {
+        idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        idx2 = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        chemdot[idx] = etdot[idx2];
+        etdot[idx2] = ZERO;
+      }
+
+  // reset chem[i] /= network_data->scale[i]
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++)
         for (l=0; l<udata->nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-          network_data->scale[0][idx] = chem[idx];
-          network_data->inv_scale[0][idx] = ONE / chem[idx];
-          chem[idx] = ONE;
+          chem[idx] /= network_data->scale[0][idx];
         }
 
-  // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, network_data->scale[0],
-                              (udata->nxl)*(udata->nyl)*(udata->nzl) );
-
   // stop timer and return
-  retval = udata->profile[PR_PREPFAST].stop();
-  if (check_flag(&retval, "Profile::stop (PrepareFast)", 1)) return(-1);
+  retval = udata->profile[PR_RHSSLOW].stop();
+  if (check_flag(&retval, "Profile::stop (fslow)", 1)) return(-1);
   return(0);
 }
 
 
-static int PostprocessFast(realtype t, N_Vector w, void *user_data)
-{
-  long int i, j, k, l, idx, idx2;
+//---- postprocess routine to bring solution information from fast to slow time scale memory
 
-  cout << "Entering PostprocessFast\n";
+// static int PostprocessFast(realtype t, N_Vector w, void *user_data)
+// {
+//   long int i, j, k, l, idx, idx2;
 
-  // access user_data structure and Dengo data structure
-  EulerData *udata = (EulerData*) user_data;
-  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
+//   cout << "Entering PostprocessFast\n";
 
-  // start timer
-  int retval = udata->profile[PR_POSTFAST].start();
-  if (check_flag(&retval, "Profile::start (PostprocessFast)", 1)) return(-1);
+//   // access user_data structure and Dengo data structure
+//   EulerData *udata = (EulerData*) user_data;
+//   cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
 
-  // access fluid data fields
-  realtype *rho  = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho,  "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
-  realtype *mx   = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
-  realtype *my   = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
-  realtype *mz   = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
-  realtype *et   = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et,   "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PostprocessFast)", 0)) return -1;
+//   // start timer
+//   int retval = udata->profile[PR_POSTFAST].start();
+//   if (check_flag(&retval, "Profile::start (PostprocessFast)", 1)) return(-1);
 
-  // move 'scale' values back into N_Vector data
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++)
-        for (l=0; l<udata->nchem; l++) {
-          idx = BUFIDX(0,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-          chem[idx] *= (network_data->scale[0][idx]);
-        }
+//   // copy chemistry solution values from device to host
 
-  // update fluid total energy to match current value of chemistry gas energy
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[idx] = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)]
-                + 0.5*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx])/(rho[idx]*rho[idx]);
-      }
-
-  // stop timer and return
-  retval = udata->profile[PR_POSTFAST].stop();
-  if (check_flag(&retval, "Profile::stop (PostprocessFast)", 1)) return(-1);
-  return(0);
-}
+//   // stop timer and return
+//   retval = udata->profile[PR_POSTFAST].stop();
+//   if (check_flag(&retval, "Profile::stop (PostprocessFast)", 1)) return(-1);
+//   return(0);
+// }
 
 
 //---- custom SUNLinearSolver module ----
