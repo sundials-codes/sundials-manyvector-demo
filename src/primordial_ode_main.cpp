@@ -55,8 +55,6 @@ int main(int argc, char* argv[]) {
   int retval;                    // reusable error-checking flag
   int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int imex;                      // flag denoting class of method (0=implicit, 1=explicit, 2=IMEX)
-  int fixedpt;                   // flag denoting use of fixed-point nonlinear solver
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled here)
   int nprocs;                    // total number of MPI processes
@@ -127,8 +125,7 @@ int main(int argc, char* argv[]) {
 
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
-  if (outproc)
-    DFID=fopen("diags_primordial_ode.txt","w");
+  if (outproc)  DFID=fopen("diags_primordial_ode.txt","w");
 
   // initialize primordial rate tables, etc
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);

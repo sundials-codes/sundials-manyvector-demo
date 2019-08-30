@@ -37,7 +37,6 @@
 #include <arkode/arkode_arkstep.h>
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#include <stdio.h>
 
 #ifdef DEBUG
 #include "fenv.h"
@@ -81,7 +80,7 @@ long int SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
 int main(int argc, char* argv[]) {
 
 #ifdef DEBUG
-  //feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
   // general problem parameters
@@ -328,12 +327,6 @@ int main(int argc, char* argv[]) {
   // set nonlinear tolerance safety factor
   retval = ARKStepSetNonlinConvCoef(arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
-
-
-
-  retval = ARKStepWriteParameters(arkode_mem, stdout);
-  if (check_flag(&retval, "ARKStepWriteParameters (main)", 1)) MPI_Abort(udata.comm, 1);
-
 
 
   //--- Initial batch of outputs ---//

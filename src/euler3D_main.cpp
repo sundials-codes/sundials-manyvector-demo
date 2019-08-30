@@ -31,7 +31,6 @@ int main(int argc, char* argv[]) {
   int retval;                    // reusable error-checking flag
   int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int fixedpt;                   // flag denoting use of fixed-point nonlinear solver
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vectors for storing overall solution
@@ -87,6 +86,7 @@ int main(int argc, char* argv[]) {
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
   }
+#ifdef DEBUG
   if (udata.showstats) {
     retval = MPI_Barrier(udata.comm);
     if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
@@ -94,11 +94,11 @@ int main(int argc, char* argv[]) {
     retval = MPI_Barrier(udata.comm);
     if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   }
+#endif
 
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
-  if (outproc)
-    DFID=fopen("diags_euler3D.txt","w");
+  if (outproc)  DFID=fopen("diags_euler3D.txt","w");
 
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -261,8 +261,12 @@ int main(int argc, char* argv[]) {
   realtype tout = udata.t0+dTout;
   realtype hcur;
   if (udata.showstats) {
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = print_stats(t, w, 0, 0, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   int iout;
   for (iout=restart; iout<restart+udata.nout; iout++) {
@@ -309,15 +313,15 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   }
-  if (outproc) fclose(DFID);
+  if (outproc)  fclose(DFID);
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // Get some integrator statistics
-  long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
-  nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
+  long int nst, nst_a, nfe, nfi, netf;
+  nst = nst_a = nfe = nfi = netf = 0;
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
@@ -326,10 +330,6 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
-  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
-  if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Get profiling information
   double tinit_av, tio_av, tsim_av, tmpi_av, tpack_av, tflux_av, trhs_av, tstab_av;
@@ -357,12 +357,6 @@ int main(int argc, char* argv[]) {
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    if (nls > 0)
-      cout << "   Total number of lin solv setups = " << nls << "\n";
-    if (nni > 0) {
-      cout << "   Total number of nonlin iters = " << nni << "\n";
-      cout << "   Total number of nonlin conv fails = " << ncf << "\n";
-    }
     cout << "\nProfiling Results:\n"
          << "   Total setup time      = " << tinit_av
          << "  \t(min/max = " << tinit_mn << "/" << tinit_mx << ")\n"

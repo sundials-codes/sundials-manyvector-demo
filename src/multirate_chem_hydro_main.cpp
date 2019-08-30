@@ -33,12 +33,6 @@
  and the MPIManyVector subvector index are provided in the module
  'constructor'.  Here, we use the KLU SUNLinearSolver module for
  the block on each rank.
-
- REMAINING TO-DO ITEMS:
-
- 1. Need MRIStep "Set" routines for user-supplied Pre/Post-processing
-    functions to prepare fast solver, and to convert fast solver data
-    back to slow scale.
  ---------------------------------------------------------------*/
 
 // Header files
@@ -100,9 +94,6 @@ int main(int argc, char* argv[]) {
 
   // general problem variables
   int retval;                    // reusable error-checking flag
-  int dense_order;               // dense output order of accuracy
-  int imex;                      // flag denoting class of method (0=implicit, 1=explicit, 2=IMEX)
-  int fixedpt;                   // flag denoting use of fixed-point nonlinear solver
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vectors for storing overall solution
@@ -133,7 +124,6 @@ int main(int argc, char* argv[]) {
   // read problem and solver parameters from input file / command line
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-  if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
   realtype dTout = (udata.tf-udata.t0)/(udata.nout);
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
@@ -155,7 +145,7 @@ int main(int argc, char* argv[]) {
   // Output problem setup information
   bool outproc = (udata.myid == 0);
   if (outproc) {
-    cout << "\n3D compressible inviscid Euler + primordial chemistry driver:\n";
+    cout << "\n3D compressible inviscid Euler + primordial chemistry driver (multirate):\n";
     cout << "   nprocs: " << udata.nprocs << " (" << udata.npx << " x "
          << udata.npy << " x " << udata.npz << ")\n";
     cout << "   spatial domain: [" << udata.xl << ", " << udata.xr << "] x ["
@@ -175,6 +165,7 @@ int main(int argc, char* argv[]) {
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
   }
+#ifdef DEBUG
   if (udata.showstats) {
     retval = MPI_Barrier(udata.comm);
     if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
@@ -182,6 +173,7 @@ int main(int argc, char* argv[]) {
     retval = MPI_Barrier(udata.comm);
     if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   }
+#endif
 
   // open solver diagnostics output files for writing
   FILE *DFID_OUTER = NULL;
@@ -399,7 +391,6 @@ int main(int argc, char* argv[]) {
   int iout;
   for (iout=restart; iout<restart+udata.nout; iout++) {
 
-    cout << "Calling MRIStepEvolve with tout = " << tout << " (hslow = " << hslow << ")\n";
     retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
     if (retval >= 0) {                                            // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
@@ -500,8 +491,8 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_JACFAST].cumulative_times(udata.comm, tJf_av, tJf_mn, tJf_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_POSTFAST].cumulative_times(udata.comm, tpost_av, tpost_mn, tpost_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
+  // retval = udata.profile[PR_POSTFAST].cumulative_times(udata.comm, tpost_av, tpost_mn, tpost_mx);
+  // if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SIMUL].cumulative_times(udata.comm, tsim_av, tsim_mn, tsim_mx);
   if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_DTSTAB].cumulative_times(udata.comm, tstab_av, tstab_mn, tstab_mx);
@@ -539,8 +530,8 @@ int main(int argc, char* argv[]) {
          << "  \t(min/max = " << tff_mn << "/" << tff_mx << ")\n"
          << "   Total fast Jac time   = " << tJf_av
          << "  \t(min/max = " << tJf_mn << "/" << tJf_mx << ")\n"
-         << "   Total fast post time  = " << tpost_av
-         << "  \t(min/max = " << tpost_mn << "/" << tpost_mx << ")\n"
+         // << "   Total fast post time  = " << tpost_av
+         // << "  \t(min/max = " << tpost_mn << "/" << tpost_mx << ")\n"
          << "   Total dt_stab time    = " << tstab_av
          << "  \t(min/max = " << tstab_mn << "/" << tstab_mx << ")\n"
          << "   Total simulation time = " << tsim_av
