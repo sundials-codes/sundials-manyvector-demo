@@ -79,7 +79,8 @@ TESTS = communication_test_fluid.exe \
         linear_advection_z.exe \
         primordial_ode.exe \
         primordial_ode_CVODE.exe \
-        primordial_static.exe \
+        primordial_static_imex.exe \
+        primordial_static_mr.exe \
         rayleigh_taylor.exe \
         sod_x.exe \
         sod_y.exe \
@@ -173,7 +174,10 @@ primordial_ode.exe : primordial_ode_main.cpp dengo_primordial_network.cpp ${COMM
 primordial_ode_CVODE.exe : primordial_ode_main.cpp dengo_primordial_network.cpp ${COMMONOBJ}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DUSE_CVODE ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-primordial_static.exe : primordial_static.cpp multirate_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
+primordial_static_imex.exe : primordial_static.cpp imex_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
+	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DNVAR=15 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+primordial_static_mr.exe : primordial_static.cpp multirate_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DNVAR=15 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 
