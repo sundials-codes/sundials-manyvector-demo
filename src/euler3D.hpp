@@ -18,8 +18,8 @@
 #include <iostream>
 #include <utility>
 #include <string>
-#include <stdlib.h>
-#include <math.h>
+#include <cstdlib>
+#include <cmath>
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_manyvector.h>
 #include <nvector/nvector_parallel.h>
