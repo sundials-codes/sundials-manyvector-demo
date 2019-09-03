@@ -1,5 +1,6 @@
 # ---------------------------------------------------------------
-# Programmer: Daniel R. Reynolds @ SMU
+# Programmer(s): Daniel R. Reynolds @ SMU
+#                David J. Gardner @ LLNL
 # ---------------------------------------------------------------
 # SUNDIALS Copyright Start
 # Copyright (c) 2002-2019, Lawrence Livermore National Security
@@ -14,14 +15,23 @@
 
 cmake_minimum_required(VERSION 3.10)
 
+# prohibit in-source build
+if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
+  message(FATAL_ERROR "In-source build prohibited.")
+endif()
+
 # set the project name and default languages
 project(SUNDIALS-MANYVECTOR-MRISTEP-DEMONSTRATION C CXX)
 
-# # build options
+# build options
 # option(ENABLE_CUDA "Enable CUDA" OFF)
 # option(ENABLE_RAJA "Enable RAJA" OFF)
 # option(ENABLE_OpenMP "Enable OpenMP" OFF)
 # option(ENABLE_OpenMP_DEVICE "Enable OpenMP device offloading" OFF)
+option(ENABLE_HDF5 "Enable HDF5" OFF)
+
+# location of additional CMake modules
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # create a root target
 add_library(mpimanyvectordemo INTERFACE)
@@ -32,6 +42,9 @@ target_compile_features(mpimanyvectordemo INTERFACE cxx_std_11)
 find_package(MPI REQUIRED)
 set(CMAKE_C_COMPILER ${MPI_C_COMPILER})
 set(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
+
+# check for SUNDIALS
+find_package(SUNDIALS REQUIRED)
 
 # # check for CUDA
 # if(ENABLE_CUDA)
@@ -66,12 +79,17 @@ set(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
 #                REQUIRED)
 # endif()
 
-# check for SUNDIALS
-include(cmake/SundialsConfig.cmake)
+# find HDF5
+if(ENABLE_HDF5)
+  find_package(HDF5 REQUIRED COMPONENTS C HL)
+endif()
 
 # set executable targets and dependencies
-add_executable(communication_test_fluid.exe compile_test.cpp utilities.cpp io.cpp gopt.cpp)
-target_link_libraries(communication_test_fluid.exe PRIVATE mpimanyvectordemo
-                      SUNDIALS::nvecmpimanyvector
-                      SUNDIALS::nvecparallel
-                      SUNDIALS::nvecserial)
+# add_executable(communication_test_fluid.exe compile_test.cpp utilities.cpp io.cpp gopt.cpp)
+# target_link_libraries(communication_test_fluid.exe PRIVATE mpimanyvectordemo
+#                       SUNDIALS::nvecmpimanyvector
+#                       SUNDIALS::nvecparallel
+#                       SUNDIALS::nvecserial)
+
+# add source directory
+add_subdirectory(src)

@@ -47,3 +47,5 @@ diags*.txt
 *.png
 restart_parameters.txt
 
+# build directory
+build/
