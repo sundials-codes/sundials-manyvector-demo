@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------
- Programmer(s): Daniel R. Reynolds @ SMU
+ Programmer(s): Daniel R. Reynolds @ SMU, Cody J. Balos @ LLNL
  ----------------------------------------------------------------
  Copyright (c) 2019, Southern Methodist University.
  All rights reserved.
@@ -14,21 +14,36 @@
 
 // Header files
 #include <mpi.h>
-
+#include <fstream>
+#include <iostream>
+#include <string>
 
 // Profiling class
 class Profile {
 
 private:
 
-  double   stime;   // process-local start time for this profile
+  std::string description; // profile description
+  double   stime;          // process-local start time for this profile
 
 public:
 
   double   time;    // accumulated process-local time for this profile
   long int count;   // total process-local calls for this profile
 
-  Profile(): stime(-1.0), time(0.0), count(0) {};
+  static const int PRINT_ALL_RANKS = -1;
+
+  Profile(): stime(-1.0), time(0.0), count(0), description("") {};
+
+  void desc(const std::string& str)
+  {
+    description = str;
+  }
+
+  std::string desc() const
+  {
+    return description;
+  }
 
   // starts the local profiler clock; returns 0 on success and 1 on failure
   int start()
@@ -82,6 +97,70 @@ public:
     if (retval != MPI_SUCCESS)  return(1);
     tmean /= nprocs;
     return(0);
+  }
+
+  void print_average_times(MPI_Comm comm = MPI_COMM_WORLD, std::ostream& outf = std::cout, int outrank = 0)
+  {
+    int rank;
+    double tmean, tmin, tmax;
+
+    MPI_Comm_rank(comm, &rank);
+    bool output = (outrank == PRINT_ALL_RANKS) ? true : (rank == outrank);
+
+    int err = average_times(comm, tmean, tmin, tmax);
+    if (err && output) {
+      std::cerr << "ERROR: Profile::print_average_times()" << std::endl;
+    } else if (output) {
+      outf << "mean/min/max time (averaged) for " << description << std::endl;
+      outf << "   mean = " << tmean << "s" << std::endl;
+      outf << "   min  = " << tmin << "s" << std::endl;
+      outf << "   max  = " << tmax << "s" << std::endl;
+    }
+  }
+
+  void print_cumulative_times(MPI_Comm comm = MPI_COMM_WORLD, std::ostream& outf = std::cout, int outrank = 0)
+  {
+    int rank;
+    double tmean, tmin, tmax;
+
+    MPI_Comm_rank(comm, &rank);
+    bool output = (outrank == PRINT_ALL_RANKS) ? true : (rank == outrank);
+
+    int err = cumulative_times(comm, tmean, tmin, tmax);
+    if (err && output) {
+      std::cerr << "ERROR: Profile::print_cumulative_times()" << std::endl;
+    } else if (output) {
+      outf << "mean/min/max time (cumulative) for " << description << std::endl;
+      outf << "   mean = " << tmean << "s" << std::endl;
+      outf << "   min  = " << tmin << "s" << std::endl;
+      outf << "   max  = " << tmax << "s" << std::endl;
+    }
+  }
+
+  void export_to_file(std::ofstream& outf, MPI_Comm comm = MPI_COMM_WORLD, int outrank = 0)
+  {
+    int rank;
+    double tmean, tmin, tmax;
+
+    MPI_Comm_rank(comm, &rank);
+    bool output = (outrank == PRINT_ALL_RANKS) ? true : (rank == outrank);
+
+    outf << description << std::endl;
+    outf << "averaged mean," << "averaged min,"  << "averaged max,"
+         << "cumulative mean," << "cumulative min," << "cumulative max" << std::endl;
+
+    int err = average_times(comm, tmean, tmin, tmax);
+    if (err && output) {
+      std::cerr << "ERROR: Profile::export_to_file()" << std::endl;
+    } else if (output) {
+      outf << tmean << "," << tmin  << "," << tmax << ",";
+    }
+    err = cumulative_times(comm, tmean, tmin, tmax);
+    if (err && output) {
+      std::cerr << "ERROR: Profile::export_to_file()" << std::endl;
+    } else if (output) {
+      outf << tmean << "," << tmin  << "," << tmax << std::endl;
+    }
   }
 
 };  // end Profile
