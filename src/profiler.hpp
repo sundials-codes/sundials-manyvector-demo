@@ -16,6 +16,7 @@
 #include <mpi.h>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <string>
 
 // Profiling class
@@ -99,6 +100,24 @@ public:
     return(0);
   }
 
+  void print_average_times(const std::string& str = "", MPI_Comm comm = MPI_COMM_WORLD,
+                           std::ostream& outf = std::cout, int outrank = 0)
+  {
+    int rank;
+    double tmean, tmin, tmax;
+
+    MPI_Comm_rank(comm, &rank);
+    bool output = (outrank == PRINT_ALL_RANKS) ? true : (rank == outrank);
+
+    int err = average_times(comm, tmean, tmin, tmax);
+    if (err && output) {
+      std::cerr << "ERROR: Profile::print_average_times()" << std::endl;
+    } else if (output) {
+      outf << "Average " << str << " time = \t" << std::scientific << std::setprecision(2)
+           << tmean << "  ( min / max  =  " << tmin << " / " << tmax << " )" << std::endl;
+    }
+  }
+
   void print_average_times(MPI_Comm comm = MPI_COMM_WORLD, std::ostream& outf = std::cout, int outrank = 0)
   {
     int rank;
@@ -111,10 +130,26 @@ public:
     if (err && output) {
       std::cerr << "ERROR: Profile::print_average_times()" << std::endl;
     } else if (output) {
-      outf << "mean/min/max time (averaged) for " << description << std::endl;
-      outf << "   mean = " << tmean << "s" << std::endl;
-      outf << "   min  = " << tmin << "s" << std::endl;
-      outf << "   max  = " << tmax << "s" << std::endl;
+      outf << "Average " << description << " time = \t" << std::scientific << std::setprecision(2)
+           << tmean << "  ( min / max  =  " << tmin << " / " << tmax << " )" << std::endl;
+    }
+  }
+
+  void print_cumulative_times(const std::string& str = "", MPI_Comm comm = MPI_COMM_WORLD,
+                              std::ostream& outf = std::cout, int outrank = 0)
+  {
+    int rank;
+    double tmean, tmin, tmax;
+
+    MPI_Comm_rank(comm, &rank);
+    bool output = (outrank == PRINT_ALL_RANKS) ? true : (rank == outrank);
+
+    int err = cumulative_times(comm, tmean, tmin, tmax);
+    if (err && output) {
+      std::cerr << "ERROR: Profile::print_cumulative_times()" << std::endl;
+    } else if (output) {
+      outf << "Total " << str << " time = \t" << std::scientific << std::setprecision(2)
+           << tmean << "  ( min / max  =  " << tmin << " / " << tmax << " )" << std::endl;
     }
   }
 
@@ -130,10 +165,8 @@ public:
     if (err && output) {
       std::cerr << "ERROR: Profile::print_cumulative_times()" << std::endl;
     } else if (output) {
-      outf << "mean/min/max time (cumulative) for " << description << std::endl;
-      outf << "   mean = " << tmean << "s" << std::endl;
-      outf << "   min  = " << tmin << "s" << std::endl;
-      outf << "   max  = " << tmax << "s" << std::endl;
+      outf << "Total " << description << " time = \t" << std::scientific << std::setprecision(2)
+           << tmean << "  ( min / max  =  " << tmin << " / " << tmax << " )" << std::endl;
     }
   }
 

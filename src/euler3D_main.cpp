@@ -331,49 +331,21 @@ int main(int argc, char* argv[]) {
   retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // Get profiling information
-  double tinit_av, tio_av, tsim_av, tmpi_av, tpack_av, tflux_av, trhs_av, tstab_av;
-  double tinit_mn, tio_mn, tsim_mn, tmpi_mn, tpack_mn, tflux_mn, trhs_mn, tstab_mn;
-  double tinit_mx, tio_mx, tsim_mx, tmpi_mx, tpack_mx, tflux_mx, trhs_mx, tstab_mx;
-  retval = udata.profile[PR_SETUP].cumulative_times(udata.comm, tinit_av, tinit_mn, tinit_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_IO].cumulative_times(udata.comm, tio_av, tio_mn, tio_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_SIMUL].cumulative_times(udata.comm, tsim_av, tsim_mn, tsim_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_MPI].cumulative_times(udata.comm, tmpi_av, tmpi_mn, tmpi_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_PACKDATA].cumulative_times(udata.comm, tpack_av, tpack_mn, tpack_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_FACEFLUX].cumulative_times(udata.comm, tflux_av, tflux_mn, tflux_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_RHSEULER].cumulative_times(udata.comm, trhs_av, trhs_mn, trhs_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_DTSTAB].cumulative_times(udata.comm, tstab_av, tstab_mn, tstab_mx);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-
+  // Print some final statistics
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    cout << "\nProfiling Results:\n"
-         << "   Total setup time      = " << tinit_av
-         << "  \t(min/max = " << tinit_mn << "/" << tinit_mx << ")\n"
-         << "   Total I/O time        = " << tio_av
-         << "  \t(min/max = " << tio_mn << "/" << tio_mx << ")\n"
-         << "   Total MPI time        = " << tmpi_av
-         << "  \t(min/max = " << tmpi_mn << "/" << tmpi_mx << ")\n"
-         << "   Total pack time       = " << tpack_av
-         << "  \t(min/max = " << tpack_mn << "/" << tpack_mx << ")\n"
-         << "   Total flux time       = " << tflux_av
-         << "  \t(min/max = " << tflux_mn << "/" << tflux_mx << ")\n"
-         << "   Total RHS time        = " << trhs_av
-         << "  \t(min/max = " << trhs_mn << "/" << trhs_mx << ")\n"
-         << "   Total dt_stab time    = " << tstab_av
-         << "  \t(min/max = " << tstab_mn << "/" << tstab_mx << ")\n"
-         << "   Total simulation time = " << tsim_av
-         << "  \t(min/max = " << tsim_mn << "/" << tsim_mx << ")\n";
+    cout << "\nProfiling Results:\n";
+    udata.profile[PR_SETUP].print_cumulative_times("setup");
+    udata.profile[PR_IO].print_cumulative_times("I/O");
+    udata.profile[PR_MPI].print_cumulative_times("MPI");
+    udata.profile[PR_PACKDATA].print_cumulative_times("pack");
+    udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
+    udata.profile[PR_RHSEULER].print_cumulative_times("RHS");
+    udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+    udata.profile[PR_SIMUL].print_cumulative_times("sim");
   }
 
   // Output mass/energy conservation error

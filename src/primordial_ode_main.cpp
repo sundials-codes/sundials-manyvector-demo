@@ -528,7 +528,6 @@ int main(int argc, char* argv[]) {
 
   // Print some final statistics
   long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
-  double tsetup, tinout, tsimul, dtmp;
   nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
 #ifdef USE_CVODE
   retval = CVodeGetNumSteps(arkode_mem, &nst);
@@ -557,12 +556,6 @@ int main(int argc, char* argv[]) {
   retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
   if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
-  retval = udata.profile[PR_SETUP].cumulative_times(udata.comm, tsetup, dtmp, dtmp);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_IO].cumulative_times(udata.comm, tinout, dtmp, dtmp);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_SIMUL].cumulative_times(udata.comm, tsimul, dtmp, dtmp);
-  if (check_flag(&retval, "Profile::cumulative_times (main)", 1)) MPI_Abort(udata.comm, 1);
 
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
@@ -575,9 +568,9 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of nonlin iters = " << nni << "\n";
       cout << "   Total number of nonlin conv fails = " << ncf << "\n";
     }
-    cout << "   Total setup time = " << tsetup << "\n";
-    cout << "   Total I/O time = " << tinout << "\n";
-    cout << "   Total simulation time = " << tsimul << "\n";
+    udata.profile[PR_SETUP].print_cumulative_times("setup");
+    udata.profile[PR_IO].print_cumulative_times("I/O");
+    udata.profile[PR_SIMUL].print_cumulative_times("sim");
   }
 
   // Clean up and return with successful completion
