@@ -80,9 +80,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[it0].long_name = "t0";
     options[itf].long_name = "tf";
     options[igam].long_name = "gamma";
-    options[imun].long_name = "munits";
-    options[ilun].long_name = "lunits";
-    options[itun].long_name = "tunits";
+    options[imun].long_name = "MassUnits";
+    options[ilun].long_name = "LengthUnits";
+    options[itun].long_name = "TimeUnits";
     options[inx].long_name = "nx";
     options[iny].long_name = "ny";
     options[inz].long_name = "nz";
@@ -129,63 +129,63 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "\nUsage: " << argv[0] << " [options]\n"
            << "   -h or --help prints this message and exits the program\n"
            << "\nAvailable problem specification options (and the default if not provided):\n"
-           << "   --xl=<float>         (" << udata.xl << ")\n"
-           << "   --xr=<float>         (" << udata.xr << ")\n"
-           << "   --yl=<float>         (" << udata.yl << ")\n"
-           << "   --yr=<float>         (" << udata.yr << ")\n"
-           << "   --zl=<float>         (" << udata.zl << ")\n"
-           << "   --zr=<float>         (" << udata.zr << ")\n"
-           << "   --t0=<float>         (" << udata.t0 << ")\n"
-           << "   --tf=<float>         (" << udata.tf << ")\n"
-           << "   --gamma=<float>      (" << udata.gamma << ")\n"
-           << "   --munits=<float>     (" << udata.munits << ")\n"
-           << "   --lunits=<float>     (" << udata.lunits << ")\n"
-           << "   --tunits=<float>     (" << udata.tunits << ")\n"
-           << "   --nx=<int>           (" << udata.nx << ")\n"
-           << "   --ny=<int>           (" << udata.ny << ")\n"
-           << "   --nz=<int>           (" << udata.nz << ")\n"
-           << "   --xlbc=<int>         (" << udata.xlbc << ")\n"
-           << "   --xrbc=<int>         (" << udata.xrbc << ")\n"
-           << "   --ylbc=<int>         (" << udata.ylbc << ")\n"
-           << "   --yrbc=<int>         (" << udata.yrbc << ")\n"
-           << "   --zlbc=<int>         (" << udata.zlbc << ")\n"
-           << "   --zrbc=<int>         (" << udata.zrbc << ")\n"
+           << "   --xl=<float>           (" << udata.xl << ")\n"
+           << "   --xr=<float>           (" << udata.xr << ")\n"
+           << "   --yl=<float>           (" << udata.yl << ")\n"
+           << "   --yr=<float>           (" << udata.yr << ")\n"
+           << "   --zl=<float>           (" << udata.zl << ")\n"
+           << "   --zr=<float>           (" << udata.zr << ")\n"
+           << "   --t0=<float>           (" << udata.t0 << ")\n"
+           << "   --tf=<float>           (" << udata.tf << ")\n"
+           << "   --gamma=<float>        (" << udata.gamma << ")\n"
+           << "   --MassUnits=<float>    (" << udata.MassUnits << ")\n"
+           << "   --LengthUnits=<float>  (" << udata.LengthUnits << ")\n"
+           << "   --TimeUnits=<float>    (" << udata.TimeUnits << ")\n"
+           << "   --nx=<int>             (" << udata.nx << ")\n"
+           << "   --ny=<int>             (" << udata.ny << ")\n"
+           << "   --nz=<int>             (" << udata.nz << ")\n"
+           << "   --xlbc=<int>           (" << udata.xlbc << ")\n"
+           << "   --xrbc=<int>           (" << udata.xrbc << ")\n"
+           << "   --ylbc=<int>           (" << udata.ylbc << ")\n"
+           << "   --yrbc=<int>           (" << udata.yrbc << ")\n"
+           << "   --zlbc=<int>           (" << udata.zlbc << ")\n"
+           << "   --zrbc=<int>           (" << udata.zrbc << ")\n"
            << "\nThe preceding 6 arguments allow any of the following boundary condition types:\n"
            << "   " << BC_PERIODIC <<" = periodic\n"
            << "   " << BC_NEUMANN <<" = homogeneous Neumann (zero gradient)\n"
            << "   " << BC_DIRICHLET <<" = homogeneous Dirichlet,\n"
            << "   " << BC_REFLECTING <<" = reflecting,\n"
            << "\nAvailable run options (and the default if not provided):\n"
-           << "   --nout=<int>         (" << udata.nout << ")\n"
-           << "   --showstats          to enable (disabled)\n"
-           << "   --restart=<int>      output number to restart from: output-<num>.hdf5 (disabled)\n"
+           << "   --nout=<int>           (" << udata.nout << ")\n"
+           << "   --showstats            to enable (disabled)\n"
+           << "   --restart=<int>        output number to restart from: output-<num>.hdf5 (disabled)\n"
            << "\nAvailable time-stepping options (and the default if not provided):\n"
-           << "   --cfl=<float>        (" << udata.cfl << ")\n"
-           << "   --order=<int>        (" << opts.order << ")\n"
-           << "   --dense_order=<int>  (" << opts.dense_order << ")\n"
-           << "   --btable=<int>       (" << opts.btable << ")\n"
-           << "   --adapt_method=<int> (" << opts.adapt_method << ")\n"
-           << "   --maxnef=<int>       (" << opts.maxnef << ")\n"
-           << "   --mxhnil=<int>       (" << opts.mxhnil << ")\n"
-           << "   --mxsteps=<int>      (" << opts.mxsteps << ")\n"
-           << "   --safety=<float>     (" << opts.safety << ")\n"
-           << "   --bias=<float>       (" << opts.bias << ")\n"
-           << "   --growth=<float>     (" << opts.growth << ")\n"
-           << "   --pq=<int>           (" << opts.pq << ")\n"
-           << "   --k1=<float>         (" << opts.k1 << ")\n"
-           << "   --k2=<float>         (" << opts.k2 << ")\n"
-           << "   --k3=<float>         (" << opts.k3 << ")\n"
-           << "   --etamx1=<float>     (" << opts.etamx1 << ")\n"
-           << "   --etamxf=<float>     (" << opts.etamxf << ")\n"
-           << "   --h0=<float>         (" << opts.h0 << ")\n"
-           << "   --hmin=<float>       (" << opts.hmin << ")\n"
-           << "   --hmax=<float>       (" << opts.hmax << ")\n"
-           << "   --rtol=<float>       (" << opts.rtol << ")\n"
-           << "   --atol=<float>       (" << opts.atol << ")\n"
+           << "   --cfl=<float>          (" << udata.cfl << ")\n"
+           << "   --order=<int>          (" << opts.order << ")\n"
+           << "   --dense_order=<int>    (" << opts.dense_order << ")\n"
+           << "   --btable=<int>         (" << opts.btable << ")\n"
+           << "   --adapt_method=<int>   (" << opts.adapt_method << ")\n"
+           << "   --maxnef=<int>         (" << opts.maxnef << ")\n"
+           << "   --mxhnil=<int>         (" << opts.mxhnil << ")\n"
+           << "   --mxsteps=<int>        (" << opts.mxsteps << ")\n"
+           << "   --safety=<float>       (" << opts.safety << ")\n"
+           << "   --bias=<float>         (" << opts.bias << ")\n"
+           << "   --growth=<float>       (" << opts.growth << ")\n"
+           << "   --pq=<int>             (" << opts.pq << ")\n"
+           << "   --k1=<float>           (" << opts.k1 << ")\n"
+           << "   --k2=<float>           (" << opts.k2 << ")\n"
+           << "   --k3=<float>           (" << opts.k3 << ")\n"
+           << "   --etamx1=<float>       (" << opts.etamx1 << ")\n"
+           << "   --etamxf=<float>       (" << opts.etamxf << ")\n"
+           << "   --h0=<float>           (" << opts.h0 << ")\n"
+           << "   --hmin=<float>         (" << opts.hmin << ")\n"
+           << "   --hmax=<float>         (" << opts.hmax << ")\n"
+           << "   --rtol=<float>         (" << opts.rtol << ")\n"
+           << "   --atol=<float>         (" << opts.atol << ")\n"
            << "\nAvailable nonlinear solver options (and the default if not provided):\n"
-           << "   --predictor=<int>    (" << opts.predictor << ")\n"
-           << "   --maxniters=<int>    (" << opts.maxniters << ")\n"
-           << "   --nlconvcoef=<float> (" << opts.nlconvcoef << ")\n"
+           << "   --predictor=<int>      (" << opts.predictor << ")\n"
+           << "   --maxniters=<int>      (" << opts.maxniters << ")\n"
+           << "   --nlconvcoef=<float>   (" << opts.nlconvcoef << ")\n"
            << "\nAlternately, all of these options may be specified in a single\n"
            << "input file (with command-line arguments taking precedence if an\n"
            << "option is multiply-defined) via:"
@@ -214,9 +214,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"t0 = %lf", &udata.t0);
         retval += sscanf(line,"tf = %lf", &udata.tf);
         retval += sscanf(line,"gamma = %lf", &udata.gamma);
-        retval += sscanf(line,"munits = %lf", &udata.munits);
-        retval += sscanf(line,"lunits = %lf", &udata.lunits);
-        retval += sscanf(line,"tunits = %lf", &udata.tunits);
+        retval += sscanf(line,"MassUnits = %lf", &udata.MassUnits);
+        retval += sscanf(line,"LengthUnits = %lf", &udata.LengthUnits);
+        retval += sscanf(line,"TimeUnits = %lf", &udata.TimeUnits);
         retval += sscanf(line,"nx = %li", &udata.nx);
         retval += sscanf(line,"ny = %li", &udata.ny);
         retval += sscanf(line,"nz = %li", &udata.nz);
@@ -273,9 +273,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[it0].count)     udata.t0          = atof(options[it0].argument);
     if (options[itf].count)     udata.tf          = atof(options[itf].argument);
     if (options[igam].count)    udata.gamma       = atof(options[igam].argument);
-    if (options[imun].count)    udata.munits      = atof(options[imun].argument);
-    if (options[ilun].count)    udata.lunits      = atof(options[ilun].argument);
-    if (options[itun].count)    udata.tunits      = atof(options[itun].argument);
+    if (options[imun].count)    udata.MassUnits   = atof(options[imun].argument);
+    if (options[ilun].count)    udata.LengthUnits = atof(options[ilun].argument);
+    if (options[itun].count)    udata.TimeUnits   = atof(options[itun].argument);
     if (options[inx].count)     udata.nx          = atoi(options[inx].argument);
     if (options[iny].count)     udata.ny          = atoi(options[iny].argument);
     if (options[inz].count)     udata.nz          = atoi(options[inz].argument);
@@ -362,9 +362,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     dbuff[21] = opts.rtol;
     dbuff[22] = opts.atol;
     dbuff[23] = opts.nlconvcoef;
-    dbuff[24] = udata.munits;
-    dbuff[25] = udata.lunits;
-    dbuff[26] = udata.tunits;
+    dbuff[24] = udata.MassUnits;
+    dbuff[25] = udata.LengthUnits;
+    dbuff[26] = udata.TimeUnits;
   }
 
   // perform broadcast and unpack results
@@ -421,10 +421,14 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.rtol = dbuff[21];
   opts.atol = dbuff[22];
   opts.nlconvcoef = dbuff[23];
-  udata.munits = dbuff[24];
-  udata.lunits = dbuff[25];
-  udata.tunits = dbuff[26];
+  udata.MassUnits = dbuff[24];
+  udata.LengthUnits = dbuff[25];
+  udata.TimeUnits = dbuff[26];
 
+  // setup any derived unit scaling factors
+  retval = udata.UpdateUnits();
+  if (check_flag(&retval, "UpdateUnits (load_inputs)", 1)) return(retval);
+  
   // return with success
   return(0);
 }
@@ -572,9 +576,9 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "t0 = " ESYM "\n", tcur);
     fprintf(UFID, "tf = " ESYM "\n", udata.tf);
     fprintf(UFID, "gamma = " ESYM "\n", udata.gamma);
-    fprintf(UFID, "munits = " ESYM "\n", udata.munits);
-    fprintf(UFID, "lunits = " ESYM "\n", udata.lunits);
-    fprintf(UFID, "tunits = " ESYM "\n", udata.tunits);
+    fprintf(UFID, "MassUnits = " ESYM "\n", udata.MassUnits);
+    fprintf(UFID, "LengthUnits = " ESYM "\n", udata.LengthUnits);
+    fprintf(UFID, "TimeUnits = " ESYM "\n", udata.TimeUnits);
     fprintf(UFID, "nx = %li\n", udata.nx);
     fprintf(UFID, "ny = %li\n", udata.ny);
     fprintf(UFID, "nz = %li\n", udata.nz);

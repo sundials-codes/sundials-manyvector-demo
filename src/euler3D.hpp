@@ -185,9 +185,14 @@ public:
   int      nchem;       // number of tracers/chemical species
   realtype gamma;       // ratio of specific heat capacities, cp/cv
   realtype cfl;         // fraction of maximum stable step size to use
-  realtype munits;      // mass   unit scaling factor (code -> kg)
-  realtype lunits;      // length unit scaling factor (code -> m)
-  realtype tunits;      // time   unit scaling factor (code -> s)
+
+  ///// unit non-dimensionalization factors /////
+  realtype MassUnits;     // base mass   unit scaling factor (code -> g)
+  realtype LengthUnits;   // base length unit scaling factor (code -> cm)
+  realtype TimeUnits;     // base time   unit scaling factor (code -> s)
+  realtype DensityUnits;  // derived mass density scaling factor (code -> g/cm^3)
+  realtype MomentumUnits; // derived momentum density scaling factor (code -> g/cm^2/s)
+  realtype EnergyUnits;   // derived energy density scaling factor (code -> g/cm/s^2)
 
   ///// run-control parameters /////
   int nout;             // num pauses in integration to run diagnostics/io
@@ -226,6 +231,7 @@ public:
   MPI_Request req[12];  // MPI requests for neighbor exchange
 
   ///// class operations /////
+  
   // constructor
   EulerData() :
       RxNetData(NULL), nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0),
@@ -236,11 +242,13 @@ public:
       Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
       Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
       ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
-      xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0), munits(1.0),
-      lunits(1.0), tunits(1.0)
+      xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0), MassUnits(1.0),
+      LengthUnits(1.0), TimeUnits(1.0), DensityUnits(1.0), MomentumUnits(1.0),
+      EnergyUnits(1.0)
   {
     nchem = (NVAR) - 5;
   };
+  
   // destructor
   ~EulerData() {
     if (Wrecv != NULL)  delete[] Wrecv;
@@ -260,6 +268,17 @@ public:
     if (zflux != NULL)  delete[] zflux;
   };
 
+  // Update derived unit scaling factors from base factors
+  int UpdateUnits()
+  {
+    if ((MassUnits <= 0.0) || (LengthUnits <= 0.0) || (TimeUnits <= 0.0))
+      return 1;
+    DensityUnits  = MassUnits/LengthUnits/LengthUnits/LengthUnits;
+    MomentumUnits = MassUnits/LengthUnits/LengthUnits/TimeUnits;
+    EnergyUnits   = MassUnits/LengthUnits/TimeUnits/TimeUnits;
+    return 0;
+  }
+  
   // Set up parallel decomposition
   int SetupDecomp()
   {

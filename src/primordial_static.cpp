@@ -151,13 +151,14 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         chem[idx+9] = ge;
 
         // hydrodynamic fields share density and energy with chemical network;
-        // all velocities are zero.  However, we must convert units appropriately
+        // all velocities are zero.  However, we must convert to dimensionless units
         idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-        mx[idx]  = ZERO;
-        my[idx]  = ZERO;
-        mz[idx]  = ZERO;
-        rho[idx] = density;   // STILL NEED TO CONVERT UNITS??
-        et[idx]  = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
+        rho[idx] = density/udata.DensityUnits;
+        mx[idx]  = ZERO/udata.MomentumUnits;
+        my[idx]  = ZERO/udata.MomentumUnits;
+        mz[idx]  = ZERO/udata.MomentumUnits;
+        et[idx]  = (ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]))
+                 / udata.EnergyUnits;
 
       }
 
