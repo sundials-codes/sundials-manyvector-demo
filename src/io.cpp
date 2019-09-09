@@ -42,7 +42,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
                 ARKodeParameters& opts, int& restart)
 {
   int retval;
-  double dbuff[24];
+  double dbuff[27];
   long int ibuff[22];
 
   // disable 'restart' by default
@@ -52,11 +52,11 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   if (myid == 0) {
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 48;
+    const int nopt = 51;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
-                itf, igam, inx, iny, inz, ixlb, ixrb, iylb,
-                iyrb, izlb, izrb, icfl, inout, ishow,
+                itf, igam, imun, ilun, itun, inx, iny, inz, ixlb, 
+                ixrb, iylb, iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
                 iemaf, ih0, ihmin, ihmax, irtol, iatol, irest,
@@ -80,6 +80,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[it0].long_name = "t0";
     options[itf].long_name = "tf";
     options[igam].long_name = "gamma";
+    options[imun].long_name = "munits";
+    options[ilun].long_name = "lunits";
+    options[itun].long_name = "tunits";
     options[inx].long_name = "nx";
     options[iny].long_name = "ny";
     options[inz].long_name = "nz";
@@ -135,6 +138,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "   --t0=<float>         (" << udata.t0 << ")\n"
            << "   --tf=<float>         (" << udata.tf << ")\n"
            << "   --gamma=<float>      (" << udata.gamma << ")\n"
+           << "   --munits=<float>     (" << udata.munits << ")\n"
+           << "   --lunits=<float>     (" << udata.lunits << ")\n"
+           << "   --tunits=<float>     (" << udata.tunits << ")\n"
            << "   --nx=<int>           (" << udata.nx << ")\n"
            << "   --ny=<int>           (" << udata.ny << ")\n"
            << "   --nz=<int>           (" << udata.nz << ")\n"
@@ -208,6 +214,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"t0 = %lf", &udata.t0);
         retval += sscanf(line,"tf = %lf", &udata.tf);
         retval += sscanf(line,"gamma = %lf", &udata.gamma);
+        retval += sscanf(line,"munits = %lf", &udata.munits);
+        retval += sscanf(line,"lunits = %lf", &udata.lunits);
+        retval += sscanf(line,"tunits = %lf", &udata.tunits);
         retval += sscanf(line,"nx = %li", &udata.nx);
         retval += sscanf(line,"ny = %li", &udata.ny);
         retval += sscanf(line,"nz = %li", &udata.nz);
@@ -264,6 +273,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[it0].count)     udata.t0          = atof(options[it0].argument);
     if (options[itf].count)     udata.tf          = atof(options[itf].argument);
     if (options[igam].count)    udata.gamma       = atof(options[igam].argument);
+    if (options[imun].count)    udata.munits      = atof(options[imun].argument);
+    if (options[ilun].count)    udata.lunits      = atof(options[ilun].argument);
+    if (options[itun].count)    udata.tunits      = atof(options[itun].argument);
     if (options[inx].count)     udata.nx          = atoi(options[inx].argument);
     if (options[iny].count)     udata.ny          = atoi(options[iny].argument);
     if (options[inz].count)     udata.nz          = atoi(options[inz].argument);
@@ -350,10 +362,13 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     dbuff[21] = opts.rtol;
     dbuff[22] = opts.atol;
     dbuff[23] = opts.nlconvcoef;
+    dbuff[24] = udata.munits;
+    dbuff[25] = udata.lunits;
+    dbuff[26] = udata.tunits;
   }
 
   // perform broadcast and unpack results
-  retval = MPI_Bcast(dbuff, 24, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(dbuff, 27, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
   retval = MPI_Bcast(ibuff, 22, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
@@ -406,6 +421,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.rtol = dbuff[21];
   opts.atol = dbuff[22];
   opts.nlconvcoef = dbuff[23];
+  udata.munits = dbuff[24];
+  udata.lunits = dbuff[25];
+  udata.tunits = dbuff[26];
 
   // return with success
   return(0);
@@ -554,6 +572,9 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "t0 = " ESYM "\n", tcur);
     fprintf(UFID, "tf = " ESYM "\n", udata.tf);
     fprintf(UFID, "gamma = " ESYM "\n", udata.gamma);
+    fprintf(UFID, "munits = " ESYM "\n", udata.munits);
+    fprintf(UFID, "lunits = " ESYM "\n", udata.lunits);
+    fprintf(UFID, "tunits = " ESYM "\n", udata.tunits);
     fprintf(UFID, "nx = %li\n", udata.nx);
     fprintf(UFID, "ny = %li\n", udata.ny);
     fprintf(UFID, "nz = %li\n", udata.nz);

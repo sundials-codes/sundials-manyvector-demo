@@ -31,6 +31,9 @@ ylbc = 1            #    1 = homogeneous Neumann
 yrbc = 1            #    2 = homogeneous Dirichlet
 zlbc = 1            #    3 = reflecting
 zrbc = 1
+munits = 1.0        # mass unit scaling factor (code -> kg)
+lunits = 1.0        # length unit scaling factor (code -> m)
+tunits = 1.0        # time unit scaling factor (code -> s)
 #
 #
 #### Run Options ####

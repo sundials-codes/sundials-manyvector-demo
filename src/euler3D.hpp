@@ -185,6 +185,9 @@ public:
   int      nchem;       // number of tracers/chemical species
   realtype gamma;       // ratio of specific heat capacities, cp/cv
   realtype cfl;         // fraction of maximum stable step size to use
+  realtype munits;      // mass   unit scaling factor (code -> kg)
+  realtype lunits;      // length unit scaling factor (code -> m)
+  realtype tunits;      // time   unit scaling factor (code -> s)
 
   ///// run-control parameters /////
   int nout;             // num pauses in integration to run diagnostics/io
@@ -233,7 +236,8 @@ public:
       Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
       Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
       ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
-      xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0)
+      xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0), munits(1.0),
+      lunits(1.0), tunits(1.0)
   {
     nchem = (NVAR) - 5;
   };
