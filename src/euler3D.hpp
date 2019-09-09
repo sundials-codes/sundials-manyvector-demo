@@ -187,6 +187,9 @@ public:
   realtype cfl;         // fraction of maximum stable step size to use
 
   ///// unit non-dimensionalization factors /////
+  // the Euler solver itself only operates on the non-dimensionalized fields;
+  // the following factors are used when interfacing with the chemistry solver, 
+  // that requires its fields to be in CGS units.
   realtype MassUnits;     // base mass   unit scaling factor (code -> g)
   realtype LengthUnits;   // base length unit scaling factor (code -> cm)
   realtype TimeUnits;     // base time   unit scaling factor (code -> s)
