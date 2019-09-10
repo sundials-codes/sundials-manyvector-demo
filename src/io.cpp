@@ -512,11 +512,11 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-          rmsvals[0] += pow(rho[idx]*udata.DensityUnits,  2);
-          rmsvals[1] += pow( mx[idx]*udata.MomentumUnits, 2);
-          rmsvals[2] += pow( my[idx]*udata.MomentumUnits, 2);
-          rmsvals[3] += pow( mz[idx]*udata.MomentumUnits, 2);
-          rmsvals[4] += pow( et[idx]*udata.EnergyUnits,   2);
+          rmsvals[0] += pow(rho[idx], 2);
+          rmsvals[1] += pow( mx[idx], 2);
+          rmsvals[2] += pow( my[idx], 2);
+          rmsvals[3] += pow( mz[idx], 2);
+          rmsvals[4] += pow( et[idx], 2);
           if (udata.nchem > 0) {
             for (v=0; v<udata.nchem; v++) {
               idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
