@@ -665,12 +665,13 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // overwrite chemistry energy "fslow" with total energy "fslow" (with
   // appropriate unit scaling) and zero out total energy fslow
-  // Note: fEuler computes dy/dtau where tau = t / TimeUnits, but chemistry
-  // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
   //
   // QUESTION: is this really necessary, since fEuler also advects chemistry gas energy?
   // PARTIAL ANSWER: the external forces are currently only applied to the fluid fields,
   //   so these need to additionally force the chemistry gas energy
+  //
+  // Note: fEuler computes dy/dtau where tau = t / TimeUnits, but chemistry
+  // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
 //  realtype TUnitScale = ONE/udata->TimeUnits;
   realtype TUnitScale = ONE;
   for (k=0; k<udata->nzl; k++)
