@@ -650,7 +650,10 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
   //
   // QUESTION: is this really necessary, since fEuler also advects chemistry gas energy?
-  realtype TUnitScale = ONE/udata->TimeUnits;
+  // PARTIAL ANSWER: the external forces are currently only applied to the fluid fields,
+  //   so these need to additionally force the chemistry gas energy
+//  realtype TUnitScale = ONE/udata->TimeUnits;
+  realtype TUnitScale = ONE;
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {

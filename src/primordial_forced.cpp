@@ -188,11 +188,11 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
       for (i=0; i<udata.nxl; i++) {
 
         idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-        Gmx[idx]  = 1.e-5;
-        Gmy[idx]  = 1.e-5;
-        Gmz[idx]  = 1.e-5;
-        Grho[idx] = 1.e-5;
-        Get[idx]  = 1.e-5;
+        Gmx[idx]  = 1.e-1;
+        Gmy[idx]  = 1.e-1;
+        Gmz[idx]  = 1.e-1;
+        Grho[idx] = 1.e-1;
+        Get[idx]  = 1.e-1;
 
       }
 
