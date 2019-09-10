@@ -16,8 +16,8 @@
 #include <mpi.h>
 #include <fstream>
 #include <iostream>
-#include <iomanip>
 #include <string>
+#include <iomanip>
 
 // Profiling class
 class Profile {
@@ -100,7 +100,7 @@ public:
     return(0);
   }
 
-  void print_average_times(const std::string& str = "", MPI_Comm comm = MPI_COMM_WORLD,
+  void print_average_times(const std::string& str, MPI_Comm comm = MPI_COMM_WORLD,
                            std::ostream& outf = std::cout, int outrank = 0)
   {
     int rank;
@@ -135,7 +135,7 @@ public:
     }
   }
 
-  void print_cumulative_times(const std::string& str = "", MPI_Comm comm = MPI_COMM_WORLD,
+  void print_cumulative_times(const std::string& str, MPI_Comm comm = MPI_COMM_WORLD,
                               std::ostream& outf = std::cout, int outrank = 0)
   {
     int rank;
