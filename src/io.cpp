@@ -455,8 +455,9 @@ int check_conservation(const realtype& t, const N_Vector w, const EulerData& uda
         sumvals[0] += rho[idx];
         sumvals[1] += et[idx];
       }
-  sumvals[0] *= udata.dx*udata.dy*udata.dz;
-  sumvals[1] *= udata.dx*udata.dy*udata.dz;
+  realtype CellVolume = udata.dx*udata.dy*udata.dz*pow(udata.LengthUnits, 3);
+  sumvals[0] *= CellVolume*udata.DensityUnits;
+  sumvals[1] *= CellVolume*udata.EnergyUnits;
   retval = MPI_Reduce(sumvals, totvals, 2, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
   if (check_flag(&retval, "MPI_Reduce (check_conservation)", 3)) MPI_Abort(udata.comm, 1);
   if (!outproc)  return(0);
@@ -511,21 +512,21 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-          rmsvals[0] += pow(rho[idx], 2);
-          rmsvals[1] += pow( mx[idx], 2);
-          rmsvals[2] += pow( my[idx], 2);
-          rmsvals[3] += pow( mz[idx], 2);
-          rmsvals[4] += pow( et[idx], 2);
+          rmsvals[0] += pow(rho[idx]*udata.DensityUnits,  2);
+          rmsvals[1] += pow( mx[idx]*udata.MomentumUnits, 2);
+          rmsvals[2] += pow( my[idx]*udata.MomentumUnits, 2);
+          rmsvals[3] += pow( mz[idx]*udata.MomentumUnits, 2);
+          rmsvals[4] += pow( et[idx]*udata.EnergyUnits,   2);
           if (udata.nchem > 0) {
             for (v=0; v<udata.nchem; v++) {
               idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-              rmsvals[5+v] += SUNRpowerI( chem[idx], 2);
+              rmsvals[5+v] += pow( chem[idx], 2);
             }
           }
         }
     retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
-    for (v=0; v<NVAR; v++)  totrms[v] = SUNRsqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
+    for (v=0; v<NVAR; v++)  totrms[v] = sqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
   }
   if (!outproc)  return(0);
   if (firstlast == 0) {
@@ -762,14 +763,20 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   memspace = H5Screate_simple(3, dimens, NULL);
 
   // create the datasets (with default properties) and close filespace
-  dataset[0] = H5Dcreate(file_identifier, "Density",     h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dataset[1] = H5Dcreate(file_identifier, "x-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dataset[2] = H5Dcreate(file_identifier, "y-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dataset[3] = H5Dcreate(file_identifier, "z-Momentum",  h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dataset[4] = H5Dcreate(file_identifier, "TotalEnergy", h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[0] = H5Dcreate(file_identifier, "Density",     h5_realtype,
+                         filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[1] = H5Dcreate(file_identifier, "x-Momentum",  h5_realtype,
+                         filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[2] = H5Dcreate(file_identifier, "y-Momentum",  h5_realtype,
+                         filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[3] = H5Dcreate(file_identifier, "z-Momentum",  h5_realtype,
+                         filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  dataset[4] = H5Dcreate(file_identifier, "TotalEnergy", h5_realtype,
+                         filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   for (v=0; v<udata.nchem; v++) {
     sprintf(chemname, "Chemical-%03hu", (unsigned short) v);
-    dataset[5+v] = H5Dcreate(file_identifier, chemname, h5_realtype, filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    dataset[5+v] = H5Dcreate(file_identifier, chemname, h5_realtype,
+                             filespace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   }
 
   // Set this processor's offsets into the filespace
@@ -785,6 +792,13 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   retval = H5Sselect_hyperslab(filespace, H5S_SELECT_SET, start, stride, count, NULL);
   if (check_flag(&retval, "H5Sselect_hyperslab (output_solution)", 3)) return(-1);
 
+  // scale each fluid field back to CGS units
+  N_VScale(udata.DensityUnits,  N_VGetSubvector_MPIManyVector(w,0), N_VGetSubvector_MPIManyVector(w,0));
+  N_VScale(udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,1), N_VGetSubvector_MPIManyVector(w,1));
+  N_VScale(udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,2), N_VGetSubvector_MPIManyVector(w,2));
+  N_VScale(udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,3), N_VGetSubvector_MPIManyVector(w,3));
+  N_VScale(udata.EnergyUnits,   N_VGetSubvector_MPIManyVector(w,4), N_VGetSubvector_MPIManyVector(w,4));
+  
   // write each fluid field to disk, and close the associated dataset
   for (v=0; v<5; v++) {
     W = NULL;
@@ -794,6 +808,13 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
     H5Dclose(dataset[v]);
   }
 
+  // scale each fluid field back to code units
+  N_VScale(ONE/udata.DensityUnits,  N_VGetSubvector_MPIManyVector(w,0), N_VGetSubvector_MPIManyVector(w,0));
+  N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,1), N_VGetSubvector_MPIManyVector(w,1));
+  N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,2), N_VGetSubvector_MPIManyVector(w,2));
+  N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,3), N_VGetSubvector_MPIManyVector(w,3));
+  N_VScale(ONE/udata.EnergyUnits,   N_VGetSubvector_MPIManyVector(w,4), N_VGetSubvector_MPIManyVector(w,4));
+  
   // write each chemical field to disk, and close the associated dataset
   // (note: we first copy these to be contiguous over this MPI task)
   if (udata.nchem > 0) {
@@ -1030,6 +1051,13 @@ int read_restart(const int& restart, realtype& t, N_Vector w, const EulerData& u
     delete[] Wtmp;
   }
 
+  // scale each fluid field to code units
+  N_VScale(ONE/udata.DensityUnits,  N_VGetSubvector_MPIManyVector(w,0), N_VGetSubvector_MPIManyVector(w,0));
+  N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,1), N_VGetSubvector_MPIManyVector(w,1));
+  N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,2), N_VGetSubvector_MPIManyVector(w,2));
+  N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,3), N_VGetSubvector_MPIManyVector(w,3));
+  N_VScale(ONE/udata.EnergyUnits,   N_VGetSubvector_MPIManyVector(w,4), N_VGetSubvector_MPIManyVector(w,4));
+  
   // clean up and close the file
   H5Sclose(memspace);
   H5Fclose(file_identifier);

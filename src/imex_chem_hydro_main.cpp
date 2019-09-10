@@ -54,7 +54,7 @@ static int fimpl(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                  void* user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void* user_data);
-// static int PostprocessFast(realtype t, N_Vector y, void* user_data);
+static int PostprocessStep(realtype t, N_Vector y, void* user_data);
 
 // custom Block-Diagonal MPIManyVector SUNLinearSolver module
 typedef struct _BDMPIMVContent {
@@ -240,6 +240,10 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetJacFn(arkode_mem, Jimpl);
   if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  // set step postprocessing routine to update fluid energy (derived) field from other quantities
+  retval = ARKStepSetPostprocessStepFn(arkode_mem, PostprocessStep);
+  if (check_flag(&retval, "ARKStepSetPostprocessStepFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  
   // set diagnostics file
   if (outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
@@ -466,6 +470,7 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_RHSSLOW].print_cumulative_times("fexpl");
     udata.profile[PR_RHSFAST].print_cumulative_times("fimpl");
     udata.profile[PR_JACFAST].print_cumulative_times("Jimpl");
+    udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
     udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
     udata.profile[PR_SIMUL].print_cumulative_times("sim");
   }
@@ -513,10 +518,19 @@ static int fimpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   wchemdot = N_VGetSubvector_MPIManyVector(wdot, 5);
   if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (fimpl)", 0)) return(1);
 
+  // NOTE: if Dengo RHS ever does depend on fluid field inputs, those must
+  // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
+  
   // call Dengo RHS routine
   retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
   if (check_flag(&retval, "calculate_rhs_cvklu (fimpl)", 1)) return(retval);
 
+  // NOTE: if fluid fields were rescaled to physical units above, they
+  // must be converted back to code units here
+  
+  // scale wchemdot by TimeUnits to handle step size nondimensionalization
+  N_VScale(udata->TimeUnits, wchemdot, wchemdot);
+  
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
   if (check_flag(&retval, "Profile::stop (fimpl)", 1)) return(-1);
@@ -548,10 +562,23 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
   if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(1);
 
+  // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
+  // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
+  
   // call Dengo Jacobian routine
   retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
                                            tmp1chem, tmp2chem, tmp3chem);
 
+  // NOTE: if fluid fields were rescaled to physical units above, they
+  // must be converted back to code units here
+  
+  // scale Jac values by TimeUnits to handle step size nondimensionalization
+  realtype *Jdata = NULL;
+  Jdata = SUNSparseMatrix_Data(Jac);
+  if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(1);
+  sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
+  for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
+  
   // stop timer and return
   retval = udata->profile[PR_JACFAST].stop();
   if (check_flag(&retval, "Profile::stop (Jimpl)", 1)) return(-1);
@@ -597,8 +624,9 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   realtype *chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
   if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
 
-  // update chem to include network_data->scale, and fill total fluid energy
-  // field (internal energy + kinetic energy)
+  // update chem to include network_data->scale, and fill dimensionless total 
+  // fluid energy field (internal energy + kinetic energy)
+  realtype EUnitScale = ONE/udata->EnergyUnits;
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
@@ -607,6 +635,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
           chem[idx] *= network_data->scale[0][idx];
         }
         realtype ge = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)];
+        ge *= EUnitScale;   // convert from physical units to code units
         idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
       }
@@ -615,14 +644,19 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = fEuler(t, w, wdot, user_data);
   if (check_flag(&retval, "fEuler (fexpl)", 1)) return(retval);
 
-  // overwrite chemistry energy "fexpl" with total energy "fexpl", with
-  // appropriate unit scaling (unnecessary??), and zero out total energy fexpl
+  // overwrite chemistry energy "fexpl" with total energy "fexpl" (with
+  // appropriate unit scaling) and zero out total energy fexpl
+  // Note: fEuler computes dy/dtau where tau = t / TimeUnits, but chemistry
+  // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
+  //
+  // QUESTION: is this really necessary, since fEuler also advects chemistry gas energy?
+  realtype TUnitScale = ONE/udata->TimeUnits;
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
         idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
         idx2 = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        chemdot[idx] = etdot[idx2];
+        chemdot[idx] = etdot[idx2]*TUnitScale;
         etdot[idx2] = ZERO;
       }
 
@@ -638,6 +672,47 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // stop timer and return
   retval = udata->profile[PR_RHSSLOW].stop();
   if (check_flag(&retval, "Profile::stop (fexpl)", 1)) return(-1);
+  return(0);
+}
+
+static int PostprocessStep(realtype t, N_Vector w, void* user_data)
+{
+  long int i, j, k, l, idx;
+
+  // start timer
+  EulerData *udata = (EulerData*) user_data;
+  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
+  int retval = udata->profile[PR_POSTFAST].start();
+  if (check_flag(&retval, "Profile::start (PostprocessStep)", 1)) return(-1);
+  
+  // access data arrays
+  realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+
+  // update fluid energy (derived) field from other quantities
+  realtype EUnitScale = ONE/udata->EnergyUnits;
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++) {
+        idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        realtype ge = chem[idx] * network_data->scale[0][idx] * EUnitScale;
+        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
+      }
+
+  // stop timer and return
+  retval = udata->profile[PR_POSTFAST].stop();
+  if (check_flag(&retval, "Profile::stop (PostprocessStep)", 1)) return(-1);
   return(0);
 }
 

@@ -537,10 +537,19 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   wchemdot = N_VGetSubvector_MPIManyVector(wdot, 5);
   if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(1);
 
+  // NOTE: if Dengo RHS ever does depend on fluid field inputs, those must
+  // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
+  
   // call Dengo RHS routine
   retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
   if (check_flag(&retval, "calculate_rhs_cvklu (ffast)", 1)) return(retval);
 
+  // NOTE: if fluid fields were rescaled to physical units above, they
+  // must be converted back to code units here
+  
+  // scale wchemdot by TimeUnits to handle step size nondimensionalization
+  N_VScale(udata->TimeUnits, wchemdot, wchemdot);
+  
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
   if (check_flag(&retval, "Profile::stop (ffast)", 1)) return(-1);
@@ -572,10 +581,23 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
   if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(1);
 
+  // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
+  // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
+  
   // call Dengo Jacobian routine
   retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
                                            tmp1chem, tmp2chem, tmp3chem);
 
+  // NOTE: if fluid fields were rescaled to physical units above, they
+  // must be converted back to code units here
+  
+  // scale Jac values by TimeUnits to handle step size nondimensionalization
+  realtype *Jdata = NULL;
+  Jdata = SUNSparseMatrix_Data(Jac);
+  if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(1);
+  sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
+  for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
+  
   // stop timer and return
   retval = udata->profile[PR_JACFAST].stop();
   if (check_flag(&retval, "Profile::stop (Jfast)", 1)) return(-1);
@@ -621,7 +643,9 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   realtype *chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
   if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
 
-  // update chem to include network_data->scale, and fill total fluid energy field (internal energy + kinetic energy)
+  // update chem to include network_data->scale, and fill dimensionless total 
+  // fluid energy field (internal energy + kinetic energy)
+  realtype EUnitScale = ONE/udata->EnergyUnits;
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
@@ -630,6 +654,7 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
           chem[idx] *= network_data->scale[0][idx];
         }
         realtype ge = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)];
+        ge *= EUnitScale;   // convert from physical units to code units
         idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
       }
@@ -638,14 +663,17 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = fEuler(t, w, wdot, user_data);
   if (check_flag(&retval, "fEuler (fslow)", 1)) return(retval);
 
-  // overwrite chemistry energy "fslow" with total energy "fslow", with
-  // appropriate unit scaling (unnecessary??), and zero out total energy fslow
+  // overwrite chemistry energy "fslow" with total energy "fslow" (with
+  // appropriate unit scaling) and zero out total energy fslow
+  // Note: fEuler computes dy/dtau where tau = t / TimeUnits, but chemistry
+  // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
+  realtype TUnitScale = ONE/udata->TimeUnits;
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
         idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
         idx2 = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        chemdot[idx] = etdot[idx2];
+        chemdot[idx] = etdot[idx2]*TUnitScale;
         etdot[idx2] = ZERO;
       }
 

@@ -20,7 +20,7 @@ yr = 1.0
 zl = 0.0
 zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
-tf = 2.992040e14
+tf = 1.0
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
 nx = 3              # global spatial grid: nx * ny * nz
 ny = 3
@@ -31,9 +31,9 @@ ylbc = 0            #    1 = homogeneous Neumann
 yrbc = 0            #    2 = homogeneous Dirichlet
 zlbc = 0            #    3 = reflecting
 zrbc = 0
-MassUnits = 1.0     # mass unit scaling factor (code -> g)
-LengthUnits = 1.0   # length unit scaling factor (code -> cm)
-TimeUnits = 1.0     # time unit scaling factor (code -> s)
+MassUnits = 3.0e70       # mass unit scaling factor (code -> g)
+LengthUnits = 3.0857e30  # length unit scaling factor (code -> cm) -- 1e6 Mpc
+TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
 #
 #
 #### Run Options ####
