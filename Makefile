@@ -81,8 +81,8 @@ TESTS = communication_test_fluid.exe \
         primordial_ode_CVODE.exe \
         primordial_static_imex.exe \
         primordial_static_mr.exe \
-        primordial_forced_imex.exe \
-        primordial_forced_mr.exe \
+        primordial_blast_imex.exe \
+        primordial_blast_mr.exe \
         rayleigh_taylor.exe \
         sod_x.exe \
         sod_y.exe \
@@ -182,10 +182,10 @@ primordial_static_imex.exe : primordial_static.cpp imex_chem_hydro_main.cpp deng
 primordial_static_mr.exe : primordial_static.cpp multirate_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DNVAR=15 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-primordial_forced_imex.exe : primordial_forced.cpp imex_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
+primordial_blast_imex.exe : primordial_blast.cpp imex_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DNVAR=15 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
-primordial_forced_mr.exe : primordial_forced.cpp multirate_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
+primordial_blast_mr.exe : primordial_blast.cpp multirate_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DNVAR=15 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 
