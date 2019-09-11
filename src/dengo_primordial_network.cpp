@@ -19,6 +19,10 @@
    and read_init_data_to_dengo routines, as they are unused and require
    HDF5 and CVODE linkage.
 
+ * updated X_calculate_temperature to only perform a fixed number of 
+   Newton iterations (removing iteration count update/test, and 
+   while conditional).
+
  * added missing return statements to non-void functions
    (to remove compiler warnings).
 
@@ -1152,7 +1156,8 @@ int cvklu_calculate_temperature(cvklu_data *data,
         Tdiff = Tnew - T;
         count = 0;
 
-        while ( Tdiff/ Tnew > 0.001 ){
+//        while ( Tdiff/ Tnew > 0.001 ){
+        for (j=0; j<10; j++){
             // We do Newton's Iteration to calculate the temperature
             // Since gammaH2 is dependent on the temperature too!
 
@@ -1186,11 +1191,11 @@ int cvklu_calculate_temperature(cvklu_data *data,
 
             Tdiff = fabs(T - Tnew);
             // fprintf(stderr, "T: %0.5g ; Tnew: %0.5g; dge_dT: %.5g, dge: %.5g, ge: %.5g \n", T,Tnew, dge_dT, dge, ge);
-            count += 1;
-            if (count > MAX_T_ITERATION){
-                fprintf(stderr, "T failed to converge \n");
-                return 1;
-            }
+            // count += 1;
+            // if (count > MAX_T_ITERATION){
+            //     fprintf(stderr, "T failed to converge \n");
+            //     return 1;
+            // }
         } // while loop
 
         data->Ts[threadID][i] = Tnew;
