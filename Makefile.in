@@ -91,14 +91,14 @@ else ifeq ($(HOST),summit)
   OMPFLAGS = -qsmp=omp
 
   ifeq ($(LIBTYPE),OPT)
-    SUNDIR = ${PROJWORK}/csc317/xl-16.1.1-3/sundials-double-32-opt
+    SUNDIR = ${PROJHOME}/xl-16.1.1-3/sundials-double-32-opt
   else
-    SUNDIR = ${PROJWORK}/csc317/xl-16.1.1-3/sundials-double-32-dbg
+    SUNDIR = ${PROJHOME}/xl-16.1.1-3/sundials-double-32-dbg
   endif
   SUNINCDIRS = -I${SUNDIR}/include
   SUNLIBDIR = ${SUNDIR}/lib
 
-  KLUDIR = ${PROJWORK}/csc317/xl-16.1.1-3/suitesparse-5.4.0
+  KLUDIR = ${PROJHOME}/xl-16.1.1-3/suitesparse-5.4.0
   KLUINCDIRS = -I$(KLUDIR)/include/
   KLULIBDIR = $(KLUDIR)/lib
 
