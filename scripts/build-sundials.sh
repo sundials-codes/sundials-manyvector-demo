@@ -21,8 +21,8 @@ indexsize="32"     # 32 or 64
 bldtype="opt"      # opt or dbg
 
 srcdir=${HOME}/sundials-5.0.0-dev.1
-installdir=${PROJWORK}/csc317/xl-16.1.1-3/sundials-${realtype}-${indexsize}-${bldtype}
-kludir=${PROJWORK}/csc317/xl-16.1.1-3/suitesparse-5.4.0
+installdir=${PROJHOME}/xl-16.1.1-3/sundials-${realtype}-${indexsize}-${bldtype}
+kludir=${PROJHOME}/xl-16.1.1-3/suitesparse-5.4.0
 
 # -------------------------------------------------------------------------------
 # Setup Build
