@@ -14,6 +14,9 @@
 # --------------------------------------------------------------------------
 # Script to setup Summit environment
 # --------------------------------------------------------------------------
+#
+# Usage: source ./setup_summit.sh
+#
 # The default modules as of (1 Sept 2019):
 #   1) xl/16.1.1-3
 #   2) spectrum-mpi/10.3.0.1-20190611
@@ -26,8 +29,9 @@
 #   module show <module name>
 # --------------------------------------------------------------------------
 
-# set host
+# set environment variables
 export HOST=summit
+export PROJHOME=/ccs/proj/csc317
 
 # set project home folder
 export PROJHOME=/ccs/proj/csc317
