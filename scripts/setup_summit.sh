@@ -33,9 +33,6 @@
 export HOST=summit
 export PROJHOME=/ccs/proj/csc317
 
-# set project home folder
-export PROJHOME=/ccs/proj/csc317
-
 # load modules
 module load cmake
 module load essl
