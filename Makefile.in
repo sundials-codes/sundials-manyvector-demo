@@ -85,6 +85,26 @@ else ifeq ($(HOST),descartes.local)
   HDFINCDIRS = -I${HDF5DIR}/include
   HDFLIBDIR = ${HDF5DIR}/lib
 
+#    summit -- see scripts/setup_summit.sh for environment setup
+else ifeq ($(HOST),summit)
+  CXX = ${MPI_ROOT}/bin/mpic++ -std=c++11
+  OMPFLAGS = -qsmp=omp
+
+  ifeq ($(LIBTYPE),OPT)
+    SUNDIR = ${PROJWORK}/csc317/xl-16.1.1-3/sundials-double-32-opt
+  else
+    SUNDIR = ${PROJWORK}/csc317/xl-16.1.1-3/sundials-double-32-dbg
+  endif
+  SUNINCDIRS = -I${SUNDIR}/include
+  SUNLIBDIR = ${SUNDIR}/lib
+
+  KLUDIR = ${PROJWORK}/csc317/xl-16.1.1-3/suitesparse-5.4.0
+  KLUINCDIRS = -I$(KLUDIR)/include/
+  KLULIBDIR = $(KLUDIR)/lib
+
+  HDFINCDIRS = -I${OLCF_HDF5_ROOT}/include
+  HDFLIBDIR = ${OLCF_HDF5_ROOT}/lib
+
 #    default -- assume that spack-related build instructions
 #    from README.md have been followed
 else

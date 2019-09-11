@@ -43,7 +43,7 @@ SUNDLIBS = -L$(SUNLIBDIR) \
            -lsundials_sunmatrixsparse \
            -lsundials_sunlinsolklu
 KLULIBS = -L$(KLULIBDIR) -lklu -lcolamd -lamd -lbtf -lsuitesparseconfig
-HDFLIBS = -L$(HDFLIBDIR) -lhdf5 -lhdf5_hl -lsz
+HDFLIBS = -L$(HDFLIBDIR) -lhdf5 -lhdf5_hl -lz
 ifeq ($(USEHDF5),1)
   INCS = -I./src $(SUNINCDIRS) ${KLUINCDIRS} ${HDFINCDIRS}
   LIBS = ${SUNDLIBS} ${KLULIBS} ${HDFLIBS} -lm
