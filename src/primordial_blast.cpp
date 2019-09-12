@@ -135,7 +135,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // initial condition values -- essentially-neutral primordial gas
   // realtype Tmean = 2000.0;  // mean temperature in K
-  realtype Tmean = 48.75;  // mean temperature in K
+  realtype Tmean = 10.0;  // mean temperature in K
   // realtype tiny = 1e-20;
   realtype tiny = 1e-40;
   realtype mH = 1.67e-24;
@@ -185,7 +185,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         // set mass densities into local variables
         H2I = 1.e-3*density;
         H2II = tiny*density;
-        HII = 10.5*tiny*density;
+        HII = 1.e2*tiny*density;
         HM = tiny*density;
         HeII = tiny*density;
         HeIII = tiny*density;
