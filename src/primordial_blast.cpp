@@ -32,10 +32,10 @@
 #include <random>
 
 // basic problem definitions
-#define  CLUMPS_PER_PROC     10              // on average
-#define  MIN_CLUMP_RADIUS    RCONST(1.0)     // in number of cells
+#define  CLUMPS_PER_PROC     10             // on average
+#define  MIN_CLUMP_RADIUS    RCONST(1.0)    // in number of cells
 #define  MAX_CLUMP_RADIUS    RCONST(3.0)    // in number of cells
-#define  MAX_CLUMP_STRENGTH  RCONST(2.0)   // mult. density factor
+#define  MAX_CLUMP_STRENGTH  RCONST(10.0)   // mult. density factor
 
 
 // Initial conditions
@@ -128,14 +128,16 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     cout << "\nInitializing problem with " << nclumps << " clumps:\n";
     for (i=0; i<nclumps; i++) 
       cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
-           << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  radius = "
-           << clump_data[5*i+3] << ",  strength = " << clump_data[5*i+4] << std::endl;
+           << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
+           << clump_data[5*i+3] << ",  \tstrength = " << clump_data[5*i+4] << std::endl;
   }
   
 
   // initial condition values -- essentially-neutral primordial gas
-  realtype Tmean = 2000.0;  // mean temperature in K
-  realtype tiny = 1e-20;
+  // realtype Tmean = 2000.0;  // mean temperature in K
+  realtype Tmean = 57.0;  // mean temperature in K
+  // realtype tiny = 1e-20;
+  realtype tiny = 1e-40;
   realtype mH = 1.67e-24;
   realtype Hfrac = 0.76;
   realtype HI_weight = 1.00794 * mH;
@@ -152,7 +154,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
   realtype m_amu = 1.66053904e-24;
   realtype density0 = 1e2 * mH;   // in g/cm^{-3}
-  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs;
+  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist;
   
   // iterate over subdomain, setting initial conditions
   for (k=0; k<udata.nzl; k++)
@@ -165,6 +167,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
         
         // determine density in this cell (via loop over clumps)
+        // NEED TO PROPERLY HANDLE DOMAIN PERIODICITY
         density = ONE;
         for (idx=0; idx<nclumps; idx++) {
           cx = clump_data[5*idx+0];
@@ -172,16 +175,17 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
           cz = clump_data[5*idx+2];
           cr = clump_data[5*idx+3];
           cs = clump_data[5*idx+4];
-          density += cs*exp(-4.0*cr*sqrt((xloc-cx)*(xloc-cx) +
-                                         (yloc-cy)*(yloc-cy) +
-                                         (zloc-cz)*(zloc-cz)));
+          xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+          ydist = min( abs(yloc-cy), min( abs(yloc-cx+udata.yr), abs(xloc-cx-udata.xr) ) );
+          zdist = min( abs(zloc-cz), min( abs(zloc-cx+udata.zr), abs(xloc-cx-udata.xr) ) );
+          density += cs*exp(-4.0*cr*sqrt(xdist*xdist + ydist*ydist + zdist*zdist));
         }
         density *= density0;
         
         // set mass densities into local variables
         H2I = 1.e-3*density;
         H2II = tiny*density;
-        HII = tiny*density;
+        HII = 2.4*tiny*density;
         HM = tiny*density;
         HeII = tiny*density;
         HeIII = tiny*density;
