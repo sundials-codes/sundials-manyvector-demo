@@ -228,6 +228,58 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
   return(0);
 }
 
+
+// Utility routine to temporarily combine solution & scaling components
+// into overall N_Vector solution (does not change 'scale')
+int apply_Dengo_scaling(N_Vector w, EulerData& udata)
+{
+  long int i, j, k, l, idx;
+
+  // access Dengo data structure
+  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // access chemical solution fields
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+
+  // update current overall solution using 'network_data->scale' structure
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++)
+        for (l=0; l<udata.nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          chem[idx] *= network_data->scale[0][idx];
+        }
+
+  return(0);
+}
+
+
+// Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
+int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
+{
+  long int i, j, k, l, idx;
+
+  // access Dengo data structure
+  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // access chemical solution fields
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+
+  // update current overall solution using 'network_data->scale' structure
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++)
+        for (l=0; l<udata.nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          chem[idx] /= network_data->scale[0][idx];
+        }
+
+  return(0);
+}
+
+
 // Diagnostics output for this test
 int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
 {

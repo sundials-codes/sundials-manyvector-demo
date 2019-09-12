@@ -47,6 +47,8 @@
 // (provided in specific test problem initializer)
 int initialize_Dengo_structures(EulerData& udata);
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata);
+int apply_Dengo_scaling(N_Vector w, EulerData& udata);
+int unapply_Dengo_scaling(N_Vector w, EulerData& udata);
 
 
 // user-provided functions called by the fast integrators
@@ -243,7 +245,7 @@ int main(int argc, char* argv[]) {
   // set step postprocessing routine to update fluid energy (derived) field from other quantities
   retval = ARKStepSetPostprocessStepFn(arkode_mem, PostprocessStep);
   if (check_flag(&retval, "ARKStepSetPostprocessStepFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // set diagnostics file
   if (outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
@@ -338,8 +340,12 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Output initial conditions to disk
+  retval = apply_Dengo_scaling(w, udata);
+  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
   retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = unapply_Dengo_scaling(w, udata);
+  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) return(-1);
 
   // Optionally output total mass/energy
   if (udata.showstats) {
@@ -410,8 +416,12 @@ int main(int argc, char* argv[]) {
     //    output results to disk -- get current step from ARKStep first
     retval = ARKStepGetLastStep(arkode_mem, &hcur);
     if (check_flag(&retval, "MRIStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = apply_Dengo_scaling(w, udata);
+    if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = unapply_Dengo_scaling(w, udata);
+    if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) return(-1);
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -520,17 +530,17 @@ static int fimpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // NOTE: if Dengo RHS ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
-  
+
   // call Dengo RHS routine
   retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
   if (check_flag(&retval, "calculate_rhs_cvklu (fimpl)", 1)) return(retval);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
   // must be converted back to code units here
-  
+
   // scale wchemdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, wchemdot, wchemdot);
-  
+
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
   if (check_flag(&retval, "Profile::stop (fimpl)", 1)) return(-1);
@@ -564,21 +574,21 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
   // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
-  
+
   // call Dengo Jacobian routine
   retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
                                            tmp1chem, tmp2chem, tmp3chem);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
   // must be converted back to code units here
-  
+
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   Jdata = SUNSparseMatrix_Data(Jac);
   if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
-  
+
   // stop timer and return
   retval = udata->profile[PR_JACFAST].stop();
   if (check_flag(&retval, "Profile::stop (Jimpl)", 1)) return(-1);
@@ -591,7 +601,6 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // start timer
   EulerData *udata = (EulerData*) user_data;
-  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
   int retval = udata->profile[PR_RHSSLOW].start();
   if (check_flag(&retval, "Profile::start (fexpl)", 1)) return(-1);
 
@@ -611,29 +620,20 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
-  realtype *rhodot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,0);
-  if (check_flag((void *) rhodot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
-  realtype *mxdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,1);
-  if (check_flag((void *) mxdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
-  realtype *mydot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,2);
-  if (check_flag((void *) mydot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
-  realtype *mzdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,3);
-  if (check_flag((void *) mzdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
   realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
   if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
   realtype *chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
   if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
 
-  // update chem to include network_data->scale, and fill dimensionless total 
-  // fluid energy field (internal energy + kinetic energy)
+  // update chem to include Dengo scaling
+  retval = apply_Dengo_scaling(w, *udata);
+  if (check_flag(&retval, "apply_Dengo_scaling (fexpl)", 1)) return(-1);
+
+  // fill dimensionless total fluid energy field (internal energy + kinetic energy)
   realtype EUnitScale = ONE/udata->EnergyUnits;
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        for (l=0; l<udata->nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-          chem[idx] *= network_data->scale[0][idx];
-        }
         realtype ge = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)];
         ge *= EUnitScale;   // convert from physical units to code units
         idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
@@ -664,14 +664,9 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         etdot[idx2] = ZERO;
       }
 
-  // reset chem[i] /= network_data->scale[i]
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++)
-        for (l=0; l<udata->nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-          chem[idx] /= network_data->scale[0][idx];
-        }
+  // reset chem to remove Dengo scaling
+  retval = unapply_Dengo_scaling(w, *udata);
+  if (check_flag(&retval, "unapply_Dengo_scaling (fexpl)", 1)) return(-1);
 
   // stop timer and return
   retval = udata->profile[PR_RHSSLOW].stop();
@@ -688,7 +683,7 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
   int retval = udata->profile[PR_POSTFAST].start();
   if (check_flag(&retval, "Profile::start (PostprocessStep)", 1)) return(-1);
-  
+
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;

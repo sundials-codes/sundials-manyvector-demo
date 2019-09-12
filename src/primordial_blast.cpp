@@ -5,24 +5,24 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Test problem in which a blast wave proceeds across a "clumpy" 
+ Test problem in which a blast wave proceeds across a "clumpy"
  density field of neutral primordial gas.
 
  The initial density field is defined to be
 
     rho(X) = rho0*(1 + \sum_i s_i*exp(-4*r_i*||X-X_i||)),
 
- where s_i, r_i and X_i are clump-dependent.  We place these 
- throughout the domain by randomly choosing CLUMPS_PER_PROC*nprocs 
- overall clumps in the simulation box; while this is based on a 
- uniform distribution, no process is guaranteed to have 
- CLUMPS_PER_PROC clumps centered within its domain.  We randomly 
- choose the clump "radius" r_i to equal a uniformly-distributed 
- random number in the interval 
- [dx*MIN_CLUMP_RADIUS, dx*MAX_CLUMP_RADIUS].  Finally, we randomly 
- choose the clump "strength" s_i to be a uniformly-distributed 
- random number in the interval [0, MAX_CLUMP_STRENGTH].  The 
- parameters CLUMPS_PER_PROC, MIN_CLUMP_RADIUS, MAX_CLUMP_RADIUS 
+ where s_i, r_i and X_i are clump-dependent.  We place these
+ throughout the domain by randomly choosing CLUMPS_PER_PROC*nprocs
+ overall clumps in the simulation box; while this is based on a
+ uniform distribution, no process is guaranteed to have
+ CLUMPS_PER_PROC clumps centered within its domain.  We randomly
+ choose the clump "radius" r_i to equal a uniformly-distributed
+ random number in the interval
+ [dx*MIN_CLUMP_RADIUS, dx*MAX_CLUMP_RADIUS].  Finally, we randomly
+ choose the clump "strength" s_i to be a uniformly-distributed
+ random number in the interval [0, MAX_CLUMP_STRENGTH].  The
+ parameters CLUMPS_PER_PROC, MIN_CLUMP_RADIUS, MAX_CLUMP_RADIUS
  and MAX_CLUMP_STRENGTH are #defined below.
  ---------------------------------------------------------------*/
 
@@ -90,7 +90,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
   double clump_data[nclumps*5];
   if (udata.myid == 0) {
-    
+
     // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
     std::mt19937_64 gen(udata.nprocs);
     std::uniform_real_distribution<> cx_d(udata.xl, udata.xr);
@@ -102,7 +102,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
     // fill clump information
     for (i=0; i<nclumps; i++) {
-      
+
       // global (x,y,z) coordinates for this clump center
       clump_data[5*i+0] = cx_d(gen);
       clump_data[5*i+1] = cy_d(gen);
@@ -113,7 +113,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
       // strength of clump
       clump_data[5*i+4] = cs_d(gen);
-      
+
     }
 
   }
@@ -126,16 +126,16 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   // output clump information
   if (udata.myid == 0) {
     cout << "\nInitializing problem with " << nclumps << " clumps:\n";
-    for (i=0; i<nclumps; i++) 
+    for (i=0; i<nclumps; i++)
       cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
            << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
            << clump_data[5*i+3] << ",  \tstrength = " << clump_data[5*i+4] << std::endl;
   }
-  
+
 
   // initial condition values -- essentially-neutral primordial gas
   // realtype Tmean = 2000.0;  // mean temperature in K
-  realtype Tmean = 57.0;  // mean temperature in K
+  realtype Tmean = 48.75;  // mean temperature in K
   // realtype tiny = 1e-20;
   realtype tiny = 1e-40;
   realtype mH = 1.67e-24;
@@ -155,7 +155,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   realtype m_amu = 1.66053904e-24;
   realtype density0 = 1e2 * mH;   // in g/cm^{-3}
   realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist;
-  
+
   // iterate over subdomain, setting initial conditions
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
@@ -165,7 +165,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        
+
         // determine density in this cell (via loop over clumps)
         // NEED TO PROPERLY HANDLE DOMAIN PERIODICITY
         density = ONE;
@@ -181,11 +181,11 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
           density += cs*exp(-4.0*cr*sqrt(xdist*xdist + ydist*ydist + zdist*zdist));
         }
         density *= density0;
-        
+
         // set mass densities into local variables
         H2I = 1.e-3*density;
         H2II = tiny*density;
-        HII = 2.4*tiny*density;
+        HII = 10.5*tiny*density;
         HM = tiny*density;
         HeII = tiny*density;
         HeIII = tiny*density;
@@ -300,6 +300,57 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 
   return(0);
 }
+
+// Utility routine to temporarily combine solution & scaling components
+// into overall N_Vector solution (does not change 'scale')
+int apply_Dengo_scaling(N_Vector w, EulerData& udata)
+{
+  long int i, j, k, l, idx;
+
+  // access Dengo data structure
+  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // access chemical solution fields
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+
+  // update current overall solution using 'network_data->scale' structure
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++)
+        for (l=0; l<udata.nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          chem[idx] *= network_data->scale[0][idx];
+        }
+
+  return(0);
+}
+
+
+// Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
+int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
+{
+  long int i, j, k, l, idx;
+
+  // access Dengo data structure
+  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // access chemical solution fields
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+
+  // update current overall solution using 'network_data->scale' structure
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++)
+        for (l=0; l<udata.nchem; l++) {
+          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          chem[idx] /= network_data->scale[0][idx];
+        }
+
+  return(0);
+}
+
 
 // Diagnostics output for this test
 int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
