@@ -45,6 +45,7 @@ __pycache__
 output*.hdf5
 diags*.txt
 *.png
+*.mp4
 restart_parameters.txt
 
 # build directory
