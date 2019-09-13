@@ -1269,7 +1269,7 @@ public:
 
   // Equation of state -- compute and return pressure,
   //    p = (gamma-1)*(e - rho/2*(vx^2+vy^2+vz^2)), or equivalently
-  //    p = (gamma-1)*(e - (mx^2+my^2+mz^2))/(2*rho)
+  //    p = (gamma-1)*(e - (mx^2+my^2+mz^2)/(2*rho))
   inline realtype eos(const realtype& rho, const realtype& mx,
                       const realtype& my, const realtype& mz,
                       const realtype& et) const
