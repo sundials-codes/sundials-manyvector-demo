@@ -26,6 +26,10 @@ def load_data():
     ny = int(d['ny'])
     nz = int(d['nz'])
     nt = int(d['restart'])+1
+    gamma = float(d['gamma'])
+    MassUnits = float(d['MassUnits'])
+    LengthUnits = float(d['LengthUnits'])
+    TimeUnits = float(d['TimeUnits'])
 
     # create spatial mesh arrays
     xgrid = np.linspace(float(d['xl']), float(d['xr']), nx)
@@ -86,6 +90,13 @@ def load_data():
             chemname = 'Chemical-' + repr(ichem).zfill(3)
             chem[:,:,:,ichem,iout] = np.transpose(f[chemname])
 
+    # scale output fields to CGS units
+    rho *= (MassUnits/LengthUnits/LengthUnits/LengthUnits)
+    mx  *= (MassUnits/LengthUnits/LengthUnits/TimeUnits)
+    my  *= (MassUnits/LengthUnits/LengthUnits/TimeUnits)
+    mz  *= (MassUnits/LengthUnits/LengthUnits/TimeUnits)
+    et  *= (MassUnits/LengthUnits/TimeUnits/TimeUnits)
+            
     return [nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem]
 
 
