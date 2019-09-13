@@ -8,7 +8,7 @@
  Test problem in which a blast wave proceeds across a "clumpy"
  density field of neutral primordial gas.
 
- The initial density field is defined to be
+ The initial background density field is defined to be
 
     rho(X) = rho0*(1 + \sum_i s_i*exp(-2*(||X-X_i||/r_i)^2)),
 
@@ -24,6 +24,21 @@
  random number in the interval [0, MAX_CLUMP_STRENGTH].  The
  parameters CLUMPS_PER_PROC, MIN_CLUMP_RADIUS, MAX_CLUMP_RADIUS
  and MAX_CLUMP_STRENGTH are #defined below.
+
+ The background temperature is held at a fixed constant, T0, and 
+ the fluid is initially at rest (all initial velocities are 
+ identically zero).  The value of T0 is similarly specified by 
+ a #define below.
+
+ On top of this background state, we add another Gaussian bump 
+ to both density **and Temperature**:
+
+    rho_S(X) = rho0*B_DENSITY*exp(-2*(||X-B_CENTER||/B_RADIUS)^2)),
+    T_S(X)   = T0*B_TEMPERATURE*exp(-2*(||X-B_CENTER||/B_RADIUS)^2)),
+
+ It is this higher-pressure region that initiates the "blast" 
+ through the domain.  The values of B_DENSITY, B_TEMPERATURE, 
+ B_RADIUS and B_CENTER are all #defined below.
  ---------------------------------------------------------------*/
 
 // Header files
@@ -32,10 +47,17 @@
 #include <random>
 
 // basic problem definitions
-#define  CLUMPS_PER_PROC     10             // on average
-#define  MIN_CLUMP_RADIUS    RCONST(1.0)    // in number of cells
-#define  MAX_CLUMP_RADIUS    RCONST(3.0)    // in number of cells
-#define  MAX_CLUMP_STRENGTH  RCONST(10.0)   // mult. density factor
+#define  CLUMPS_PER_PROC     10              // on average
+#define  MIN_CLUMP_RADIUS    RCONST(3.0)     // in number of cells
+#define  MAX_CLUMP_RADIUS    RCONST(6.0)     // in number of cells
+#define  MAX_CLUMP_STRENGTH  RCONST(20.0)    // mult. density factor
+#define  T0                  RCONST(10.0)    // background temperature
+#define  BLAST_DENSITY       RCONST(1000.0)  // mult. density factor
+#define  BLAST_TEMPERATURE   RCONST(500.0)   // mult. temperature factor
+#define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
+#define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
+#define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
+#define  BLAST_CENTER_Z      RCONST(0.5)     // relative to unit cube
 
 
 // Initial conditions
@@ -129,13 +151,16 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
       cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
            << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
            << clump_data[5*i+3] << " cells,  \tstrength = " << clump_data[5*i+4] << std::endl;
+    cout << "\n'Blast' clump:\n"
+         << "       overdensity = " << BLAST_DENSITY << std::endl
+         << "   overtemperature = " << BLAST_TEMPERATURE << std::endl
+         << "            radius = " << BLAST_RADIUS << std::endl
+         << "            center = " << BLAST_CENTER_X << ", "
+         << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
   }
 
 
   // initial condition values -- essentially-neutral primordial gas
-  // realtype Tmean = 2000.0;  // mean temperature in K
-  realtype Tmean = 10.0;  // mean temperature in K
-  // realtype tiny = 1e-20;
   realtype tiny = 1e-40;
   realtype mH = 1.67e-24;
   realtype Hfrac = 0.76;
@@ -182,6 +207,20 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         }
         density *= density0;
 
+        // add blast clump density
+        cx = udata.xl + BLAST_CENTER_X*(udata.xr - udata.xl);
+        cy = udata.yl + BLAST_CENTER_Y*(udata.yr - udata.yl);
+        cz = udata.zl + BLAST_CENTER_Z*(udata.zr - udata.zl);
+        // xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        // ydist = min( abs(yloc-cy), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        // zdist = min( abs(zloc-cz), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        cr = BLAST_RADIUS*min( udata.xr-udata.xl, min(udata.yr-udata.yl, udata.zr-udata.zl));
+        cs = density0*BLAST_DENSITY;
+        xdist = abs(xloc-cx);
+        ydist = abs(yloc-cy);
+        zdist = abs(zloc-cz);
+        density += cs*exp(-2.0*(xdist*xdist + ydist*ydist + zdist*zdist)/cr/cr);
+        
         // set mass densities into local variables
         H2I = 1.e-3*density;
         H2II = tiny*density;
@@ -205,7 +244,9 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // set location-dependent temperature, and convert to gas energy
-        T = Tmean;
+        T = T0;
+        cs = T0*BLAST_TEMPERATURE;
+        T += cs*exp(-2.0*(xdist*xdist + ydist*ydist + zdist*zdist)/cr/cr);
         ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
 
         // insert chemical fields into initial condition vector,
