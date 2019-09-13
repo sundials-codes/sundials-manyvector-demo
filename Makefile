@@ -68,6 +68,7 @@ TESTS = communication_test_fluid.exe \
         communication_test_tracers.exe \
         compile_test_fluid.exe \
         compile_test_tracers.exe \
+        fluid_blast.exe \
         hurricane_xy.exe \
         hurricane_yz.exe \
         hurricane_zx.exe \
@@ -187,6 +188,9 @@ primordial_blast_imex.exe : primordial_blast.cpp imex_chem_hydro_main.cpp dengo_
 
 primordial_blast_mr.exe : primordial_blast.cpp multirate_chem_hydro_main.cpp dengo_primordial_network.cpp ${COMMONSRC}
 	${CXX} ${CXXFLAGS} -DCVKLU -DMAX_NCELLS=1000000 -DNTHREADS=1 -DNVAR=15 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
+
+fluid_blast.exe : fluid_blast.cpp euler3D_main.o ${COMMONOBJ}
+	${CXX} ${CXXFLAGS} -DNVAR=5 ${OMPFLAGS} ${INCS} $^ ${LIBS} ${LDFLAGS} -o $@
 
 
 

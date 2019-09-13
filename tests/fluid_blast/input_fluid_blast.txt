@@ -22,9 +22,9 @@ zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
 tf = 1.0
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
-nx = 20              # global spatial grid: nx * ny * nz
-ny = 20
-nz = 20
+nx = 50              # global spatial grid: nx * ny * nz
+ny = 50
+nz = 50
 xlbc = 3            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 3            #    0 = periodic  (opposite periodic faces must match)
 ylbc = 3            #    1 = homogeneous Neumann
@@ -44,7 +44,7 @@ showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #### ARKStep Options ####
 order = 0           # temporal order of accuracy
 dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
-btable = 112        # specific built-in Butcher table to use (<0 => default)
+btable = 13         # specific built-in Butcher table to use (<0 => default)
 adapt_method = 2    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)
@@ -62,8 +62,5 @@ etamxf = 0          # max change on a general internal step (0 => default)
 h0 = 0.0            # initial time step size (0 => default)
 hmin = 0.0          # minimum time step size (0 => default)
 hmax = 0.0          # maximum time step size (0 => infinite)
-predictor = 0       # algorithm for implicit predictor (0 => default)
-maxniters = 5       # max number nonlinear iterations (0 => default)
-nlconvcoef = 0.001  # nonlinear tolerance safety factor (0 => default)
 rtol = 1e-4         # relative solution tolerance (0 => default)
 atol = 1e-8         # absolute solution tolerance (0 => default)

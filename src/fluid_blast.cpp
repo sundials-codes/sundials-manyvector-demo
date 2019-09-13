@@ -6,9 +6,7 @@
  For details, see the LICENSE file.
  ----------------------------------------------------------------
  Test problem in which a blast wave proceeds across a "clumpy"
- density field of neutral primordial gas.
-
- The initial density field is defined to be
+ density field.  The initial density field is defined to be
 
     rho(X) = rho0*(1 + \sum_i s_i*exp(-2*(||X-X_i||/r_i)^2)),
 
@@ -24,18 +22,20 @@
  random number in the interval [0, MAX_CLUMP_STRENGTH].  The
  parameters CLUMPS_PER_PROC, MIN_CLUMP_RADIUS, MAX_CLUMP_RADIUS
  and MAX_CLUMP_STRENGTH are #defined below.
+
+ This test is set up to mirror primordial_blast.cpp, except that
+ here all chemistry is disabled.
  ---------------------------------------------------------------*/
 
 // Header files
 #include <euler3D.hpp>
-#include <dengo_primordial_network.hpp>
 #include <random>
 
 // basic problem definitions
 #define  CLUMPS_PER_PROC     10             // on average
-#define  MIN_CLUMP_RADIUS    RCONST(1.0)    // in number of cells
-#define  MAX_CLUMP_RADIUS    RCONST(3.0)    // in number of cells
-#define  MAX_CLUMP_STRENGTH  RCONST(10.0)   // mult. density factor
+#define  MIN_CLUMP_RADIUS    RCONST(2.0)    // in number of cells
+#define  MAX_CLUMP_RADIUS    RCONST(4.0)    // in number of cells
+#define  MAX_CLUMP_STRENGTH  RCONST(100.0)  // mult. density factor
 
 
 // Initial conditions
@@ -60,15 +60,11 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   if (udata.myid == 0)
     cout << "\nPrimordial blast test problem\n\n";
 
-  // ensure that this is compiled with 10 chemical species
-  if (udata.nchem != 10) {
-    cerr << "\nIncorrect number of chemical fields, exiting\n\n";
-    return -1;
-  }
-  realtype *chem = NULL;
+  // ensure that this is compiled without chemical species
   if (udata.nchem > 0) {
-    chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-    if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+    cerr << "\nThis test should not include chemistry (compiled with "
+         << udata.nchem << " chemical fields), exiting\n\n";
+    return -1;
   }
 
   // return error if input parameters are inappropriate
@@ -76,13 +72,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
        (udata.ylbc != BC_REFLECTING) || (udata.yrbc != BC_REFLECTING) ||
        (udata.zlbc != BC_REFLECTING) || (udata.zrbc != BC_REFLECTING) ) {
     cerr << "\nInappropriate boundary conditions (should be reflecting), exiting\n\n";
-    return -1;
-  }
-
-  // ensure that local subdomain size does not exceed dengo 'MAX_NCELLS' preprocessor value
-  if (udata.nxl * udata.nyl * udata.nzl > MAX_NCELLS) {
-    cerr << "\nTotal spatial subdomain size (" <<
-      udata.nxl * udata.nyl * udata.nzl << ") exceeds dengo maximum (" << MAX_NCELLS << ")\n";
     return -1;
   }
 
@@ -150,7 +139,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   realtype kboltz = 1.3806488e-16;
   realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-  realtype m_amu = 1.66053904e-24;
   realtype density0 = 1e2 * mH;   // in g/cm^{-3}
   realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist;
 
@@ -202,28 +190,12 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         nHeI   = HeI   / HeI_weight;
         nHI    = HI    / HI_weight;
         ndens  = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
-        de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // set location-dependent temperature, and convert to gas energy
         T = Tmean;
         ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
 
-        // insert chemical fields into initial condition vector,
-        // converting to 'dimensionless' electron number density
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        chem[idx+0] = nH2I;
-        chem[idx+1] = nH2II;
-        chem[idx+2] = nHI;
-        chem[idx+3] = nHII;
-        chem[idx+4] = nHM;
-        chem[idx+5] = nHeI;
-        chem[idx+6] = nHeII;
-        chem[idx+7] = nHeIII;
-        chem[idx+8] = de / m_amu;
-        chem[idx+9] = ge;
-
-        // hydrodynamic fields share density and energy with chemical network;
-        // all velocities are zero.  However, we must convert to dimensionless units
+        // set hydrodynamic initial conditions in dimensionless units
         idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         rho[idx] = density/udata.DensityUnits;
         mx[idx]  = ZERO/udata.MomentumUnits;
@@ -244,113 +216,6 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
   N_VConst(ZERO, G);
   return 0;
 }
-
-// Utility routine to initialize global Dengo data structures
-int initialize_Dengo_structures(EulerData& udata) {
-
-  // initialize primordial rate tables, etc
-  cvklu_data *network_data = NULL;
-  network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
-  if (network_data == NULL)  return(1);
-
-  // overwrite internal strip size
-  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
-
-  // initialize 'scale' and 'inv_scale' to valid values
-  for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
-    network_data->scale[0][i] = ONE;
-    network_data->inv_scale[0][i] = ONE;
-  }
-
-  // set redshift value for non-cosmological run
-  network_data->current_z = -1.0;
-
-  // store pointer to network_data in udata, and return
-  udata.RxNetData = (void*) network_data;
-  return(0);
-}
-
-
-// Utility routine to prepare N_Vector solution and Dengo data structures
-// for subsequent chemical evolution
-int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
-{
-  long int i, j, k, l, idx;
-
-  // access Dengo data structure
-  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
-
-  // access chemical solution fields
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // move current chemical solution values into 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          network_data->scale[0][idx] = chem[idx];
-          network_data->inv_scale[0][idx] = ONE / chem[idx];
-          chem[idx] = ONE;
-        }
-
-  // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, network_data->scale[0], udata.nxl*udata.nyl*udata.nzl );
-
-  return(0);
-}
-
-// Utility routine to temporarily combine solution & scaling components
-// into overall N_Vector solution (does not change 'scale')
-int apply_Dengo_scaling(N_Vector w, EulerData& udata)
-{
-  long int i, j, k, l, idx;
-
-  // access Dengo data structure
-  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
-
-  // access chemical solution fields
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // update current overall solution using 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          chem[idx] *= network_data->scale[0][idx];
-        }
-
-  return(0);
-}
-
-
-// Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
-int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
-{
-  long int i, j, k, l, idx;
-
-  // access Dengo data structure
-  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
-
-  // access chemical solution fields
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // update current overall solution using 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          chem[idx] /= network_data->scale[0][idx];
-        }
-
-  return(0);
-}
-
 
 // Diagnostics output for this test
 int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& udata)
