@@ -42,6 +42,8 @@
 #include "fenv.h"
 #endif
 
+#define ONE_STEP_DEBUG
+
 
 // Initialization and preparation routines for Dengo data structure
 // (provided in specific test problem initializer)
@@ -85,11 +87,10 @@ int main(int argc, char* argv[]) {
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
-  // general problem parameters
-  long int N, Ntot, i, j, k, l, idx;
-  int Nsubvecs;
-
   // general problem variables
+  long int N, Ntot, i, j, k, l;
+  long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf, nje;
+  int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
@@ -388,6 +389,47 @@ int main(int argc, char* argv[]) {
   int iout;
   for (iout=restart; iout<restart+udata.nout; iout++) {
 
+#ifdef ONE_STEP_DEBUG
+    
+    // set stop time if applicable
+    if (!idense)
+      retval = ARKStepSetStopTime(arkode_mem, tout);
+
+    // loop in one-step mode until we reach tout
+    while (t < tout*(ONE-1e-8)) {
+      retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_ONE_STEP);  // call integrator
+      if (retval < 0) {                                               // unsuccessful solve: break
+        if (outproc)  cerr << "Solver failure, stopping integration\n";
+        return 1;
+      }
+
+      // output one-step statistics
+      netf = nni = ncf = nfe = nfi = 0;
+      hcur = 0.0;
+      retval = udata.profile[PR_IO].start();
+      if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumRhsEvals(arkode_mem, &nfe, &nfi);
+      if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
+      if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+      if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetLastStep(arkode_mem, &hcur);
+      if (check_flag(&retval, "ARKStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = print_stats(t, w, 1, 1, arkode_mem, udata);
+      if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+      if (outproc)  cout << "     nni = " << nni << ", nfi = " << nfi << ", nfe = " << nfe
+                         << ", ncf = " << ncf << ", netf = " << netf << ", hcur = " << hcur << std::endl;
+      retval = udata.profile[PR_IO].stop();
+      if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+      
+    }
+
+    // update output time
+    tout = min(tout+dTout, udata.tf);
+
+#else
+
     if (!idense)
       retval = ARKStepSetStopTime(arkode_mem, tout);
     retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
@@ -398,7 +440,9 @@ int main(int argc, char* argv[]) {
 	cerr << "Solver failure, stopping integration\n";
       return 1;
     }
-
+    
+#endif
+    
     // periodic output of solution/statistics
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -415,7 +459,7 @@ int main(int argc, char* argv[]) {
 
     //    output results to disk -- get current step from ARKStep first
     retval = ARKStepGetLastStep(arkode_mem, &hcur);
-    if (check_flag(&retval, "MRIStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (check_flag(&retval, "ARKStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = apply_Dengo_scaling(w, udata);
     if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
@@ -441,7 +485,6 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Get some integrator statistics
-  long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf, nje;
   nst = nst_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -597,7 +640,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, l, idx, idx2;
+  long int i, j, k, l, cidx, fidx;
 
   // start timer
   EulerData *udata = (EulerData*) user_data;
@@ -634,10 +677,11 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        realtype ge = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)];
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        realtype ge = chem[cidx];
         ge *= EUnitScale;   // convert from physical units to code units
-        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
   // call fEuler as usual
@@ -658,10 +702,10 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        idx2 = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        chemdot[idx] = etdot[idx2]*TUnitScale;
-        etdot[idx2] = ZERO;
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        chemdot[cidx] = etdot[fidx]*TUnitScale;
+        etdot[fidx] = ZERO;
       }
 
   // reset chem to remove Dengo scaling
@@ -676,7 +720,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
 static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 {
-  long int i, j, k, l, idx;
+  long int i, j, k, l, cidx, fidx;
 
   // start timer
   EulerData *udata = (EulerData*) user_data;
@@ -703,10 +747,10 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        realtype ge = chem[idx] * network_data->scale[0][idx] * EUnitScale;
-        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        realtype ge = chem[cidx] * network_data->scale[0][cidx] * EUnitScale;
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
   // stop timer and return
