@@ -18,7 +18,7 @@ endif
 # flag to enable/disable OpenMP
 #   available options: 1 (enable) and 0 (disable)
 ifeq ($(USEOMP),)
-   USEOMP = 1
+   USEOMP = 0
 endif
 
 # flag to enable/disable HDF5 I/O
