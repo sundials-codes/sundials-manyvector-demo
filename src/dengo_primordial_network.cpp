@@ -26,6 +26,9 @@
  * added missing return statements to non-void functions
    (to remove compiler warnings).
 
+ * fixed floating-point exception error (0/0) when initializing
+   data->id_zbin inside cvklu_setup_data.
+
  ---------------------------------------------------------------*/
 
 #define IGNORED
@@ -89,7 +92,7 @@ cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, cha
     data->z_bounds[1] = 0.0;
     data->n_zbins = 0 - 1;
     data->d_zbin = (log(data->z_bounds[1] + 1.0) - log(data->z_bounds[0] + 1.0)) / data->n_zbins;
-    data->id_zbin = 1.0L / data->d_zbin;
+    data->id_zbin = (data->d_zbin != 0) ? 1.0L / data->d_zbin : 1.0;
 
     cvklu_read_rate_tables(data);
     //fprintf(stderr, "Successfully read in rate tables.\n");
