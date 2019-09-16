@@ -52,8 +52,10 @@
 #define  MAX_CLUMP_RADIUS    RCONST(6.0)     // in number of cells
 #define  MAX_CLUMP_STRENGTH  RCONST(20.0)    // mult. density factor
 #define  T0                  RCONST(10.0)    // background temperature
-#define  BLAST_DENSITY       RCONST(1000.0)  // mult. density factor
-#define  BLAST_TEMPERATURE   RCONST(500.0)   // mult. temperature factor
+#define  BLAST_DENSITY       RCONST(500.0)  // mult. density factor
+#define  BLAST_TEMPERATURE   RCONST(250.0)   // mult. temperature factor
+// #define  BLAST_DENSITY       RCONST(1000.0)  // mult. density factor
+// #define  BLAST_TEMPERATURE   RCONST(500.0)   // mult. temperature factor
 #define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
 #define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
 #define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
@@ -177,7 +179,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
   realtype m_amu = 1.66053904e-24;
   realtype density0 = 1e2 * mH;   // in g/cm^{-3}
-  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist;
+  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
 
   // iterate over subdomain, setting initial conditions
   for (k=0; k<udata.nzl; k++)
@@ -203,7 +205,8 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
           xdist = abs(xloc-cx);
           ydist = abs(yloc-cy);
           zdist = abs(zloc-cz);
-          density += cs*exp(-2.0*(xdist*xdist + ydist*ydist + zdist*zdist)/cr/cr);
+          rsq = xdist*xdist + ydist*ydist + zdist*zdist;
+          density += cs*exp(-2.0*rsq/cr/cr);
         }
         density *= density0;
 
@@ -219,12 +222,20 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         xdist = abs(xloc-cx);
         ydist = abs(yloc-cy);
         zdist = abs(zloc-cz);
-        density += cs*exp(-2.0*(xdist*xdist + ydist*ydist + zdist*zdist)/cr/cr);
+        rsq = xdist*xdist + ydist*ydist + zdist*zdist;
+        density += cs*exp(-2.0*rsq/cr/cr);
         
+        // set location-dependent temperature, and convert to gas energy
+        T = T0;
+        cs = T0*BLAST_TEMPERATURE;
+        T += cs*exp(-2.0*rsq/cr/cr);
+
         // set mass densities into local variables
-        H2I = 1.e-3*density;
+        //H2I = (rsq/cr/cr < 1.0) ?  tiny*density : 1.e-3*density;
+        H2I = tiny*density;
         H2II = tiny*density;
-        HII = 1.e2*tiny*density;
+        //HII = 1.e2*tiny*density;
+        HII = tiny*density;
         HM = tiny*density;
         HeII = tiny*density;
         HeIII = tiny*density;
@@ -243,10 +254,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         ndens  = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
         de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
-        // set location-dependent temperature, and convert to gas energy
-        T = T0;
-        cs = T0*BLAST_TEMPERATURE;
-        T += cs*exp(-2.0*(xdist*xdist + ydist*ydist + zdist*zdist)/cr/cr);
+        // convert temperature to gas energy
         ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
 
         // insert chemical fields into initial condition vector,

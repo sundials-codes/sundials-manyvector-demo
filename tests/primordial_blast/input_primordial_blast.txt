@@ -22,9 +22,9 @@ zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
 tf = 1.0
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
-nx = 20              # global spatial grid: nx * ny * nz
-ny = 20
-nz = 20
+nx = 50              # global spatial grid: nx * ny * nz
+ny = 50
+nz = 50
 xlbc = 3            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 3            #    0 = periodic  (opposite periodic faces must match)
 ylbc = 3            #    1 = homogeneous Neumann

@@ -169,14 +169,20 @@ int main(int argc, char* argv[]) {
       for (i=0; i<udata.nxl; i++) {
 
         // set mass densities into local variables
-        H2I = 1.e-3*density;
+        // H2I = 1.e-3*density;
+        H2I = tiny*density;
         H2II = tiny*density;
         HII = tiny*density;
+        // HI = tiny*density;
         HM = tiny*density;
+        // HM = 1.e-3*density;
         HeII = tiny*density;
         HeIII = tiny*density;
+        // HeI = tiny*density;
         HeI = (ONE-Hfrac)*density - HeII - HeIII;
+        // HeIII = (ONE-Hfrac)*density - HeII - HeI;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
+        // HII = density - (H2I+H2II+HI+HM+HeI+HeII+HeIII);
 
         // compute derived number densities
         nH2I   = H2I   / H2I_weight;
@@ -574,6 +580,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up and return with successful completion
+  free(network_data);          // Free Dengo data structure
   N_VDestroy(w);               // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
   SUNLinSolFree(LS);           // Free matrix and linear solver
