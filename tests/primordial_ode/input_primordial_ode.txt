@@ -22,15 +22,15 @@ zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
 tf = 3.15576e14
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
-nx = 3              # global spatial grid: nx * ny * nz
-ny = 3
-nz = 3
-xlbc = 0            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
-xrbc = 0            #    0 = periodic  (opposite periodic faces must match)
-ylbc = 0            #    1 = homogeneous Neumann
-yrbc = 0            #    2 = homogeneous Dirichlet
-zlbc = 0            #    3 = reflecting
-zrbc = 0
+nx = 10             # global spatial grid: nx * ny * nz
+ny = 10
+nz = 10
+xlbc = 3            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
+xrbc = 3            #    0 = periodic  (opposite periodic faces must match)
+ylbc = 3            #    1 = homogeneous Neumann
+yrbc = 3            #    2 = homogeneous Dirichlet
+zlbc = 3            #    3 = reflecting
+zrbc = 3
 MassUnits = 1.0     # mass unit scaling factor (code -> g)
 LengthUnits = 1.0   # length unit scaling factor (code -> cm)
 TimeUnits = 1.0     # time unit scaling factor (code -> s)
