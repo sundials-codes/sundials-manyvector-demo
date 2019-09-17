@@ -269,6 +269,7 @@ public:
     if (xflux != NULL)  delete[] xflux;
     if (yflux != NULL)  delete[] yflux;
     if (zflux != NULL)  delete[] zflux;
+    if (RxNetData != NULL)  free(RxNetData);
   };
 
   // Update derived unit scaling factors from base factors
