@@ -42,7 +42,7 @@
 #include "fenv.h"
 #endif
 
-#define ONE_STEP_DEBUG
+//#define ONE_STEP_DEBUG
 
 
 // Initialization and preparation routines for Dengo data structure
