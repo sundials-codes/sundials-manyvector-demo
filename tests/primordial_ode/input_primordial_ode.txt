@@ -20,7 +20,7 @@ yr = 1.0
 zl = 0.0
 zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
-tf = 2.992040e14
+tf = 3.15576e14
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
 nx = 3              # global spatial grid: nx * ny * nz
 ny = 3
@@ -37,7 +37,7 @@ TimeUnits = 1.0     # time unit scaling factor (code -> s)
 #
 #
 #### Run Options ####
-nout = 20           # number of solution outputs
+nout = 10           # number of solution outputs
 showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #
 #

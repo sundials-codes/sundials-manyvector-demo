@@ -7,15 +7,17 @@
  ----------------------------------------------------------------
  Implementation file to test Dengo interface -- note that although
  this uses the EulerData structure, we do not actually create the
- fluid fields all
- spatial domain and MPI information is ignored.  We only use this
- infrastructure to enable simplified input of the time interval
- and ARKode solver options.
+ fluid fields, and all spatial domain and MPI information is 
+ ignored.  We only use this infrastructure to enable simplified 
+ input of the time interval and ARKode solver options, and to 
+ explore 'equilbrium' configurations for a clumpy density field
+ with non-uniform temperature field.
  ---------------------------------------------------------------*/
 
 // Header files
 #include <euler3D.hpp>
 #include <dengo_primordial_network.hpp>
+#include <random>
 #ifdef CVKLU
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
@@ -31,10 +33,25 @@
 #include <arkode/arkode_arkstep.h>
 #endif
 
-
 #ifdef DEBUG
 #include "fenv.h"
 #endif
+
+
+// basic problem definitions
+#define  CLUMPS_PER_PROC     10              // on average
+#define  MIN_CLUMP_RADIUS    RCONST(3.0)     // in number of cells
+#define  MAX_CLUMP_RADIUS    RCONST(6.0)     // in number of cells
+#define  MAX_CLUMP_STRENGTH  RCONST(20.0)    // mult. density factor
+#define  T0                  RCONST(10.0)    // background temperature
+#define  BLAST_DENSITY       RCONST(1000.0)  // mult. density factor
+#define  BLAST_TEMPERATURE   RCONST(500.0)   // mult. temperature factor
+#define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
+#define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
+#define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
+#define  BLAST_CENTER_Z      RCONST(0.5)     // relative to unit cube
+
+
 
 // utility function prototypes
 void print_info(void *arkode_mem, realtype &t, N_Vector w,
@@ -141,11 +158,61 @@ int main(int argc, char* argv[]) {
   atols = N_VNew_Serial(N);
   if (check_flag((void *) atols, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
 
+  // root process determines locations, radii and strength of density clumps
+  long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
+  double clump_data[nclumps*5];
+  if (udata.myid == 0) {
+
+    // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
+    std::mt19937_64 gen(udata.nprocs);
+    std::uniform_real_distribution<> cx_d(udata.xl, udata.xr);
+    std::uniform_real_distribution<> cy_d(udata.yl, udata.yr);
+    std::uniform_real_distribution<> cz_d(udata.zl, udata.zr);
+    std::uniform_real_distribution<> cr_d(MIN_CLUMP_RADIUS,MAX_CLUMP_RADIUS);
+    std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
+
+    // fill clump information
+    for (i=0; i<nclumps; i++) {
+
+      // global (x,y,z) coordinates for this clump center
+      clump_data[5*i+0] = cx_d(gen);
+      clump_data[5*i+1] = cy_d(gen);
+      clump_data[5*i+2] = cz_d(gen);
+
+      // radius of clump
+      clump_data[5*i+3] = cr_d(gen);
+
+      // strength of clump
+      clump_data[5*i+4] = cs_d(gen);
+
+    }
+
+  }
+
+  // root process broadcasts clump information
+  retval = MPI_Bcast(clump_data, nclumps*5, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
+
+  // output clump information
+  if (udata.myid == 0) {
+    cout << "\nInitializing problem with " << nclumps << " clumps:\n";
+    for (i=0; i<nclumps; i++)
+      cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
+           << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
+           << clump_data[5*i+3] << " cells,  \tstrength = " << clump_data[5*i+4] << std::endl;
+    cout << "\n'Blast' clump:\n"
+         << "       overdensity = " << BLAST_DENSITY << std::endl
+         << "   overtemperature = " << BLAST_TEMPERATURE << std::endl
+         << "            radius = " << BLAST_RADIUS << std::endl
+         << "            center = " << BLAST_CENTER_X << ", "
+         << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
+  }
+
   // set initial conditions -- essentially-neutral primordial gas
-  realtype Tmean = 2000.0;  // mean temperature in K
-  //  realtype Tamp = 3600.0;   // temperature amplitude in K
-  realtype Tamp = 0.0;   // temperature amplitude in K
-  realtype tiny = 1e-20;
+  realtype Tmean = 10.0;  // mean temperature in K
+  realtype Tamp = 0.0;    // temperature amplitude in K
+  realtype tiny = 1e-40;
+  realtype small = 1e-12;
   realtype mH = 1.67e-24;
   realtype Hfrac = 0.76;
   realtype HI_weight = 1.00794 * mH;
@@ -156,33 +223,78 @@ int main(int argc, char* argv[]) {
   realtype HeIII_weight = 4.002602 * mH;
   realtype H2I_weight = 2*HI_weight;
   realtype H2II_weight = 2*HI_weight;
-  realtype gamma = 5.0/3.0;
   realtype kboltz = 1.3806488e-16;
   realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
   realtype m_amu = 1.66053904e-24;
-  realtype density = 1e2 * mH;   // in g/cm^{-3}
+  realtype density0 = 1e2 * mH;   // in g/cm^{-3}
+  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
   realtype *wdata = NULL;
   wdata = N_VGetArrayPointer(w);
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
 
-        // set mass densities into local variables
-        // H2I = 1.e-3*density;
-        H2I = tiny*density;
+        // determine cell center
+        xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
+        yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
+        zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
+
+        // determine density in this cell (via loop over clumps)
+        density = ONE;
+        for (idx=0; idx<nclumps; idx++) {
+          cx = clump_data[5*idx+0];
+          cy = clump_data[5*idx+1];
+          cz = clump_data[5*idx+2];
+          cr = clump_data[5*idx+3]*udata.dx;
+          cs = clump_data[5*idx+4];
+          //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+          //ydist = min( abs(yloc-cy), min( abs(yloc-cx+udata.yr), abs(xloc-cx-udata.xr) ) );
+          //zdist = min( abs(zloc-cz), min( abs(zloc-cx+udata.zr), abs(xloc-cx-udata.xr) ) );
+          xdist = abs(xloc-cx);
+          ydist = abs(yloc-cy);
+          zdist = abs(zloc-cz);
+          rsq = xdist*xdist + ydist*ydist + zdist*zdist;
+          density += cs*exp(-2.0*rsq/cr/cr);
+        }
+        density *= density0;
+
+        // add blast clump density
+        cx = udata.xl + BLAST_CENTER_X*(udata.xr - udata.xl);
+        cy = udata.yl + BLAST_CENTER_Y*(udata.yr - udata.yl);
+        cz = udata.zl + BLAST_CENTER_Z*(udata.zr - udata.zl);
+        //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        //ydist = min( abs(yloc-cy), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        //zdist = min( abs(zloc-cz), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        cr = BLAST_RADIUS*min( udata.xr-udata.xl, min(udata.yr-udata.yl, udata.zr-udata.zl));
+        cs = density0*BLAST_DENSITY;
+        xdist = abs(xloc-cx);
+        ydist = abs(yloc-cy);
+        zdist = abs(zloc-cz);
+        rsq = xdist*xdist + ydist*ydist + zdist*zdist;
+        density += cs*exp(-2.0*rsq/cr/cr);
+        
+        // set location-dependent temperature
+        T = T0;
+        cs = T0*(BLAST_TEMPERATURE-ONE);
+        T += cs*exp(-2.0*rsq/cr/cr);
+
+        // set initial mass densities into local variables -- blast clump is essentially
+        // only HI and HeI, but outside we have trace amounts of other species.
+        H2I = small*density;
         H2II = tiny*density;
         HII = tiny*density;
-        // HI = tiny*density;
         HM = tiny*density;
-        // HM = 1.e-3*density;
         HeII = tiny*density;
         HeIII = tiny*density;
-        // HeI = tiny*density;
+        // H2I = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // H2II = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HM = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HeII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HeIII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
         HeI = (ONE-Hfrac)*density - HeII - HeIII;
-        // HeIII = (ONE-Hfrac)*density - HeII - HeI;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
-        // HII = density - (H2I+H2II+HI+HM+HeI+HeII+HeIII);
 
         // compute derived number densities
         nH2I   = H2I   / H2I_weight;
@@ -196,11 +308,8 @@ int main(int argc, char* argv[]) {
         ndens  = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
         de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
-        // set varying temperature throughout domain, and convert to gas energy
-        T = Tmean + ( Tamp*(i+udata.is-udata.nx/2)/(udata.nx-1) +
-                      Tamp*(j+udata.js-udata.ny/2)/(udata.ny-1) +
-                      Tamp*(k+udata.ks-udata.nz/2)/(udata.nz-1) )/3.0;
-        ge = (kboltz * T * ndens) / (density * (gamma - ONE));
+        // convert temperature to gas energy
+        ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
         // converting to 'dimensionless' electron number density
@@ -595,21 +704,10 @@ int main(int argc, char* argv[]) {
 }
 
 
-// Prints out solution values at two locations (converting from
-// number densities to mass units)
+// Prints out solution statistics over the domain
 void print_info(void *arkode_mem, realtype &t, N_Vector w,
                 cvklu_data *network_data, EulerData &udata)
 {
-  // indices to print
-  long int i1 = udata.nxl/3;
-  long int j1 = udata.nyl/3;
-  long int k1 = udata.nzl/3;
-  long int idx1 = BUFIDX(0,i1,j1,k1,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-  long int i2 = 2*udata.nxl/3;
-  long int j2 = 2*udata.nyl/3;
-  long int k2 = 2*udata.nzl/3;
-  long int idx2 = BUFIDX(0,i2,j2,k2,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-
   // access N_Vector data
   realtype *wdata = N_VGetArrayPointer(w);
   if (wdata == NULL)  return;
@@ -637,53 +735,30 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   // print current time and number of steps
   printf("\nt = %.3e  (nst = %li)\n", t, nst);
 
+  // determine mean, min, max values for each component
+  double cmean[] = {ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO};
+  double cmax[]  = {ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO};
+  double cmin[]  = {1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300};
+  for (long int k=0; k<udata.nzl; k++)
+    for (long int j=0; j<udata.nyl; j++)
+      for (long int i=0; i<udata.nxl; i++)
+        for (long int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          cmean[l] += network_data->scale[0][idx]*wdata[idx];
+          cmax[l]  = max(cmax[l], network_data->scale[0][idx]*wdata[idx]);
+          cmin[l]  = min(cmin[l], network_data->scale[0][idx]*wdata[idx]);
+        }
+  for (long int l=0; l<udata.nchem; l++) 
+    cmean[l] /= (udata.nxl * udata.nyl * udata.nzl);
+  
   // print solutions at first location
-  printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         i1, j1, k1,
-         network_data->scale[0][idx1+0]*wdata[idx1+0],
-         network_data->scale[0][idx1+1]*wdata[idx1+1],
-         network_data->scale[0][idx1+2]*wdata[idx1+2],
-         network_data->scale[0][idx1+3]*wdata[idx1+3],
-         network_data->scale[0][idx1+4]*wdata[idx1+4],
-         network_data->scale[0][idx1+5]*wdata[idx1+5],
-         network_data->scale[0][idx1+6]*wdata[idx1+6],
-         network_data->scale[0][idx1+7]*wdata[idx1+7],
-         network_data->scale[0][idx1+8]*wdata[idx1+8],
-         network_data->scale[0][idx1+9]*wdata[idx1+9]);
-         // network_data->scale[0][idx1+0]*wdata[idx1+0]*H2I_weight,
-         // network_data->scale[0][idx1+1]*wdata[idx1+1]*H2II_weight,
-         // network_data->scale[0][idx1+2]*wdata[idx1+2]*HI_weight,
-         // network_data->scale[0][idx1+3]*wdata[idx1+3]*HII_weight,
-         // network_data->scale[0][idx1+4]*wdata[idx1+4]*HM_weight,
-         // network_data->scale[0][idx1+5]*wdata[idx1+5]*HeI_weight,
-         // network_data->scale[0][idx1+6]*wdata[idx1+6]*HeII_weight,
-         // network_data->scale[0][idx1+7]*wdata[idx1+7]*HeIII_weight,
-         // network_data->scale[0][idx1+8]*wdata[idx1+8]*m_amu,
-         // network_data->scale[0][idx1+9]*wdata[idx1+9]);
-
-  // print solutions at second location
-  printf("  w[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         i2, j2, k2,
-         network_data->scale[0][idx2+0]*wdata[idx2+0],
-         network_data->scale[0][idx2+1]*wdata[idx2+1],
-         network_data->scale[0][idx2+2]*wdata[idx2+2],
-         network_data->scale[0][idx2+3]*wdata[idx2+3],
-         network_data->scale[0][idx2+4]*wdata[idx2+4],
-         network_data->scale[0][idx2+5]*wdata[idx2+5],
-         network_data->scale[0][idx2+6]*wdata[idx2+6],
-         network_data->scale[0][idx2+7]*wdata[idx2+7],
-         network_data->scale[0][idx2+8]*wdata[idx2+8],
-         network_data->scale[0][idx2+9]*wdata[idx2+9]);
-         // network_data->scale[0][idx2+0]*wdata[idx2+0]*H2I_weight,
-         // network_data->scale[0][idx2+1]*wdata[idx2+1]*H2II_weight,
-         // network_data->scale[0][idx2+2]*wdata[idx2+2]*HI_weight,
-         // network_data->scale[0][idx2+3]*wdata[idx2+3]*HII_weight,
-         // network_data->scale[0][idx2+4]*wdata[idx2+4]*HM_weight,
-         // network_data->scale[0][idx2+5]*wdata[idx2+5]*HeI_weight,
-         // network_data->scale[0][idx2+6]*wdata[idx2+6]*HeII_weight,
-         // network_data->scale[0][idx2+7]*wdata[idx2+7]*HeIII_weight,
-         // network_data->scale[0][idx2+8]*wdata[idx2+8]*m_amu,
-         // network_data->scale[0][idx2+9]*wdata[idx2+9]);
+  printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
+  printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         cmin[0], cmin[1], cmin[2], cmin[3], cmin[4], cmin[5], cmin[6], cmin[7], cmin[8], cmin[9]);
+  printf("       mean: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         cmean[0], cmean[1], cmean[2], cmean[3], cmean[4], cmean[5], cmean[6], cmean[7], cmean[8], cmean[9]);
+  printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         cmax[0], cmax[1], cmax[2], cmax[3], cmax[4], cmax[5], cmax[6], cmax[7], cmax[8], cmax[9]);
 }
 
 
