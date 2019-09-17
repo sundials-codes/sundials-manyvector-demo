@@ -37,7 +37,7 @@ TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
 #
 #
 #### Run Options ####
-nout = 20           # number of solution outputs
+nout = 10           # number of solution outputs
 showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #
 #
@@ -48,7 +48,7 @@ btable = 112        # specific built-in Butcher table to use (<0 => default)
 adapt_method = 2    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)
-mxsteps = 500       # max internal steps per 'evolve' call (0 => default)
+mxsteps = 5000      # max internal steps per 'evolve' call (0 => default)
 safety = 0.99       # temporal step size safety factor (0 => default)
 cfl  = 0.0          # max CFL fraction: cfl (disabled if set to zero)
 bias = 2.0          # temporal error bias factor (0 => default)
