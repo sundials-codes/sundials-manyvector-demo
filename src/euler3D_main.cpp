@@ -5,7 +5,17 @@
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
- Main Euler equation driver
+ Main Euler equation driver:
+
+ This evolves the 3D compressible, inviscid Euler equations.
+
+ The problem is evolved using ARKode's ARKStep time-stepping
+ module for a temporally adaptive explicit Runge--Kutta solve.  
+ Nearly all adaptivity options are controllable via user inputs.
+ If the input file specifies hmin=hmax>0, then temporal adaptivity 
+ is disabled, and the solver will use the fixed step size 
+ h=hmin=hmax. 
+
  ---------------------------------------------------------------*/
 
 // Header files
@@ -28,11 +38,10 @@ int main(int argc, char* argv[]) {
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
-  // general problem parameters
+  // general problem variables
   long int N, Ntot, i;
   int Nsubvecs;
-
-  // general problem variables
+  int fixed_step;                // flag to indicate use of fixed fast step sizes
   int retval;                    // reusable error-checking flag
   int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
@@ -64,6 +73,9 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
+  // determine whether fixed stepsizes should be used
+  fixed_step = ((opts.hmin == opts.hmax) && (opts.hmin > ZERO)) ? 1 : 0;
+  
   // set up udata structure
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -78,6 +90,8 @@ int main(int argc, char* argv[]) {
          << udata.yl << ", " << udata.yr << "] x ["
          << udata.zl << ", " << udata.zr << "]\n";
     cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
+    if (fixed_step == 1)
+      cout << "   fixed timestep size: " << opts.hmin << "\n";
     cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
@@ -166,54 +180,71 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetDenseOrder(arkode_mem, opts.dense_order);
   if (check_flag(&retval, "ARKStepSetDenseOrder (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  //    set safety factor
-  retval = ARKStepSetSafetyFactor(arkode_mem, opts.safety);
-  if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
+  //    set adaptive timestepping parameters (if applicable)
+  if (fixed_step == 0) {
+    
+    //    set safety factor
+    retval = ARKStepSetSafetyFactor(arkode_mem, opts.safety);
+    if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set error bias
+    retval = ARKStepSetErrorBias(arkode_mem, opts.bias);
+    if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set step growth factor
+    retval = ARKStepSetMaxGrowth(arkode_mem, opts.growth);
+    if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set time step adaptivity method
+    realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
+    int idefault = 1;
+    if (abs(opts.k1)+abs(opts.k2)+abs(opts.k3) > 0.0)  idefault=0;
+    retval = ARKStepSetAdaptivityMethod(arkode_mem, opts.adapt_method, idefault,
+                                        opts.pq, adapt_params);
+    if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set first step growth factor
+    retval = ARKStepSetMaxFirstGrowth(arkode_mem, opts.etamx1);
+    if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set error failure growth factor
+    retval = ARKStepSetMaxEFailGrowth(arkode_mem, opts.etamxf);
+    if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set initial time step size
+    retval = ARKStepSetInitStep(arkode_mem, opts.h0);
+    if (check_flag(&retval, "ARKStepSetInitStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set minimum time step size
+    retval = ARKStepSetMinStep(arkode_mem, opts.hmin);
+    if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set maximum time step size
+    retval = ARKStepSetMaxStep(arkode_mem, opts.hmax);
+    if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set maximum allowed error test failures
+    retval = ARKStepSetMaxErrTestFails(arkode_mem, opts.maxnef);
+    if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    //    set maximum allowed hnil warnings
+    retval = ARKStepSetMaxHnilWarns(arkode_mem, opts.mxhnil);
+    if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  //    set error bias
-  retval = ARKStepSetErrorBias(arkode_mem, opts.bias);
-  if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set step growth factor
-  retval = ARKStepSetMaxGrowth(arkode_mem, opts.growth);
-  if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set time step adaptivity method
-  realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
-  int idefault = 1;
-  if (abs(opts.k1)+abs(opts.k2)+abs(opts.k3) > 0.0)  idefault=0;
-  retval = ARKStepSetAdaptivityMethod(arkode_mem, opts.adapt_method, idefault,
-                                      opts.pq, adapt_params);
-  if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set first step growth factor
-  retval = ARKStepSetMaxFirstGrowth(arkode_mem, opts.etamx1);
-  if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set error failure growth factor
-  retval = ARKStepSetMaxEFailGrowth(arkode_mem, opts.etamxf);
-  if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set initial time step size
-  retval = ARKStepSetInitStep(arkode_mem, opts.h0);
-  if (check_flag(&retval, "ARKStepSetInitStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set minimum time step size
-  retval = ARKStepSetMinStep(arkode_mem, opts.hmin);
-  if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum time step size
-  retval = ARKStepSetMaxStep(arkode_mem, opts.hmax);
-  if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum allowed error test failures
-  retval = ARKStepSetMaxErrTestFails(arkode_mem, opts.maxnef);
-  if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum allowed hnil warnings
-  retval = ARKStepSetMaxHnilWarns(arkode_mem, opts.mxhnil);
-  if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
-
+    //    supply cfl-stable step routine (if requested)
+    if (udata.cfl > ZERO) {
+      retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
+      if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
+    
+  //    otherwise, set fixed timestep size
+  } else {
+    
+    retval = ARKStepSetFixedStep(arkode_mem, opts.hmin);
+    if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+  }
+  
   //    set maximum allowed steps
   retval = ARKStepSetMaxNumSteps(arkode_mem, opts.mxsteps);
   if (check_flag(&retval, "ARKStepSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -221,12 +252,6 @@ int main(int argc, char* argv[]) {
   //    set tolerances
   retval = ARKStepSStolerances(arkode_mem, opts.rtol, opts.atol);
   if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    supply cfl-stable step routine (if requested)
-  if (udata.cfl > ZERO) {
-    retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
-    if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
 
   // Initial batch of outputs
   retval = udata.profile[PR_IO].start();
@@ -343,15 +368,17 @@ int main(int argc, char* argv[]) {
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
     cout << "\nProfiling Results:\n";
-    udata.profile[PR_SETUP].print_cumulative_times("setup");
-    udata.profile[PR_IO].print_cumulative_times("I/O");
-    udata.profile[PR_MPI].print_cumulative_times("MPI");
-    udata.profile[PR_PACKDATA].print_cumulative_times("pack");
-    udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
-    udata.profile[PR_RHSEULER].print_cumulative_times("RHS");
-    udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
-    udata.profile[PR_SIMUL].print_cumulative_times("sim");
   }
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  udata.profile[PR_SETUP].print_cumulative_times("setup");
+  udata.profile[PR_IO].print_cumulative_times("I/O");
+  udata.profile[PR_MPI].print_cumulative_times("MPI");
+  udata.profile[PR_PACKDATA].print_cumulative_times("pack");
+  udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
+  udata.profile[PR_RHSEULER].print_cumulative_times("RHS");
+  udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+  udata.profile[PR_SIMUL].print_cumulative_times("sim");
 
   // Output mass/energy conservation error
   if (udata.showstats) {
@@ -366,6 +393,8 @@ int main(int argc, char* argv[]) {
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
   ARKStepFree(&arkode_mem);    // Free integrator memory
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   MPI_Finalize();              // Finalize MPI
   return 0;
 }

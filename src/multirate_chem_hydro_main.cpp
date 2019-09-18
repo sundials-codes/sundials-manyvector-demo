@@ -22,17 +22,19 @@
  The fast time scale is evolved implicitly using ARKode's ARKStep
  time-stepping module, using the DIRK Butcher tableau that is
  specified by the user.  Here, time adaptivity is employed, with
- nearly all adaptivity options controllable via user inputs.
- Implicit subsystems are solved using the default Newton
- SUNNonlinearSolver module, but with a custom SUNLinearSolver
- module.  This is a direct solver for block-diagonal matrices
- (one block per MPI rank) that unpacks the MPIManyVector to access
- a specified subvector component (per rank), and then uses a
- standard SUNLinearSolver module for each rank-local linear
- system.  The specific SUNLinearSolver module to use on each block,
- and the MPIManyVector subvector index are provided in the module
- 'constructor'.  Here, we use the KLU SUNLinearSolver module for
- the block on each rank.
+ nearly all adaptivity options controllable via user inputs.   
+ If the input file specifies hmin=hmax>0, then temporal adaptivity 
+ is disabled, and the solver will use the fixed step size 
+ h=hmin=hmax. Implicit subsystems are solved using the default 
+ Newton SUNNonlinearSolver module, but with a custom 
+ SUNLinearSolver module.  This is a direct solver for 
+ block-diagonal matrices (one block per MPI rank) that unpacks 
+ the MPIManyVector to access a specified subvector component (per 
+ rank), and then uses a standard SUNLinearSolver module for each 
+ rank-local linear system.  The specific SUNLinearSolver module 
+ to use on each block, and the MPIManyVector subvector index are 
+ provided in the module 'constructor'.  Here, we use the KLU 
+ SUNLinearSolver module for the block on each rank.
  ---------------------------------------------------------------*/
 
 // Header files
@@ -105,6 +107,7 @@ int main(int argc, char* argv[]) {
   // general problem variables
   long int N, Ntot, i, j, k, l;
   int Nsubvecs;
+  int fixed_step;                // flag to indicate use of fixed fast step sizes
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
@@ -143,6 +146,9 @@ int main(int argc, char* argv[]) {
   // set slow timestep size as h0 (if >0), or dTout otherwise
   realtype hslow = (opts.h0 > 0) ? opts.h0 : dTout;
 
+  // determine whether fixed fast stepsizes should be used
+  fixed_step = ((opts.hmin == opts.hmax) && (opts.hmin > ZERO)) ? 1 : 0;
+  
   // set up udata structure
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -165,6 +171,8 @@ int main(int argc, char* argv[]) {
          << udata.zl << ", " << udata.zr << "]\n";
     cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
     cout << "   slow timestep size: " << hslow << "\n";
+    if (fixed_step == 1)
+      cout << "   fixed fast timestep size: " << opts.hmin << "\n";
     cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
@@ -274,50 +282,61 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // set safety factor
-  retval = ARKStepSetSafetyFactor(inner_arkode_mem, opts.safety);
-  if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
+  // set adaptive timestepping parameters (if applicable)
+  if (fixed_step == 0) {
+    
+    // set safety factor
+    retval = ARKStepSetSafetyFactor(inner_arkode_mem, opts.safety);
+    if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // set error bias
-  retval = ARKStepSetErrorBias(inner_arkode_mem, opts.bias);
-  if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
+    // set error bias
+    retval = ARKStepSetErrorBias(inner_arkode_mem, opts.bias);
+    if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set step growth factor
+    retval = ARKStepSetMaxGrowth(inner_arkode_mem, opts.growth);
+    if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set time step adaptivity method
+    realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
+    int idefault = 1;
+    if (abs(opts.k1)+abs(opts.k2)+abs(opts.k3) > 0.0)  idefault=0;
+    retval = ARKStepSetAdaptivityMethod(inner_arkode_mem, opts.adapt_method,
+                                        idefault, opts.pq, adapt_params);
+    if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set first step growth factor
+    retval = ARKStepSetMaxFirstGrowth(inner_arkode_mem, opts.etamx1);
+    if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set error failure growth factor
+    retval = ARKStepSetMaxEFailGrowth(inner_arkode_mem, opts.etamxf);
+    if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set minimum time step size
+    retval = ARKStepSetMinStep(inner_arkode_mem, opts.hmin);
+    if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set maximum time step size
+    retval = ARKStepSetMaxStep(inner_arkode_mem, opts.hmax);
+    if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set maximum allowed error test failures
+    retval = ARKStepSetMaxErrTestFails(inner_arkode_mem, opts.maxnef);
+    if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    // set maximum allowed hnil warnings
+    retval = ARKStepSetMaxHnilWarns(inner_arkode_mem, opts.mxhnil);
+    if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // set step growth factor
-  retval = ARKStepSetMaxGrowth(inner_arkode_mem, opts.growth);
-  if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set time step adaptivity method
-  realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
-  int idefault = 1;
-  if (abs(opts.k1)+abs(opts.k2)+abs(opts.k3) > 0.0)  idefault=0;
-  retval = ARKStepSetAdaptivityMethod(inner_arkode_mem, opts.adapt_method,
-                                      idefault, opts.pq, adapt_params);
-  if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set first step growth factor
-  retval = ARKStepSetMaxFirstGrowth(inner_arkode_mem, opts.etamx1);
-  if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set error failure growth factor
-  retval = ARKStepSetMaxEFailGrowth(inner_arkode_mem, opts.etamxf);
-  if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set minimum time step size
-  retval = ARKStepSetMinStep(inner_arkode_mem, opts.hmin);
-  if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set maximum time step size
-  retval = ARKStepSetMaxStep(inner_arkode_mem, opts.hmax);
-  if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set maximum allowed error test failures
-  retval = ARKStepSetMaxErrTestFails(inner_arkode_mem, opts.maxnef);
-  if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // set maximum allowed hnil warnings
-  retval = ARKStepSetMaxHnilWarns(inner_arkode_mem, opts.mxhnil);
-  if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
-
+  // otherwise, set fixed timestep size
+  } else {
+    
+    retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmin);
+    if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+  }
+  
   // set maximum allowed steps
   retval = ARKStepSetMaxNumSteps(inner_arkode_mem, opts.mxsteps);
   if (check_flag(&retval, "ARKStepSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -338,6 +357,7 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetNonlinConvCoef(inner_arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  
   //--- create the slow integrator and set options ---//
 
   // initialize the integrator memory
@@ -528,19 +548,21 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
     }
     cout << "\nProfiling Results:\n";
-    udata.profile[PR_SETUP].print_cumulative_times("setup");
-    udata.profile[PR_IO].print_cumulative_times("I/O");
-    udata.profile[PR_MPI].print_cumulative_times("MPI");
-    udata.profile[PR_PACKDATA].print_cumulative_times("pack");
-    udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
-    udata.profile[PR_RHSEULER].print_cumulative_times("Euler RHS");
-    udata.profile[PR_RHSSLOW].print_cumulative_times("slow RHS");
-    udata.profile[PR_RHSFAST].print_cumulative_times("fast RHS");
-    udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
-    // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
-    udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
-    udata.profile[PR_SIMUL].print_cumulative_times("sim");
   }
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  udata.profile[PR_SETUP].print_cumulative_times("setup");
+  udata.profile[PR_IO].print_cumulative_times("I/O");
+  udata.profile[PR_MPI].print_cumulative_times("MPI");
+  udata.profile[PR_PACKDATA].print_cumulative_times("pack");
+  udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
+  udata.profile[PR_RHSEULER].print_cumulative_times("Euler RHS");
+  udata.profile[PR_RHSSLOW].print_cumulative_times("slow RHS");
+  udata.profile[PR_RHSFAST].print_cumulative_times("fast RHS");
+  udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
+  // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
+  udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+  udata.profile[PR_SIMUL].print_cumulative_times("sim");
 
   // Output mass/energy conservation error
   if (udata.showstats) {
@@ -551,6 +573,8 @@ int main(int argc, char* argv[]) {
 
   // Clean up, finalize MPI, and return with successful completion
   cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }
