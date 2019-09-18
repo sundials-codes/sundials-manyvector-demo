@@ -53,7 +53,7 @@
 #define  MAX_CLUMP_STRENGTH  RCONST(10.0)    // mult. density factor
 #define  T0                  RCONST(10.0)    // background temperature
 #define  BLAST_DENSITY       RCONST(10.0)  // mult. density factor
-#define  BLAST_TEMPERATURE   RCONST(10.0)   // mult. temperature factor
+#define  BLAST_TEMPERATURE   RCONST(5.0)   // mult. temperature factor
 #define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
 #define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
 #define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
@@ -163,6 +163,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   // initial condition values -- essentially-neutral primordial gas
   realtype tiny = 1e-40;
   realtype small = 1e-12;
+  //realtype small = 1e-16;
   realtype mH = 1.67e-24;
   realtype Hfrac = 0.76;
   realtype HI_weight = 1.00794 * mH;
@@ -234,18 +235,18 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // set initial mass densities into local variables -- blast clump is essentially
         // only HI and HeI, but outside we have trace amounts of other species.
-        H2I   = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        H2II  = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        HII   = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
-        HM    = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        HeII  = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
-        HeIII = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
-        // H2I   = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
-        // H2II  = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HII   = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HM    = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HeII  = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HeIII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        H2I   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HII   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HeII  = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        HeIII = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        // H2I   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        // H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        // HII   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        // HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        // HeII  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        // HeIII = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         HeI = (ONE-Hfrac)*density - HeII - HeIII;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 
