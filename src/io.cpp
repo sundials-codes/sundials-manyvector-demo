@@ -42,8 +42,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
                 ARKodeParameters& opts, int& restart)
 {
   int retval;
-  double dbuff[27];
-  long int ibuff[22];
+  double dbuff[28];
+  long int ibuff[23];
 
   // disable 'restart' by default
   restart = -1;
@@ -52,15 +52,15 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   if (myid == 0) {
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 51;
+    const int nopt = 53;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
                 itf, igam, imun, ilun, itun, inx, iny, inz, ixlb, 
                 ixrb, iylb, iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
-                iemaf, ih0, ihmin, ihmax, irtol, iatol, irest,
-                ipred, imxnit, inlcoef };
+                iemaf, ih0, ihmin, ihmax, ifixed, ihtrans, irtol,
+                iatol, irest, ipred, imxnit, inlcoef };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -115,6 +115,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[ih0].long_name = "h0";
     options[ihmin].long_name = "hmin";
     options[ihmax].long_name = "hmax";
+    options[ifixed].long_name = "fixedstep";
+    options[ihtrans].long_name = "htrans";
     options[irtol].long_name = "rtol";
     options[iatol].long_name = "atol";
     options[irest].long_name = "restart";
@@ -180,6 +182,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "   --h0=<float>           (" << opts.h0 << ")\n"
            << "   --hmin=<float>         (" << opts.hmin << ")\n"
            << "   --hmax=<float>         (" << opts.hmax << ")\n"
+           << "   --fixedstep=<int>      (" << opts.fixedstep << ")\n"
+           << "   --htrans=<float>       (" << opts.htrans << ")\n"
            << "   --rtol=<float>         (" << opts.rtol << ")\n"
            << "   --atol=<float>         (" << opts.atol << ")\n"
            << "\nAvailable nonlinear solver options (and the default if not provided):\n"
@@ -248,6 +252,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"h0 = %lf", &opts.h0);
         retval += sscanf(line,"hmin = %lf", &opts.hmin);
         retval += sscanf(line,"hmax = %lf", &opts.hmax);
+        retval += sscanf(line,"fixedstep = %i", &opts.fixedstep);
+        retval += sscanf(line,"htrans = %lf", &opts.htrans);
         retval += sscanf(line,"rtol = %lf", &opts.rtol);
         retval += sscanf(line,"atol = %lf", &opts.atol);
         retval += sscanf(line,"restart = %i", &restart);
@@ -307,6 +313,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[ih0].count)     opts.h0           = atof(options[ih0].argument);
     if (options[ihmin].count)   opts.hmin         = atof(options[ihmin].argument);
     if (options[ihmax].count)   opts.hmax         = atof(options[ihmax].argument);
+    if (options[ifixed].count)  opts.fixedstep    = atoi(options[ifixed].argument);
+    if (options[ihtrans].count) opts.htrans       = atof(options[ihtrans].argument);
     if (options[irtol].count)   opts.rtol         = atof(options[irtol].argument);
     if (options[iatol].count)   opts.atol         = atof(options[iatol].argument);
     if (options[irest].count)   restart           = atoi(options[irest].argument);
@@ -337,6 +345,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     ibuff[19] = restart;
     ibuff[20] = opts.predictor;
     ibuff[21] = opts.maxniters;
+    ibuff[22] = opts.fixedstep;
 
     dbuff[0]  = udata.xl;
     dbuff[1]  = udata.xr;
@@ -365,12 +374,13 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     dbuff[24] = udata.MassUnits;
     dbuff[25] = udata.LengthUnits;
     dbuff[26] = udata.TimeUnits;
+    dbuff[27] = opts.htrans;
   }
 
   // perform broadcast and unpack results
-  retval = MPI_Bcast(dbuff, 27, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 22, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 23, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
@@ -396,6 +406,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   restart = ibuff[19];
   opts.predictor = ibuff[20];
   opts.maxniters = ibuff[21];
+  opts.fixedstep = ibuff[22];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -424,6 +435,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   udata.MassUnits = dbuff[24];
   udata.LengthUnits = dbuff[25];
   udata.TimeUnits = dbuff[26];
+  opts.htrans = dbuff[27];
 
   // setup any derived unit scaling factors
   retval = udata.UpdateUnits();
@@ -572,6 +584,11 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 
 
 // Write problem-defining parameters to file
+//
+// The only parameters that are changed from those used at the simulation start are:
+//    restart: current output number, so that simulation resumes normally
+//    h0: current step size, so that simulation resumes normally
+//    htrans: 0.0 since initial transients are already bypassed
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
                      const EulerData& udata, const ARKodeParameters& opts)
 {
@@ -626,7 +643,9 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "etamxf = " ESYM "\n", opts.etamxf);
     fprintf(UFID, "h0 = " ESYM "\n", hcur);
     fprintf(UFID, "hmin = " ESYM "\n", opts.hmin);
-    fprintf(UFID, "hmax = " ESYM "\n", opts.hmax);
+    fprintf(UFID, "hmax = " ESYM "\n", ZERO);
+    fprintf(UFID, "fixedstep = %i\n", opts.fixedstep);
+    fprintf(UFID, "htrans = " ESYM "\n", opts.htrans);
     fprintf(UFID, "rtol = " ESYM "\n", opts.rtol);
     fprintf(UFID, "atol = " ESYM "\n", opts.atol);
     fprintf(UFID, "restart = %i\n", iout);

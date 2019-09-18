@@ -88,9 +88,10 @@ using namespace std;
 #define  PR_JACFAST    8
 #define  PR_POSTFAST   9
 #define  PR_SIMUL     10
-#define  PR_DTSTAB    11
-//#define  PR_LSETUP    12   // add these later?? (would need user_data structure inside custom linear solver)
-//#define  PR_LSOLVE    13
+#define  PR_TRANS     11
+#define  PR_DTSTAB    12
+//#define  PR_LSETUP    13   // add these later?? (would need user_data structure inside custom linear solver)
+//#define  PR_LSOLVE    14
 
 
 // Utility routine to check function return values:
@@ -121,6 +122,8 @@ public:
   double h0;           // initial time step size (0 => default)
   double hmin;         // minimum time step size (0 => default)
   double hmax;         // maximum time step size (0 => infinite)
+  int fixedstep;       // flag to use fixed time-stepping
+  double htrans;       // initial interval for adaptive transients (0 => default)
   int predictor;       // algorithm for implicit predictor (0 => default)
   int maxniters;       // max number nonlinear iterations (0 => default)
   double nlconvcoef;   // nonlinear tolerance safety factor (0 => default)
@@ -132,8 +135,8 @@ public:
     order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
     mxhnil(0), mxsteps(5000), cflfac(0.0), safety(0.0), bias(0.0),
     growth(0.0), pq(0), k1(0.0), k2(0.0), k3(0.0), etamx1(0.0),
-    etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), predictor(0),
-    maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12)
+    etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), fixedstep(0), htrans(0.0),
+    predictor(0), maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12)
   {};
 
 };   // end ARKodeParameters;
