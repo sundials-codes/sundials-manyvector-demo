@@ -117,6 +117,16 @@ int main(int argc, char* argv[]) {
     cout << "   tracers/chemical species: " << udata.nchem << "\n";
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
+    if (opts.fusedkernels) {
+      cout << "   fused N_Vector kernels enabled\n";
+    } else {
+      cout << "   fused N_Vector kernels disabled\n";
+    }
+    if (opts.localreduce) {
+      cout << "   local N_Vector reduction operations enabled\n";
+    } else {
+      cout << "   local N_Vector reduction operations disabled\n";
+    }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
   }
@@ -134,7 +144,7 @@ int main(int argc, char* argv[]) {
   FILE *DFID = NULL;
   if (outproc)  DFID=fopen("diags_euler3D.txt","w");
 
-  // Initialize N_Vector data structures
+  // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
@@ -143,14 +153,42 @@ int main(int argc, char* argv[]) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (opts.localreduce == 0) {
+      wsubvecs[i]->ops->nvdotprodlocal = NULL;
+      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
+      wsubvecs[i]->ops->nvminlocal = NULL;
+      wsubvecs[i]->ops->nvl1normlocal = NULL;
+      wsubvecs[i]->ops->nvinvtestlocal = NULL;
+      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
+      wsubvecs[i]->ops->nvminquotientlocal = NULL;
+      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
+      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
+    }
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
     wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (opts.localreduce == 0) {
+      wsubvecs[5]->ops->nvdotprodlocal = NULL;
+      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
+      wsubvecs[5]->ops->nvminlocal = NULL;
+      wsubvecs[5]->ops->nvl1normlocal = NULL;
+      wsubvecs[5]->ops->nvinvtestlocal = NULL;
+      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
+      wsubvecs[5]->ops->nvminquotientlocal = NULL;
+      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
+      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
+    }
   }
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
+  if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set initial conditions (or restart from file)
   if (restart < 0) {

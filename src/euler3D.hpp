@@ -90,8 +90,8 @@ using namespace std;
 #define  PR_SIMUL     10
 #define  PR_TRANS     11
 #define  PR_DTSTAB    12
-//#define  PR_LSETUP    13   // add these later?? (would need user_data structure inside custom linear solver)
-//#define  PR_LSOLVE    14
+#define  PR_LSETUP    13
+#define  PR_LSOLVE    14
 
 
 // Utility routine to check function return values:
@@ -129,14 +129,17 @@ public:
   double nlconvcoef;   // nonlinear tolerance safety factor (0 => default)
   double rtol;         // relative solution tolerance (0 => default)
   double atol;         // absolute solution tolerance (0 => default)
-
+  int fusedkernels;    // flag for fused N_Vector operations (0 disabled, 1 enabled)
+  int localreduce;     // flag for N_Vector local reduction operations (0 disabled, 1 enabled)
+  
   // constructor (with default values)
   ARKodeParameters() :
     order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
     mxhnil(0), mxsteps(5000), cflfac(0.0), safety(0.0), bias(0.0),
     growth(0.0), pq(0), k1(0.0), k2(0.0), k3(0.0), etamx1(0.0),
     etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), fixedstep(0), htrans(0.0),
-    predictor(0), maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12)
+    predictor(0), maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12),
+    fusedkernels(1), localreduce(1)
   {};
 
 };   // end ARKodeParameters;

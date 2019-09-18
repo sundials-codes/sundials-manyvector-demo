@@ -69,3 +69,8 @@ maxniters = 5       # max number nonlinear iterations (0 => default)
 nlconvcoef = 0.001  # nonlinear tolerance safety factor (0 => default)
 rtol = 1e-5         # relative solution tolerance (0 => default)
 atol = 1e-9         # absolute solution tolerance (0 => default)
+#
+#
+#### N_Vector Options ####
+fusedkernels = 1    # fused N_Vector operations (0 disabled, 1 enabled)
+localreduce = 1     # N_Vector local reduction operations (0 disabled, 1 enabled)

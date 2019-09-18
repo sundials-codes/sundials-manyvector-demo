@@ -88,12 +88,15 @@ typedef struct _BDMPIMVContent {
   SUNLinearSolver blockLS;
   sunindextype    subvec;
   sunindextype    lastflag;
+  EulerData*      udata;
 } *BDMPIMVContent;
 #define BDMPIMV_CONTENT(S)  ( (BDMPIMVContent)(S->content) )
 #define BDMPIMV_BLS(S)      ( BDMPIMV_CONTENT(S)->blockLS )
 #define BDMPIMV_SUBVEC(S)   ( BDMPIMV_CONTENT(S)->subvec )
 #define BDMPIMV_LASTFLAG(S) ( BDMPIMV_CONTENT(S)->lastflag )
-SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x, sunindextype subvec);
+#define BDMPIMV_UDATA(S)    ( BDMPIMV_CONTENT(S)->udata )
+SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
+                                  sunindextype subvec, EulerData* udata);
 SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
@@ -206,6 +209,16 @@ int main(int argc, char* argv[]) {
     cout << "   num chemical species: " << udata.nchem << "\n";
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
+    if (opts.fusedkernels) {
+      cout << "   fused N_Vector kernels enabled\n";
+    } else {
+      cout << "   fused N_Vector kernels disabled\n";
+    }
+    if (opts.localreduce) {
+      cout << "   local N_Vector reduction operations enabled\n";
+    } else {
+      cout << "   local N_Vector reduction operations disabled\n";
+    }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
 #ifdef DISABLE_HYDRO    
@@ -230,7 +243,7 @@ int main(int argc, char* argv[]) {
     DFID_INNER=fopen("diags_chem.txt","w");
   }
 
-  // Initialize N_Vector data structures
+  // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
@@ -239,14 +252,42 @@ int main(int argc, char* argv[]) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (opts.localreduce == 0) {
+      wsubvecs[i]->ops->nvdotprodlocal = NULL;
+      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
+      wsubvecs[i]->ops->nvminlocal = NULL;
+      wsubvecs[i]->ops->nvl1normlocal = NULL;
+      wsubvecs[i]->ops->nvinvtestlocal = NULL;
+      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
+      wsubvecs[i]->ops->nvminquotientlocal = NULL;
+      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
+      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
+    }
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
     wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (opts.localreduce == 0) {
+      wsubvecs[5]->ops->nvdotprodlocal = NULL;
+      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
+      wsubvecs[5]->ops->nvminlocal = NULL;
+      wsubvecs[5]->ops->nvl1normlocal = NULL;
+      wsubvecs[5]->ops->nvinvtestlocal = NULL;
+      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
+      wsubvecs[5]->ops->nvminquotientlocal = NULL;
+      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
+      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
+    }
   }
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
+  if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
   atols = N_VClone(w);                           // absolute tolerance vector for fast stepper
   if (check_flag((void *) atols, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   N_VConst(opts.atol, atols);
@@ -287,7 +328,7 @@ int main(int argc, char* argv[]) {
   if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
   // sun_klu_common* common = SUNLinSol_KLUGetCommon(BLS);
   // common->btf = 0;
-  LS = SUNLinSol_BDMPIMV(BLS, w, 5);
+  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -604,6 +645,8 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_RHSSLOW].print_cumulative_times("slow RHS");
   udata.profile[PR_RHSFAST].print_cumulative_times("fast RHS");
   udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
+  udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
+  udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
   // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
   udata.profile[PR_TRANS].print_cumulative_times("trans");
@@ -841,7 +884,7 @@ void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, SUNLinearSolver B
 
 //---- custom SUNLinearSolver module ----
 
-SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x, sunindextype subvec)
+SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x, sunindextype subvec, EulerData* udata)
 {
   SUNLinearSolver S;
   BDMPIMVContent content;
@@ -868,6 +911,7 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x, sunindextype 
   if (content == NULL) { SUNLinSolFree(S); return(NULL); }
   content->blockLS = BLS;
   content->subvec  = subvec;
+  content->udata   = udata;
   S->content = content;
 
   return(S);
@@ -888,13 +932,21 @@ int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S)
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A)
 {
   // pass setup call down to block linear solver
+  int retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].start();
+  if (check_flag(&retval, "Profile::start (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
   BDMPIMV_LASTFLAG(S) = SUNLinSolSetup(BDMPIMV_BLS(S), A);
+  retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].stop();
+  if (check_flag(&retval, "Profile::stop (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
   return(BDMPIMV_LASTFLAG(S));
 }
 
 int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
                            N_Vector x, N_Vector b, realtype tol)
 {
+  // start profiling timer
+  int retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].start();
+  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
+
   // access desired subvector from MPIManyVector objects
   N_Vector xsub, bsub;
   xsub = bsub = NULL;
@@ -908,6 +960,8 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   // pass solve call down to block linear solver
   BDMPIMV_LASTFLAG(S) = SUNLinSolSolve(BDMPIMV_BLS(S), A,
                                        xsub, bsub, tol);
+  retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
+  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);  
   return(BDMPIMV_LASTFLAG(S));
 }
 

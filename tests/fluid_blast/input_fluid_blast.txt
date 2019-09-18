@@ -67,3 +67,8 @@ fixedstep = 0       # use adaptive/fixed timestepping (0 => adaptive)
 htrans = 0.0        # time interval for initial transient evolution (0 => none)
 rtol = 1e-5         # relative solution tolerance (0 => default)
 atol = 1e-9         # absolute solution tolerance (0 => default)
+#
+#
+#### N_Vector Options ####
+fusedkernels = 1    # fused N_Vector operations (0 disabled, 1 enabled)
+localreduce = 1     # N_Vector local reduction operations (0 disabled, 1 enabled)

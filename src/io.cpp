@@ -43,7 +43,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 {
   int retval;
   double dbuff[28];
-  long int ibuff[23];
+  long int ibuff[25];
 
   // disable 'restart' by default
   restart = -1;
@@ -52,7 +52,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   if (myid == 0) {
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 53;
+    const int nopt = 55;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
                 itf, igam, imun, ilun, itun, inx, iny, inz, ixlb, 
@@ -60,7 +60,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
                 iemaf, ih0, ihmin, ihmax, ifixed, ihtrans, irtol,
-                iatol, irest, ipred, imxnit, inlcoef };
+                iatol, irest, ipred, imxnit, inlcoef, ifk, ilr };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -123,6 +123,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[ipred].long_name = "predictor";
     options[imxnit].long_name = "maxniters";
     options[inlcoef].long_name = "nlconvcoef";
+    options[ifk].long_name = "fusedkernels";
+    options[ilr].long_name = "localreduce";
     argc = gopt(argv, options);
 
     // handle help request
@@ -190,6 +192,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "   --predictor=<int>      (" << opts.predictor << ")\n"
            << "   --maxniters=<int>      (" << opts.maxniters << ")\n"
            << "   --nlconvcoef=<float>   (" << opts.nlconvcoef << ")\n"
+           << "\nAvailable N_Vector options (and the default if not provided):\n"
+           << "   --fusedkernels=<int>   (" << opts.fusedkernels << ")\n"
+           << "   --localreduce=<int>    (" << opts.localreduce << ")\n"
            << "\nAlternately, all of these options may be specified in a single\n"
            << "input file (with command-line arguments taking precedence if an\n"
            << "option is multiply-defined) via:"
@@ -260,6 +265,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"predictor = %i", &opts.predictor);
         retval += sscanf(line,"maxniters = %i", &opts.maxniters);
         retval += sscanf(line,"nlconvcoef = %lf", &opts.nlconvcoef);
+        retval += sscanf(line,"fusedkernels = %i", &opts.fusedkernels);
+        retval += sscanf(line,"localreduce = %i", &opts.localreduce);
 
         /* if unable to read the line (and it looks suspicious) issue a warning */
         if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
@@ -321,6 +328,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[ipred].count)   opts.predictor    = atoi(options[ipred].argument);
     if (options[imxnit].count)  opts.maxniters    = atoi(options[imxnit].argument);
     if (options[inlcoef].count) opts.nlconvcoef   = atof(options[inlcoef].argument);
+    if (options[ifk].count)     opts.fusedkernels = atoi(options[ifk].argument);
+    if (options[ilr].count)     opts.localreduce  = atoi(options[ilr].argument);
 
     // pack buffers with final parameter values
     ibuff[0]  = udata.nx;
@@ -346,6 +355,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     ibuff[20] = opts.predictor;
     ibuff[21] = opts.maxniters;
     ibuff[22] = opts.fixedstep;
+    ibuff[23] = opts.fusedkernels;
+    ibuff[24] = opts.localreduce;
 
     dbuff[0]  = udata.xl;
     dbuff[1]  = udata.xr;
@@ -380,7 +391,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 23, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 25, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
@@ -407,6 +418,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.predictor = ibuff[20];
   opts.maxniters = ibuff[21];
   opts.fixedstep = ibuff[22];
+  opts.fusedkernels = ibuff[23];
+  opts.localreduce = ibuff[24];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -648,6 +661,8 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "htrans = " ESYM "\n", opts.htrans);
     fprintf(UFID, "rtol = " ESYM "\n", opts.rtol);
     fprintf(UFID, "atol = " ESYM "\n", opts.atol);
+    fprintf(UFID, "fusedkernels = %i\n", opts.fusedkernels);
+    fprintf(UFID, "localreduce = %i\n", opts.localreduce);
     fprintf(UFID, "restart = %i\n", iout);
     fclose(UFID);
   }
