@@ -20,8 +20,7 @@ yr = 1.0
 zl = 0.0
 zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
-#tf = 3.15576e14
-tf = 1.0e12
+tf = 1.0
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
 nx = 10             # global spatial grid: nx * ny * nz
 ny = 10
@@ -32,9 +31,10 @@ ylbc = 3            #    1 = homogeneous Neumann
 yrbc = 3            #    2 = homogeneous Dirichlet
 zlbc = 3            #    3 = reflecting
 zrbc = 3
-MassUnits = 1.0     # mass unit scaling factor (code -> g)
-LengthUnits = 1.0   # length unit scaling factor (code -> cm)
-TimeUnits = 1.0     # time unit scaling factor (code -> s)
+MassUnits = 3.0e70       # mass unit scaling factor (code -> g)
+LengthUnits = 3.0857e30  # length unit scaling factor (code -> cm) -- 1e6 Mpc
+#TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
+TimeUnits = 1.0e12
 #
 #
 #### Run Options ####
@@ -43,7 +43,7 @@ showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #
 #
 #### ARKStep Options ####
-order = 0           # temporal order of accuracy
+order = 0           # temporal order of accuracy (0 => use specified btable)
 dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
 btable = 112        # specific built-in Butcher table to use (<0 => default)
 adapt_method = 2    # temporal adaptivity algorithm to use
