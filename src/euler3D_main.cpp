@@ -12,9 +12,13 @@
  The problem is evolved using ARKode's ARKStep time-stepping
  module for a temporally adaptive explicit Runge--Kutta solve.  
  Nearly all adaptivity options are controllable via user inputs.
- If the input file specifies hmin=hmax>0, then temporal adaptivity 
+ If the input file specifies fixedstep=1, then temporal adaptivity 
  is disabled, and the solver will use the fixed step size 
- h=hmin=hmax. 
+ h=hmax.  In this case, if the input file specifies htrans>0, 
+ then temporal adaptivity will be used for the start of the 
+ simulation [t0,t0+htrans], followed by fixed time-stepping using 
+ h=hmax.  We require that htrans is smaller than the first 
+ output time interval, i.e., t0+htrans < t0+dTout.
 
  ---------------------------------------------------------------*/
 
@@ -41,7 +45,6 @@ int main(int argc, char* argv[]) {
   // general problem variables
   long int N, Ntot, i;
   int Nsubvecs;
-  int fixed_step;                // flag to indicate use of fixed fast step sizes
   int retval;                    // reusable error-checking flag
   int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
@@ -52,6 +55,8 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
+
+  //--- General Initialization ---//
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -73,9 +78,17 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  // determine whether fixed stepsizes should be used
-  fixed_step = ((opts.hmin == opts.hmax) && (opts.hmin > ZERO)) ? 1 : 0;
-  
+  // if fixed time stepping is specified, ensure that hmax>0
+  if (opts.fixedstep && (opts.hmax <= ZERO)) {
+    if (udata.myid == 0)
+      cerr << "\nError: fixed time stepping requires hmax > 0 ("
+           << opts.hmax << " given)\n";
+    MPI_Abort(udata.comm, 1);
+  }
+
+  // update fixedstep parameter when initial transient evolution is requested
+  if (opts.fixedstep && (opts.htrans>0))  opts.fixedstep=2;
+
   // set up udata structure
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -90,8 +103,10 @@ int main(int argc, char* argv[]) {
          << udata.yl << ", " << udata.yr << "] x ["
          << udata.zl << ", " << udata.zr << "]\n";
     cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
-    if (fixed_step == 1)
-      cout << "   fixed timestep size: " << opts.hmin << "\n";
+    if (opts.fixedstep > 0)
+      cout << "   fixed timestep size: " << opts.hmax << "\n";
+    if (opts.fixedstep == 2)
+      cout << "   initial transient evolution: " << opts.htrans << "\n";
     cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
@@ -151,23 +166,23 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  // initialize the integrator memory
+  //--- create the ARKStep integrator and set options ---//
+
+  // initialize the integrator
   arkode_mem = ARKStepCreate(fEuler, NULL, udata.t0, w);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
-  // setup the ARKStep integrator based on inputs
-
-  //    pass udata to user functions
+  // pass udata to user functions
   retval = ARKStepSetUserData(arkode_mem, (void *) (&udata));
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  //    set diagnostics file
+  // set diagnostics file
   if (outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
     if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  //    set RK order, or specify individual Butcher table -- "order" overrides "btable"
+  // set RK order, or specify individual Butcher table -- "order" overrides "btable"
   if (opts.order != 0) {
     retval = ARKStepSetOrder(arkode_mem, opts.order);
     if (check_flag(&retval, "ARKStepSetOrder (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -176,26 +191,26 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  //    set dense output order
+  // set dense output order
   retval = ARKStepSetDenseOrder(arkode_mem, opts.dense_order);
   if (check_flag(&retval, "ARKStepSetDenseOrder (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  //    set adaptive timestepping parameters (if applicable)
-  if (fixed_step == 0) {
+  // set adaptive timestepping parameters (if applicable)
+  if (opts.fixedstep != 1) {
     
-    //    set safety factor
+    // set safety factor
     retval = ARKStepSetSafetyFactor(arkode_mem, opts.safety);
     if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set error bias
+    // set error bias
     retval = ARKStepSetErrorBias(arkode_mem, opts.bias);
     if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set step growth factor
+    // set step growth factor
     retval = ARKStepSetMaxGrowth(arkode_mem, opts.growth);
     if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set time step adaptivity method
+    // set time step adaptivity method
     realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
     int idefault = 1;
     if (abs(opts.k1)+abs(opts.k2)+abs(opts.k3) > 0.0)  idefault=0;
@@ -203,93 +218,84 @@ int main(int argc, char* argv[]) {
                                         opts.pq, adapt_params);
     if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set first step growth factor
+    // set first step growth factor
     retval = ARKStepSetMaxFirstGrowth(arkode_mem, opts.etamx1);
     if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set error failure growth factor
+    // set error failure growth factor
     retval = ARKStepSetMaxEFailGrowth(arkode_mem, opts.etamxf);
     if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set initial time step size
+    // set initial time step size
     retval = ARKStepSetInitStep(arkode_mem, opts.h0);
     if (check_flag(&retval, "ARKStepSetInitStep (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set minimum time step size
+    // set minimum time step size
     retval = ARKStepSetMinStep(arkode_mem, opts.hmin);
     if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set maximum time step size
+    // set maximum time step size
     retval = ARKStepSetMaxStep(arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set maximum allowed error test failures
+    // set maximum allowed error test failures
     retval = ARKStepSetMaxErrTestFails(arkode_mem, opts.maxnef);
     if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
     
-    //    set maximum allowed hnil warnings
+    // set maximum allowed hnil warnings
     retval = ARKStepSetMaxHnilWarns(arkode_mem, opts.mxhnil);
     if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    //    supply cfl-stable step routine (if requested)
+    // supply cfl-stable step routine (if requested)
     if (udata.cfl > ZERO) {
       retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
       if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
     }
     
-  //    otherwise, set fixed timestep size
+  // otherwise, set fixed timestep size
   } else {
     
-    retval = ARKStepSetFixedStep(arkode_mem, opts.hmin);
+    retval = ARKStepSetFixedStep(arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
     
   }
   
-  //    set maximum allowed steps
+  // set maximum allowed steps
   retval = ARKStepSetMaxNumSteps(arkode_mem, opts.mxsteps);
   if (check_flag(&retval, "ARKStepSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  //    set tolerances
+  // set tolerances
   retval = ARKStepSStolerances(arkode_mem, opts.rtol, opts.atol);
   if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // Initial batch of outputs
-  retval = udata.profile[PR_IO].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  //    Output initial conditions to disk
-  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
-  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    Optionally output total mass/energy
-  if (udata.showstats) {
-    retval = check_conservation(udata.t0, w, udata);
-    if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
-
-  //    Output problem-specific diagnostic information
-  retval = output_diagnostics(udata.t0, w, udata);
-  if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = udata.profile[PR_IO].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-
-  // If (dense_order == -1), use tstop mode
+  // finish initialization
+  realtype t = udata.t0;
+  realtype tout;
+  realtype hcur;
   if (opts.dense_order == -1)
     idense = 0;
   else   // otherwise tell integrator to use dense output
     idense = 1;
 
-  // stop problem setup profiler
-  retval = udata.profile[PR_SETUP].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-
-  /* Main time-stepping loop: calls ARKStepEvolve to perform the integration, then
-     prints results.  Stops when the final time has been reached */
-  retval = udata.profile[PR_SIMUL].start();
+  
+  //--- Initial batch of outputs ---//
+  retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-  realtype t = udata.t0;
-  realtype tout = udata.t0+dTout;
-  realtype hcur;
+
+  if (udata.myid == 0)  cout << "\nWriting initial batch of outputs\n";
+  
+  // Optionally output total mass/energy
+  if (udata.showstats) {
+    retval = check_conservation(udata.t0, w, udata);
+    if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+
+  // Output initial conditions to disk
+  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
+  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  // Output solution statistics (if requested)
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -298,33 +304,85 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  int iout;
-  for (iout=restart; iout<restart+udata.nout; iout++) {
 
-    if (!idense)
+  // Output problem-specific diagnostic information
+  retval = output_diagnostics(udata.t0, w, udata);
+  if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  // stop IO profiler
+  retval = udata.profile[PR_IO].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+  // stop problem setup profiler
+  retval = udata.profile[PR_SETUP].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+  //--- Initial transient evolution: call ARKStepEvolve to perform integration   ---//
+  //--- over [t0,t0+htrans], then disable adaptivity and set fixed-step size     ---//
+  //--- to use for remainder of simulation.                                      ---//
+  if (opts.fixedstep == 2) {
+
+    // start transient solver profiler
+    retval = udata.profile[PR_TRANS].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    // set transient stop time
+    tout = udata.t0+opts.htrans;
+    retval = ARKStepSetStopTime(arkode_mem, tout);
+    if (check_flag(&retval, "ARKStepSetStopTime (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    // adaptive evolution over (t0,t0+htrans]
+    retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);
+    if (retval < 0) {    // unsuccessful solve: break
+      if (outproc)  cerr << "Solver failure, stopping integration\n";
+      MPI_Abort(udata.comm, 1);
+    }
+
+    // disable adaptivity and set fixed step size
+    retval = ARKStepSetFixedStep(arkode_mem, opts.hmax);
+    if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    // stop transient solver profiler
+    retval = udata.profile[PR_TRANS].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+
+
+  //--- Main time-stepping loop: calls ARKStepEvolve to perform the integration, ---//
+  //--- then prints results.  Stops when the final time has been reached.        ---//
+  retval = udata.profile[PR_SIMUL].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  tout = udata.t0+dTout;
+  for (int iout=restart; iout<restart+udata.nout; iout++) {
+
+    // set stop time if applicable
+    if (!idense) {
       retval = ARKStepSetStopTime(arkode_mem, tout);
-    retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
-    if (retval >= 0) {                                            // successful solve: update output time
+      if (check_flag(&retval, "ARKStepSetStopTime (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
+
+    // evolve solution
+    retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);
+    if (retval >= 0) {                   // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
-    } else {                                                      // unsuccessful solve: break
-      if (outproc)
-	cerr << "Solver failure, stopping integration\n";
-      return 1;
+    } else {                             // unsuccessful solve: break
+      if (outproc)  cerr << "Solver failure, stopping integration\n";
+      MPI_Abort(udata.comm, 1);
     }
 
     // periodic output of solution/statistics
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
+    //    output diagnostic information (if applicable)
+    retval = output_diagnostics(t, w, udata);
+    if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+
     //    output statistics to stdout
     if (udata.showstats) {
       retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     }
-
-    //    output diagnostic information (if applicable)
-    retval = output_diagnostics(t, w, udata);
-    if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
 
     //    output results to disk -- get current step from ARKStep first
     retval = ARKStepGetCurrentStep(arkode_mem, &hcur);
@@ -378,6 +436,7 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
   udata.profile[PR_RHSEULER].print_cumulative_times("RHS");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+  udata.profile[PR_TRANS].print_cumulative_times("trans");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
 
   // Output mass/energy conservation error

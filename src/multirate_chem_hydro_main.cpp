@@ -16,25 +16,30 @@
  The slow time scale is evolved explicitly using ARKode's MRIStep
  time-stepping module, with it's default 3rd-order integration
  method, and a fixed time step given by either the user-input
- "initial" time step value, or calculated to equal the time
+ "initial" time step value, h0, or calculated to equal the time
  interval between solution outputs.
 
  The fast time scale is evolved implicitly using ARKode's ARKStep
  time-stepping module, using the DIRK Butcher tableau that is
  specified by the user.  Here, time adaptivity is employed, with
  nearly all adaptivity options controllable via user inputs.   
- If the input file specifies hmin=hmax>0, then temporal adaptivity 
+ If the input file specifies fixedstep=1, then temporal adaptivity 
  is disabled, and the solver will use the fixed step size 
- h=hmin=hmax. Implicit subsystems are solved using the default 
- Newton SUNNonlinearSolver module, but with a custom 
- SUNLinearSolver module.  This is a direct solver for 
- block-diagonal matrices (one block per MPI rank) that unpacks 
- the MPIManyVector to access a specified subvector component (per 
- rank), and then uses a standard SUNLinearSolver module for each 
- rank-local linear system.  The specific SUNLinearSolver module 
- to use on each block, and the MPIManyVector subvector index are 
- provided in the module 'constructor'.  Here, we use the KLU 
- SUNLinearSolver module for the block on each rank.
+ h=hmax.  In this case, if the input file specifies htrans>0, 
+ then temporal adaptivity will be used for the start of the 
+ simulation [t0,t0+htrans], followed by fixed time-stepping using 
+ h=hmax.  We require that htrans is smaller than the first 
+ output time interval, i.e., t0+htrans < t0+dTout.  Implicit 
+ subsystems are solved using the default Newton SUNNonlinearSolver 
+ module, but with a custom SUNLinearSolver module.  This is a 
+ direct solver for block-diagonal matrices (one block per MPI 
+ rank) that unpacks the MPIManyVector to access a specified 
+ subvector component (per rank), and then uses a standard 
+ SUNLinearSolver module for each rank-local linear system.  The 
+ specific SUNLinearSolver module to use on each block, and the 
+ MPIManyVector subvector index are provided in the module 
+ 'constructor'.  Here, we use the KLU SUNLinearSolver module for 
+ the block on each rank.
  ---------------------------------------------------------------*/
 
 // Header files
@@ -73,8 +78,9 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 // static int PostprocessFast(realtype t, N_Vector y, void* user_data);
 
 // utility routines
-void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS,
-             SUNMatrix A, N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
+void cleanup(void **outer_arkode_mem, void **inner_arkode_mem,
+             SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
+             N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
 
 
 // custom Block-Diagonal MPIManyVector SUNLinearSolver module
@@ -107,7 +113,6 @@ int main(int argc, char* argv[]) {
   // general problem variables
   long int N, Ntot, i, j, k, l;
   int Nsubvecs;
-  int fixed_step;                // flag to indicate use of fixed fast step sizes
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
@@ -146,8 +151,23 @@ int main(int argc, char* argv[]) {
   // set slow timestep size as h0 (if >0), or dTout otherwise
   realtype hslow = (opts.h0 > 0) ? opts.h0 : dTout;
 
-  // determine whether fixed fast stepsizes should be used
-  fixed_step = ((opts.hmin == opts.hmax) && (opts.hmin > ZERO)) ? 1 : 0;
+  // if fixed time stepping is specified, ensure that hmax>0
+  if (opts.fixedstep && (opts.hmax <= ZERO)) {
+    if (udata.myid == 0)
+      cerr << "\nError: fixed time stepping requires hmax > 0 ("
+           << opts.hmax << " given)\n";
+    MPI_Abort(udata.comm, 1);
+  }
+
+  // update fixedstep parameter when initial transient evolution is requested
+  if (opts.fixedstep && (opts.htrans>0))  opts.fixedstep=2;
+
+  // ensure that htrans < dTout
+  if (opts.htrans >= dTout) {
+    if (udata.myid == 0)
+      cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
+    MPI_Abort(udata.comm, 1);
+  }
   
   // set up udata structure
   retval = udata.SetupDecomp();
@@ -169,10 +189,14 @@ int main(int argc, char* argv[]) {
     cout << "   spatial domain: [" << udata.xl << ", " << udata.xr << "] x ["
          << udata.yl << ", " << udata.yr << "] x ["
          << udata.zl << ", " << udata.zr << "]\n";
-    cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
+    cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]"
+         << ",  or (" << udata.t0*udata.TimeUnits
+         << ", " << udata.tf*udata.TimeUnits << "] in CGS\n";
     cout << "   slow timestep size: " << hslow << "\n";
-    if (fixed_step == 1)
-      cout << "   fixed fast timestep size: " << opts.hmin << "\n";
+    if (opts.fixedstep > 0)
+      cout << "   fixed timestep size: " << opts.hmax << "\n";
+    if (opts.fixedstep == 2)
+      cout << "   initial transient evolution: " << opts.htrans << "\n";
     cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
@@ -283,7 +307,7 @@ int main(int argc, char* argv[]) {
   }
 
   // set adaptive timestepping parameters (if applicable)
-  if (fixed_step == 0) {
+  if (opts.fixedstep != 1) {
     
     // set safety factor
     retval = ARKStepSetSafetyFactor(inner_arkode_mem, opts.safety);
@@ -332,7 +356,7 @@ int main(int argc, char* argv[]) {
   // otherwise, set fixed timestep size
   } else {
     
-    retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmin);
+    retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
     
   }
@@ -382,18 +406,14 @@ int main(int argc, char* argv[]) {
   // retval = MRIStepSetPostInnerFn(outer_arkode_mem, PostprocessFast);
   // if (check_flag(&retval, "MRIStepSetPostInnerFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  // finish initialization
+  realtype t = udata.t0;
+  realtype tout = udata.t0+dTout;
+  realtype hcur;
 
   //--- Initial batch of outputs ---//
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    Output initial conditions to disk
-  retval = apply_Dengo_scaling(w, udata);
-  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
-  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = unapply_Dengo_scaling(w, udata);
-  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    Optionally output total mass/energy
   if (udata.showstats) {
@@ -401,50 +421,85 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
+  //    Output initial conditions to disk
+  retval = apply_Dengo_scaling(w, udata);
+  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
+  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  //    Output CGS solution statistics (if requested)
+  if (udata.showstats && PRINT_CGS == 1) {
+    retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
+    if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+  retval = unapply_Dengo_scaling(w, udata);
+  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+  //    Output normalized solution statistics (if requested)
+  if (udata.showstats && PRINT_CGS == 0) {
+    retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
+    if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+
   //    Output problem-specific diagnostic information
   retval = output_diagnostics(udata.t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  // stop IO profiler
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-
+  
   // stop problem setup profiler
   retval = udata.profile[PR_SETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
-  //--- Main time-stepping loop: calls MRIStepEvolve to perform the integration, then ---//
-  //--- prints results.  Stops when the final time has been reached.                  ---//
-  retval = udata.profile[PR_SIMUL].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-  realtype t = udata.t0;
-  realtype tout = udata.t0+dTout;
-  realtype hcur;
-  if (udata.showstats) {
-    retval = udata.profile[PR_IO].start();
+  //--- Initial transient evolution: call MRIStepEvolve to perform integration   ---//
+  //--- over [t0,t0+htrans], then disable adaptivity and set fixed-step size     ---//
+  //--- to use for remainder of fast time scale simulation.                      ---//
+  if (opts.fixedstep == 2) {
+
+    // start transient solver profiler
+    retval = udata.profile[PR_TRANS].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (PRINT_CGS == 1) {
-      retval = apply_Dengo_scaling(w, udata);
-      if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    // set transient stop time
+    tout = udata.t0+opts.htrans;
+    retval = MRIStepSetStopTime(outer_arkode_mem, tout);
+    if (check_flag(&retval, "MRIStepSetStopTime (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    // adaptive fast timescale evolution over [t0,t0+htrans]
+    retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);
+    if (retval < 0) {    // unsuccessful solve: break
+      if (outproc)  cerr << "Solver failure, stopping integration\n";
+      cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS,
+              LS, A, w, atols, wsubvecs, Nsubvecs);
+      return(1);
     }
-    retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
-    if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (PRINT_CGS == 1) {
-      retval = unapply_Dengo_scaling(w, udata);
-      if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-    }
-    retval = udata.profile[PR_IO].stop();
+
+    // disable adaptivity and set fixed fast step size
+    retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmax);
+    if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    // stop transient solver profiler
+    retval = udata.profile[PR_TRANS].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  int iout;
-  for (iout=restart; iout<restart+udata.nout; iout++) {
 
-    retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
-    if (retval >= 0) {                                            // successful solve: update output time
+  
+  //--- Main time-stepping loop: calls MRIStepEvolve to perform the integration, ---//
+  //--- then prints results.  Stops when the final time has been reached.        ---//
+  retval = udata.profile[PR_SIMUL].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+  tout = udata.t0+dTout;
+  for (int iout=restart; iout<restart+udata.nout; iout++) {
+
+    // evolve solution
+    retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);
+    if (retval >= 0) {                         // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
-    } else {                                                      // unsuccessful solve: break
-      if (outproc)
-	cerr << "Solver failure, stopping integration\n";
-      cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+    } else {                                   // unsuccessful solve: break
+      if (outproc)  cerr << "Solver failure, stopping integration\n";
+      cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS,
+              LS, A, w, atols, wsubvecs, Nsubvecs);
       return(1);
     }
 
@@ -452,23 +507,15 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    //    output statistics to stdout
-    if (udata.showstats) {
-      if (PRINT_CGS == 1) {
-        retval = apply_Dengo_scaling(w, udata);
-        if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-      }
-      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
-      if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
-      if (PRINT_CGS == 1) {
-        retval = unapply_Dengo_scaling(w, udata);
-        if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-      }
-    }
-
     //    output diagnostic information (if applicable)
     retval = output_diagnostics(t, w, udata);
     if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    //    output normalized statistics to stdout (if requested)
+    if (udata.showstats && (PRINT_CGS == 0)) {
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
+      if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
 
     //    output results to disk -- get current step from MRIStep first
     retval = MRIStepGetLastStep(outer_arkode_mem, &hcur);
@@ -477,6 +524,11 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    //    output CGS statistics to stdout (if requested)
+    if (udata.showstats && (PRINT_CGS == 1)) {
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
+      if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     retval = unapply_Dengo_scaling(w, udata);
     if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
@@ -486,16 +538,8 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (PRINT_CGS == 1) {
-      retval = apply_Dengo_scaling(w, udata);
-      if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-    }
     retval = print_stats(t, w, 2, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (PRINT_CGS == 1) {
-      retval = unapply_Dengo_scaling(w, udata);
-      if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-    }
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -562,6 +606,7 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
   // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+  udata.profile[PR_TRANS].print_cumulative_times("trans");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
 
   // Output mass/energy conservation error
@@ -572,7 +617,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up, finalize MPI, and return with successful completion
-  cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+  cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS,
+          LS, A, w, atols, wsubvecs, Nsubvecs);
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   MPI_Finalize();                  // Finalize MPI
