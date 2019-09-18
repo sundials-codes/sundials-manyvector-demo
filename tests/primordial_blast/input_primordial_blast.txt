@@ -33,7 +33,8 @@ zlbc = 3            #    3 = reflecting
 zrbc = 3
 MassUnits = 3.0e70       # mass unit scaling factor (code -> g)
 LengthUnits = 3.0857e30  # length unit scaling factor (code -> cm) -- 1e6 Mpc
-TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
+#TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
+TimeUnits = 3.15576e13
 #
 #
 #### Run Options ####
@@ -59,7 +60,7 @@ k2 = 0
 k3 = 0
 etamx1 = 0          # max change after first internal step (0 => default)
 etamxf = 0          # max change on a general internal step (0 => default)
-h0 = 0.0            # initial time step size (0 => default)
+h0 = 0.00           # initial time step size (0 => default)
 hmin = 0.0          # minimum time step size (0 => default)
 hmax = 0.0          # maximum time step size (0 => infinite)
 predictor = 0       # algorithm for implicit predictor (0 => default)

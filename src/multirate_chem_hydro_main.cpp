@@ -47,6 +47,13 @@
 #include "fenv.h"
 #endif
 
+//#define DISABLE_HYDRO
+
+// macros for handling formatting of diagnostic output
+#define PRINT_CGS 1 
+#define PRINT_SCIENTIFIC 1 
+
+
 
 // Initialization and preparation routines for Dengo data structure
 // (provided in specific test problem initializer)
@@ -62,6 +69,11 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                  void* user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
 static int fslow(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 // static int PostprocessFast(realtype t, N_Vector y, void* user_data);
+
+// utility routines
+void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS,
+             SUNMatrix A, N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
+
 
 // custom Block-Diagonal MPIManyVector SUNLinearSolver module
 typedef struct _BDMPIMVContent {
@@ -90,11 +102,9 @@ int main(int argc, char* argv[]) {
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
-  // general problem parameters
-  long int N, Ntot, i, j, k, l, idx;
-  int Nsubvecs;
-
   // general problem variables
+  long int N, Ntot, i, j, k, l;
+  int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
@@ -113,7 +123,7 @@ int main(int argc, char* argv[]) {
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -166,6 +176,9 @@ int main(int argc, char* argv[]) {
          << udata.nz << "\n";
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
+#ifdef DISABLE_HYDRO    
+    cout << "Hydrodynamics is turned OFF\n";
+#endif
   }
 #ifdef DEBUG
   if (udata.showstats) {
@@ -356,11 +369,11 @@ int main(int argc, char* argv[]) {
 
   //    Output initial conditions to disk
   retval = apply_Dengo_scaling(w, udata);
-  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
+  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = unapply_Dengo_scaling(w, udata);
-  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) return(-1);
+  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    Optionally output total mass/energy
   if (udata.showstats) {
@@ -379,8 +392,8 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
-  /* Main time-stepping loop: calls MRIStepEvolve to perform the integration, then
-     prints results.  Stops when the final time has been reached */
+  //--- Main time-stepping loop: calls MRIStepEvolve to perform the integration, then ---//
+  //--- prints results.  Stops when the final time has been reached.                  ---//
   retval = udata.profile[PR_SIMUL].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
   realtype t = udata.t0;
@@ -389,8 +402,16 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = print_stats(t, w, 0, 1, outer_arkode_mem, udata);
+    if (PRINT_CGS == 1) {
+      retval = apply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
+    retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (PRINT_CGS == 1) {
+      retval = unapply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -403,7 +424,8 @@ int main(int argc, char* argv[]) {
     } else {                                                      // unsuccessful solve: break
       if (outproc)
 	cerr << "Solver failure, stopping integration\n";
-      return 1;
+      cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+      return(1);
     }
 
     // periodic output of solution/statistics
@@ -412,8 +434,16 @@ int main(int argc, char* argv[]) {
 
     //    output statistics to stdout
     if (udata.showstats) {
-      retval = print_stats(t, w, 1, 1, outer_arkode_mem, udata);
+      if (PRINT_CGS == 1) {
+        retval = apply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+      if (PRINT_CGS == 1) {
+        retval = unapply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
     }
 
     //    output diagnostic information (if applicable)
@@ -424,11 +454,11 @@ int main(int argc, char* argv[]) {
     retval = MRIStepGetLastStep(outer_arkode_mem, &hcur);
     if (check_flag(&retval, "MRIStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = apply_Dengo_scaling(w, udata);
-    if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
+    if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = unapply_Dengo_scaling(w, udata);
-    if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) return(-1);
+    if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -436,8 +466,16 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = print_stats(t, w, 2, 1, outer_arkode_mem, udata);
+    if (PRINT_CGS == 1) {
+      retval = apply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
+    retval = print_stats(t, w, 2, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (PRINT_CGS == 1) {
+      retval = unapply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -511,17 +549,8 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // Clean up and return with successful completion
-  MRIStepFree(&outer_arkode_mem);  // Free integrator memory
-  ARKStepFree(&inner_arkode_mem);
-  SUNLinSolFree(BLS);              // Free matrix and linear solvers
-  SUNLinSolFree(LS);
-  SUNMatDestroy(A);
-  N_VDestroy(w);                   // Free solution/tolerance vectors
-  for (i=0; i<Nsubvecs; i++)
-    N_VDestroy(wsubvecs[i]);
-  delete[] wsubvecs;
-  N_VDestroy(atols);
+  // Clean up, finalize MPI, and return with successful completion
+  cleanup(&outer_arkode_mem, &inner_arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }
@@ -542,10 +571,10 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // unpack chemistry subvectors
   N_Vector wchem = NULL;
   wchem = N_VGetSubvector_MPIManyVector(w, 5);
-  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(1);
+  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(-1);
   N_Vector wchemdot = NULL;
   wchemdot = N_VGetSubvector_MPIManyVector(wdot, 5);
-  if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(1);
+  if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(-1);
 
   // NOTE: if Dengo RHS ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
@@ -577,19 +606,19 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // unpack chemistry subvectors
   N_Vector wchem = NULL;
   wchem = N_VGetSubvector_MPIManyVector(w, 5);
-  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(1);
+  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
   N_Vector fwchem = NULL;
   fwchem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(1);
+  if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
   N_Vector tmp1chem = NULL;
   tmp1chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(1);
+  if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
   N_Vector tmp2chem = NULL;
   tmp2chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(1);
+  if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
   N_Vector tmp3chem = NULL;
   tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(1);
+  if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
 
   // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
@@ -604,7 +633,7 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   Jdata = SUNSparseMatrix_Data(Jac);
-  if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(1);
+  if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
 
@@ -616,7 +645,7 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, l, idx, idx2;
+  long int i, j, k, l, cidx, fidx;
 
   // start timer
   EulerData *udata = (EulerData*) user_data;
@@ -628,21 +657,21 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
-  if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
   realtype *chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
-  if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return -1;
+  if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fslow)", 0)) return(-1);
 
   // update chem to include Dengo scaling
   retval = apply_Dengo_scaling(w, *udata);
@@ -653,16 +682,19 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        realtype ge = chem[BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl)];
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        realtype ge = chem[cidx];
         ge *= EUnitScale;   // convert from physical units to code units
-        idx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[idx] = ge + 0.5/rho[idx]*(mx[idx]*mx[idx] + my[idx]*my[idx] + mz[idx]*mz[idx]);
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
+#ifndef DISABLE_HYDRO
   // call fEuler as usual
   retval = fEuler(t, w, wdot, user_data);
   if (check_flag(&retval, "fEuler (fslow)", 1)) return(retval);
-
+#endif
+  
   // overwrite chemistry energy "fslow" with total energy "fslow" (with
   // appropriate unit scaling) and zero out total energy fslow
   //
@@ -677,10 +709,10 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        idx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        idx2 = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        chemdot[idx] = etdot[idx2]*TUnitScale;
-        etdot[idx2] = ZERO;
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        chemdot[cidx] = etdot[fidx]*TUnitScale;
+        etdot[fidx] = ZERO;
       }
 
   // reset chem to remove Dengo scaling
@@ -717,6 +749,24 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 //   if (check_flag(&retval, "Profile::stop (PostprocessFast)", 1)) return(-1);
 //   return(0);
 // }
+
+
+//---- utility routines ----
+
+void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS,
+             SUNMatrix A, N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs)
+{
+  MRIStepFree(outer_arkode_mem);   // Free integrator memory
+  ARKStepFree(inner_arkode_mem);
+  SUNLinSolFree(BLS);              // Free matrix and linear solvers
+  SUNLinSolFree(LS);
+  SUNMatDestroy(A);
+  N_VDestroy(w);                   // Free solution/tolerance vectors
+  for (int i=0; i<Nsubvecs; i++)
+    N_VDestroy(wsubvecs[i]);
+  delete[] wsubvecs;
+  N_VDestroy(atols);
+}
 
 
 //---- custom SUNLinearSolver module ----

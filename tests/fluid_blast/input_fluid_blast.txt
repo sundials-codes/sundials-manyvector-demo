@@ -22,9 +22,9 @@ zr = 1.0
 t0 = 0.0            # temporal domain: (t0, tf]
 tf = 1.0
 gamma = 1.6666666666666666666666667    # ratio of gas specific heats
-nx = 50              # global spatial grid: nx * ny * nz
-ny = 50
-nz = 50
+nx = 10             # global spatial grid: nx * ny * nz
+ny = 10
+nz = 10
 xlbc = 3            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
 xrbc = 3            #    0 = periodic  (opposite periodic faces must match)
 ylbc = 3            #    1 = homogeneous Neumann
@@ -33,11 +33,12 @@ zlbc = 3            #    3 = reflecting
 zrbc = 3
 MassUnits = 3.0e70       # mass unit scaling factor (code -> g)
 LengthUnits = 3.0857e30  # length unit scaling factor (code -> cm) -- 1e6 Mpc
-TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
+#TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
+TimeUnits = 3.15576e13
 #
 #
 #### Run Options ####
-nout = 20           # number of solution outputs
+nout = 10           # number of solution outputs
 showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #
 #
@@ -48,7 +49,7 @@ btable = 13         # specific built-in Butcher table to use (<0 => default)
 adapt_method = 2    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)
-mxsteps = 500       # max internal steps per 'evolve' call (0 => default)
+mxsteps = 5000      # max internal steps per 'evolve' call (0 => default)
 safety = 0.99       # temporal step size safety factor (0 => default)
 cfl  = 0.0          # max CFL fraction: cfl (disabled if set to zero)
 bias = 2.0          # temporal error bias factor (0 => default)

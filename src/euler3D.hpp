@@ -1332,7 +1332,8 @@ int check_conservation(const realtype& t, const N_Vector w, const EulerData& uda
 
 //    Print solution statistics
 int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
-                const int& scientific, void *arkode_mem, const EulerData& udata);
+                const int& scientific, const int& units, void *arkode_mem,
+                const EulerData& udata);
 
 //    Output current parameters
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,

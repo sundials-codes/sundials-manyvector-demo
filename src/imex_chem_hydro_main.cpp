@@ -43,6 +43,11 @@
 #endif
 
 //#define ONE_STEP_DEBUG
+//#define DISABLE_HYDRO
+
+// macros for handling formatting of diagnostic output
+#define PRINT_CGS 1 
+#define PRINT_SCIENTIFIC 1 
 
 
 // Initialization and preparation routines for Dengo data structure
@@ -59,6 +64,11 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                  void* user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 static int PostprocessStep(realtype t, N_Vector y, void* user_data);
+
+// utility routines
+void cleanup(void **arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
+             N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
+
 
 // custom Block-Diagonal MPIManyVector SUNLinearSolver module
 typedef struct _BDMPIMVContent {
@@ -110,7 +120,7 @@ int main(int argc, char* argv[]) {
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -160,6 +170,9 @@ int main(int argc, char* argv[]) {
          << udata.nz << "\n";
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
+#ifdef DISABLE_HYDRO    
+    cout << "Hydrodynamics is turned OFF\n";
+#endif
   }
 #ifdef DEBUG
   if (udata.showstats) {
@@ -342,11 +355,11 @@ int main(int argc, char* argv[]) {
 
   // Output initial conditions to disk
   retval = apply_Dengo_scaling(w, udata);
-  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
+  if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
   if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = unapply_Dengo_scaling(w, udata);
-  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) return(-1);
+  if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Optionally output total mass/energy
   if (udata.showstats) {
@@ -381,7 +394,15 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = print_stats(t, w, 0, 1, arkode_mem, udata);
+    if (PRINT_CGS == 1) {
+      retval = apply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
+    retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
+    if (PRINT_CGS == 1) {
+      retval = unapply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -400,6 +421,7 @@ int main(int argc, char* argv[]) {
       retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_ONE_STEP);  // call integrator
       if (retval < 0) {                                               // unsuccessful solve: break
         if (outproc)  cerr << "Solver failure, stopping integration\n";
+        cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
         return 1;
       }
 
@@ -416,8 +438,16 @@ int main(int argc, char* argv[]) {
       if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetLastStep(arkode_mem, &hcur);
       if (check_flag(&retval, "ARKStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = print_stats(t, w, 1, 1, arkode_mem, udata);
+      if (PRINT_CGS == 1) {
+        retval = apply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+      if (PRINT_CGS == 1) {
+        retval = unapply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
       if (outproc)  cout << "     nni = " << nni << ", nfi = " << nfi << ", nfe = " << nfe
                          << ", ncf = " << ncf << ", netf = " << netf << ", hcur = " << hcur << std::endl;
       retval = udata.profile[PR_IO].stop();
@@ -438,6 +468,7 @@ int main(int argc, char* argv[]) {
     } else {                                                      // unsuccessful solve: break
       if (outproc)
 	cerr << "Solver failure, stopping integration\n";
+      cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
       return 1;
     }
     
@@ -449,8 +480,16 @@ int main(int argc, char* argv[]) {
 
     //    output statistics to stdout
     if (udata.showstats) {
-      retval = print_stats(t, w, 1, 1, arkode_mem, udata);
+      if (PRINT_CGS == 1) {
+        retval = apply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+      if (PRINT_CGS == 1) {
+        retval = unapply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
     }
 
     //    output diagnostic information (if applicable)
@@ -461,11 +500,11 @@ int main(int argc, char* argv[]) {
     retval = ARKStepGetLastStep(arkode_mem, &hcur);
     if (check_flag(&retval, "ARKStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = apply_Dengo_scaling(w, udata);
-    if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) return(-1);
+    if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = output_solution(t, w, hcur, iout+1, udata, opts);
     if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = unapply_Dengo_scaling(w, udata);
-    if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) return(-1);
+    if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -473,8 +512,16 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = print_stats(t, w, 2, 1, arkode_mem, udata);
+    if (PRINT_CGS == 1) {
+      retval = apply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
+    retval = print_stats(t, w, 2, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (PRINT_CGS == 1) {
+      retval = unapply_Dengo_scaling(w, udata);
+      if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -536,16 +583,8 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // Clean up and return with successful completion
-  ARKStepFree(&arkode_mem);        // Free integrator memory
-  SUNLinSolFree(BLS);              // Free matrix and linear solvers
-  SUNLinSolFree(LS);
-  SUNMatDestroy(A);
-  N_VDestroy(w);                   // Free solution/tolerance vectors
-  for (i=0; i<Nsubvecs; i++)
-    N_VDestroy(wsubvecs[i]);
-  delete[] wsubvecs;
-  N_VDestroy(atols);
+  // Clean up, finalize MPI, and return with successful completion
+  cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }
@@ -566,10 +605,10 @@ static int fimpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // unpack chemistry subvectors
   N_Vector wchem = NULL;
   wchem = N_VGetSubvector_MPIManyVector(w, 5);
-  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (fimpl)", 0)) return(1);
+  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (fimpl)", 0)) return(-1);
   N_Vector wchemdot = NULL;
   wchemdot = N_VGetSubvector_MPIManyVector(wdot, 5);
-  if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (fimpl)", 0)) return(1);
+  if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (fimpl)", 0)) return(-1);
 
   // NOTE: if Dengo RHS ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
@@ -601,19 +640,19 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // unpack chemistry subvectors
   N_Vector wchem = NULL;
   wchem = N_VGetSubvector_MPIManyVector(w, 5);
-  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(1);
+  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector fwchem = NULL;
   fwchem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(1);
+  if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp1chem = NULL;
   tmp1chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(1);
+  if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp2chem = NULL;
   tmp2chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(1);
+  if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp3chem = NULL;
   tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(1);
+  if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
 
   // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
@@ -628,7 +667,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   Jdata = SUNSparseMatrix_Data(Jac);
-  if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(1);
+  if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
 
@@ -652,21 +691,21 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *etdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,4);
-  if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) etdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
   realtype *chemdot = N_VGetSubvectorArrayPointer_MPIManyVector(wdot,5);
-  if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return -1;
+  if (check_flag((void *) chemdot, "N_VGetSubvectorArrayPointer (fexpl)", 0)) return(-1);
 
   // update chem to include Dengo scaling
   retval = apply_Dengo_scaling(w, *udata);
@@ -684,10 +723,12 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
+#ifndef DISABLE_HYDRO
   // call fEuler as usual
   retval = fEuler(t, w, wdot, user_data);
   if (check_flag(&retval, "fEuler (fexpl)", 1)) return(retval);
-
+#endif
+  
   // overwrite chemistry energy "fexpl" with total energy "fexpl" (with
   // appropriate unit scaling) and zero out total energy fexpl
   //
@@ -730,17 +771,17 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 
   // access data arrays
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
-  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
-  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  if (check_flag((void *) mx, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
   realtype *my = N_VGetSubvectorArrayPointer_MPIManyVector(w,2);
-  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  if (check_flag((void *) my, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
   realtype *mz = N_VGetSubvectorArrayPointer_MPIManyVector(w,3);
-  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  if (check_flag((void *) mz, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
   realtype *et = N_VGetSubvectorArrayPointer_MPIManyVector(w,4);
-  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  if (check_flag((void *) et, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return -1;
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
 
   // update fluid energy (derived) field from other quantities
   realtype EUnitScale = ONE/udata->EnergyUnits;
@@ -757,6 +798,23 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   retval = udata->profile[PR_POSTFAST].stop();
   if (check_flag(&retval, "Profile::stop (PostprocessStep)", 1)) return(-1);
   return(0);
+}
+
+
+//---- utility routines ----
+
+void cleanup(void **arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
+             N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs)
+{
+  ARKStepFree(arkode_mem);         // Free integrator memory
+  SUNLinSolFree(BLS);              // Free matrix and linear solvers
+  SUNLinSolFree(LS);
+  SUNMatDestroy(A);
+  N_VDestroy(w);                   // Free solution/tolerance vectors
+  for (int i=0; i<Nsubvecs; i++)
+    N_VDestroy(wsubvecs[i]);
+  delete[] wsubvecs;
+  N_VDestroy(atols);
 }
 
 
@@ -836,6 +894,5 @@ long int SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
 }
-
 
 //---- end of file ----

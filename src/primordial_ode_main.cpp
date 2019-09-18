@@ -42,10 +42,10 @@
 #define  CLUMPS_PER_PROC     10              // on average
 #define  MIN_CLUMP_RADIUS    RCONST(3.0)     // in number of cells
 #define  MAX_CLUMP_RADIUS    RCONST(6.0)     // in number of cells
-#define  MAX_CLUMP_STRENGTH  RCONST(20.0)    // mult. density factor
+#define  MAX_CLUMP_STRENGTH  RCONST(10.0)    // mult. density factor
 #define  T0                  RCONST(10.0)    // background temperature
-#define  BLAST_DENSITY       RCONST(1000.0)  // mult. density factor
-#define  BLAST_TEMPERATURE   RCONST(500.0)   // mult. temperature factor
+#define  BLAST_DENSITY       RCONST(10.0)  // mult. density factor
+#define  BLAST_TEMPERATURE   RCONST(10.0)   // mult. temperature factor
 #define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
 #define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
 #define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
@@ -281,19 +281,19 @@ int main(int argc, char* argv[]) {
 
         // set initial mass densities into local variables -- blast clump is essentially
         // only HI and HeI, but outside we have trace amounts of other species.
-        H2I = small*density;
-        H2II = tiny*density;
-        HII = tiny*density;
-        HM = tiny*density;
-        HeII = tiny*density;
-        HeIII = tiny*density;
-        // H2I = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // H2II = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HM = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        // HeII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        H2I   = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        H2II  = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        HII   = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
+        HM    = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        HeII  = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
+        HeIII = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
+        // H2I   = (rsq/cr/cr < 2.0) ?  small*density : 1.e-3*density;
+        // H2II  = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HII   = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HM    = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
+        // HeII  = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
         // HeIII = (rsq/cr/cr < 2.0) ?  tiny*density : 1.e-3*density;
-        HeI = (ONE-Hfrac)*density - HeII - HeIII;
+        HeI   = (ONE-Hfrac)*density - HeII - HeIII;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 
         // compute derived number densities

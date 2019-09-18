@@ -479,11 +479,14 @@ int check_conservation(const realtype& t, const N_Vector w, const EulerData& uda
 // Utility routine to print solution statistics
 //   firstlast = { 0 indicates the first output
 //               { 1 indicates a normal output
-//               { 2 indicates the lastoutput
+//               { 2 indicates the last output
 //   scientific = { 0 use fixed-point notation
 //                { 1 use scientific notation
+//   units = { 0 output internal 'scaled' solution values
+//           { 1 output physical CGS solution values
 int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
-                const int& scientific, void *arkode_mem, const EulerData& udata)
+                const int& scientific, const int& units, void *arkode_mem,
+                const EulerData& udata)
 {
   realtype rmsvals[NVAR], totrms[NVAR];
   bool outproc = (udata.myid == 0);
@@ -506,17 +509,28 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
   }
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  // handle output of dimensionless vs CGS values
+  realtype DUnits, MUnits, EUnits;
+  DUnits = MUnits = EUnits = ONE;
+  if (units == 1) {
+    DUnits = udata.DensityUnits;
+    MUnits = udata.MomentumUnits;
+    EUnits = udata.EnergyUnits;
+  }
+
+  // accumulate output values
   if (firstlast < 2) {
     for (v=0; v<NVAR; v++)  rmsvals[v] = ZERO;
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
           idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
-          rmsvals[0] += pow(rho[idx], 2);
-          rmsvals[1] += pow( mx[idx], 2);
-          rmsvals[2] += pow( my[idx], 2);
-          rmsvals[3] += pow( mz[idx], 2);
-          rmsvals[4] += pow( et[idx], 2);
+          rmsvals[0] += pow(rho[idx]*DUnits, 2);
+          rmsvals[1] += pow( mx[idx]*MUnits, 2);
+          rmsvals[2] += pow( my[idx]*MUnits, 2);
+          rmsvals[3] += pow( mz[idx]*MUnits, 2);
+          rmsvals[4] += pow( et[idx]*EUnits, 2);
           if (udata.nchem > 0) {
             for (v=0; v<udata.nchem; v++) {
               idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
@@ -528,6 +542,8 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
     for (v=0; v<NVAR; v++)  totrms[v] = sqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
   }
+
+  // perform output
   if (!outproc)  return(0);
   if (firstlast == 0) {
     cout << "\n      t       ||rho||   ||mx||    ||my||    ||mz||    ||et||   ";

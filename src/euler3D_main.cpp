@@ -16,6 +16,11 @@
 #include "fenv.h"
 #endif
 
+// macros for handling formatting of diagnostic output (1 enable, 0 disable)
+#define PRINT_CGS 1 
+#define PRINT_SCIENTIFIC 1
+
+
 // Main Program
 int main(int argc, char* argv[]) {
 
@@ -263,7 +268,7 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = print_stats(t, w, 0, 0, arkode_mem, udata);
+    retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -288,7 +293,7 @@ int main(int argc, char* argv[]) {
 
     //    output statistics to stdout
     if (udata.showstats) {
-      retval = print_stats(t, w, 1, 0, arkode_mem, udata);
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     }
 
@@ -308,7 +313,7 @@ int main(int argc, char* argv[]) {
   if (udata.showstats) {
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-    retval = print_stats(t, w, 2, 0, arkode_mem, udata);
+    retval = print_stats(t, w, 2, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
