@@ -23,7 +23,7 @@ include Makefile.in
 
 # set C++ compilation flags based on build type
 ifeq ($(LIBTYPE),OPT)
-  OPTFLAGS = -O3
+  OPTFLAGS = -O3 -g
 else
   OPTFLAGS = -O0 -g -DDEBUG -fsanitize=address
 endif
