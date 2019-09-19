@@ -51,7 +51,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // root process handles command-line and file-based solver parameters, and packs send buffers
   if (myid == 0) {
 
-    cerr << "Reading command-line options\n";
+    cout << "Reading command-line options\n";
 
     // use 'gopt' to handle parsing command-line; first define all available options
     const int nopt = 55;
@@ -214,7 +214,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         cerr << "Could not open input file " << options[ifname].argument << std::endl;
         return(-1);
       }
-      cerr << "Reading options from file: " << options[ifname].argument << std::endl;
+      cout << "Reading options from file: " << options[ifname].argument << std::endl;
       while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
 
         /* initialize return flag for line */
@@ -283,7 +283,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 
     }
 
-    cerr << "Merging command-line and file-based inputs\n";
+    cout << "Merging command-line and file-based inputs\n";
 
     // replace any current option with a value specified on the command line
     if (options[ixl].count)     udata.xl          = atof(options[ixl].argument);
@@ -398,19 +398,11 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 
   }
 
-  if (myid == 0)  cerr << "Broadcasting input parameters to all MPI tasks\n";
-  retval = MPI_Barrier(MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Barrier (load_inputs)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
   retval = MPI_Bcast(ibuff, 25, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-
-  if (myid == 0)  cerr << "Unpacking broadcasting buffers\n";
-  retval = MPI_Barrier(MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Barrier (load_inputs)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // unpack buffers
   udata.nx = ibuff[0];

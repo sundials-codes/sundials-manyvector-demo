@@ -145,7 +145,7 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-  if (myid == 0)  cerr << "Initializing problem\n";
+  if (myid == 0)  cout << "Initializing problem\n";
   retval = MPI_Barrier(MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -184,7 +184,7 @@ int main(int argc, char* argv[]) {
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
   
-  if (myid == 0)  cerr << "Setting up parallel decomposition\n";
+  if (myid == 0)  cout << "Setting up parallel decomposition\n";
   retval = MPI_Barrier(MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
   FILE *DFID_OUTER = NULL;
   FILE *DFID_INNER = NULL;
   if (outproc && udata.showstats) {
-    cerr << "Creating diagnostics output files\n";
+    cout << "Creating diagnostics output files\n";
     DFID_OUTER=fopen("diags_hydro.txt","w");
     DFID_INNER=fopen("diags_chem.txt","w");
   }
