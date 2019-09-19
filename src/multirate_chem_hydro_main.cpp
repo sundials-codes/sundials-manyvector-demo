@@ -119,6 +119,7 @@ int main(int argc, char* argv[]) {
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
+  int NoOutput;                  // flag for case when no output is desired
   N_Vector w = NULL;             // empty vectors for storing overall solution
   N_Vector *wsubvecs;
   N_Vector atols = NULL;
@@ -138,16 +139,29 @@ int main(int argc, char* argv[]) {
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
-   // start various code profilers
+  // start various code profilers
   retval = udata.profile[PR_SETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
+  if (myid == 0)  cerr << "Initializing problem\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // read problem and solver parameters from input file / command line
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-  realtype dTout = (udata.tf-udata.t0)/(udata.nout);
+
+  // set NoOutput flag based on nout input
+  NoOutput = 0;
+  if (udata.nout <= 0) {
+    NoOutput = 1;
+    udata.nout = 1;
+  }
+
+  // set output time frequency
+  realtype dTout = (udata.tf-udata.t0)/udata.nout;
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -156,10 +170,9 @@ int main(int argc, char* argv[]) {
 
   // if fixed time stepping is specified, ensure that hmax>0
   if (opts.fixedstep && (opts.hmax <= ZERO)) {
-    if (udata.myid == 0)
-      cerr << "\nError: fixed time stepping requires hmax > 0 ("
-           << opts.hmax << " given)\n";
-    MPI_Abort(udata.comm, 1);
+    if (myid == 0)  cerr << "\nError: fixed time stepping requires hmax > 0 ("
+                         << opts.hmax << " given)\n";
+    MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
   // update fixedstep parameter when initial transient evolution is requested
@@ -167,11 +180,14 @@ int main(int argc, char* argv[]) {
 
   // ensure that htrans < dTout
   if (opts.htrans >= dTout) {
-    if (udata.myid == 0)
-      cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
-    MPI_Abort(udata.comm, 1);
+    if (myid == 0)  cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
+    MPI_Abort(MPI_COMM_WORLD, 1);
   }
   
+  if (myid == 0)  cerr << "Setting up parallel decomposition\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // set up udata structure
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -238,10 +254,13 @@ int main(int argc, char* argv[]) {
   // open solver diagnostics output files for writing
   FILE *DFID_OUTER = NULL;
   FILE *DFID_INNER = NULL;
-  if (outproc) {
+  if (outproc && udata.showstats) {
+    cerr << "Creating diagnostics output files\n";
     DFID_OUTER=fopen("diags_hydro.txt","w");
     DFID_INNER=fopen("diags_chem.txt","w");
   }
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -465,8 +484,10 @@ int main(int argc, char* argv[]) {
   //    Output initial conditions to disk
   retval = apply_Dengo_scaling(w, udata);
   if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
-  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (NoOutput == 0) {
+    retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
+    if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
   //    Output CGS solution statistics (if requested)
   if (udata.showstats && PRINT_CGS == 1) {
     retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
@@ -563,8 +584,10 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "MRIStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = apply_Dengo_scaling(w, udata);
     if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = output_solution(t, w, hcur, iout+1, udata, opts);
-    if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (NoOutput == 0) {
+      retval = output_solution(t, w, hcur, iout+1, udata, opts);
+      if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     //    output CGS statistics to stdout (if requested)
     if (udata.showstats && (PRINT_CGS == 1)) {
       retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
