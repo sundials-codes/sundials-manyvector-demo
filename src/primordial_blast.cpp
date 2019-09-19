@@ -147,16 +147,16 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   // output clump information
   if (udata.myid == 0) {
     cout << "\nInitializing problem with " << nclumps << " clumps:\n";
-    for (i=0; i<nclumps; i++)
-      cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
-           << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
-           << clump_data[5*i+3] << " cells,  \tstrength = " << clump_data[5*i+4] << std::endl;
-    cout << "\n'Blast' clump:\n"
-         << "       overdensity = " << BLAST_DENSITY << std::endl
-         << "   overtemperature = " << BLAST_TEMPERATURE << std::endl
-         << "            radius = " << BLAST_RADIUS << std::endl
-         << "            center = " << BLAST_CENTER_X << ", "
-         << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
+    // for (i=0; i<nclumps; i++)
+    //   cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
+    //        << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
+    //        << clump_data[5*i+3] << " cells,  \tstrength = " << clump_data[5*i+4] << std::endl;
+    // cout << "\n'Blast' clump:\n"
+    //      << "       overdensity = " << BLAST_DENSITY << std::endl
+    //      << "   overtemperature = " << BLAST_TEMPERATURE << std::endl
+    //      << "            radius = " << BLAST_RADIUS << std::endl
+    //      << "            center = " << BLAST_CENTER_X << ", "
+    //      << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
   }
 
 
