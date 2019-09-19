@@ -39,6 +39,7 @@ module load essl
 module load metis
 module load hdf5
 module load cuda
+module load hpctoolkit
 
 # unload modules (needed to build KLU)
 module unload xalt
