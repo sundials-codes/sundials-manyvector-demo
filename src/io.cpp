@@ -51,6 +51,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // root process handles command-line and file-based solver parameters, and packs send buffers
   if (myid == 0) {
 
+    cerr << "Reading command-line options\n";
+
     // use 'gopt' to handle parsing command-line; first define all available options
     const int nopt = 55;
     struct option options[nopt+1];
@@ -129,7 +131,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 
     // handle help request
     if (options[ihelp].count) {
-      cout << "\nEuler3D SUNDIALS ManyVector+Multirate demonstration code\n"
+      cerr << "\nEuler3D SUNDIALS ManyVector+Multirate demonstration code\n"
            << "\nUsage: " << argv[0] << " [options]\n"
            << "   -h or --help prints this message and exits the program\n"
            << "\nAvailable problem specification options (and the default if not provided):\n"
@@ -204,10 +206,15 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 
     // if an input file was specified, read that here
     if (options[ifname].count) {
+
       char line[MAX_LINE_LENGTH];
       FILE *FID=NULL;
       FID = fopen(options[ifname].argument,"r");
-      if (check_flag((void *) FID, "fopen (load_inputs)", 0)) return(-1);
+      if (check_flag((void *) FID, "fopen (load_inputs)", 0)) {
+        cerr << "Could not open input file " << options[ifname].argument << std::endl;
+        return(-1);
+      }
+      cerr << "Reading options from file: " << options[ifname].argument << std::endl;
       while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
 
         /* initialize return flag for line */
@@ -276,6 +283,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 
     }
 
+    cerr << "Merging command-line and file-based inputs\n";
+
     // replace any current option with a value specified on the command line
     if (options[ixl].count)     udata.xl          = atof(options[ixl].argument);
     if (options[ixr].count)     udata.xr          = atof(options[ixr].argument);
@@ -332,67 +341,76 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[ilr].count)     opts.localreduce  = atoi(options[ilr].argument);
 
     // pack buffers with final parameter values
-    ibuff[0]  = udata.nx;
-    ibuff[1]  = udata.ny;
-    ibuff[2]  = udata.nz;
-    ibuff[3]  = udata.xlbc;
-    ibuff[4]  = udata.xrbc;
-    ibuff[5]  = udata.ylbc;
-    ibuff[6]  = udata.yrbc;
-    ibuff[7]  = udata.zlbc;
-    ibuff[8]  = udata.zrbc;
-    ibuff[9]  = udata.nout;
-    ibuff[10] = udata.showstats;
-    ibuff[11] = opts.order;
-    ibuff[12] = opts.dense_order;
-    ibuff[13] = opts.btable;
-    ibuff[14] = opts.adapt_method;
-    ibuff[15] = opts.maxnef;
-    ibuff[16] = opts.mxhnil;
-    ibuff[17] = opts.mxsteps;
-    ibuff[18] = opts.pq;
-    ibuff[19] = restart;
-    ibuff[20] = opts.predictor;
-    ibuff[21] = opts.maxniters;
-    ibuff[22] = opts.fixedstep;
-    ibuff[23] = opts.fusedkernels;
-    ibuff[24] = opts.localreduce;
+    ibuff[0]  = (long int) udata.nx;
+    ibuff[1]  = (long int) udata.ny;
+    ibuff[2]  = (long int) udata.nz;
+    ibuff[3]  = (long int) udata.xlbc;
+    ibuff[4]  = (long int) udata.xrbc;
+    ibuff[5]  = (long int) udata.ylbc;
+    ibuff[6]  = (long int) udata.yrbc;
+    ibuff[7]  = (long int) udata.zlbc;
+    ibuff[8]  = (long int) udata.zrbc;
+    ibuff[9]  = (long int) udata.nout;
+    ibuff[10] = (long int) udata.showstats;
+    ibuff[11] = (long int) opts.order;
+    ibuff[12] = (long int) opts.dense_order;
+    ibuff[13] = (long int) opts.btable;
+    ibuff[14] = (long int) opts.adapt_method;
+    ibuff[15] = (long int) opts.maxnef;
+    ibuff[16] = (long int) opts.mxhnil;
+    ibuff[17] = (long int) opts.mxsteps;
+    ibuff[18] = (long int) opts.pq;
+    ibuff[19] = (long int) restart;
+    ibuff[20] = (long int) opts.predictor;
+    ibuff[21] = (long int) opts.maxniters;
+    ibuff[22] = (long int) opts.fixedstep;
+    ibuff[23] = (long int) opts.fusedkernels;
+    ibuff[24] = (long int) opts.localreduce;
 
-    dbuff[0]  = udata.xl;
-    dbuff[1]  = udata.xr;
-    dbuff[2]  = udata.yl;
-    dbuff[3]  = udata.yr;
-    dbuff[4]  = udata.zl;
-    dbuff[5]  = udata.zr;
-    dbuff[6]  = udata.t0;
-    dbuff[7]  = udata.tf;
-    dbuff[8]  = udata.gamma;
-    dbuff[9]  = udata.cfl;
-    dbuff[10] = opts.safety;
-    dbuff[11] = opts.bias;
-    dbuff[12] = opts.growth;
-    dbuff[13] = opts.k1;
-    dbuff[14] = opts.k2;
-    dbuff[15] = opts.k3;
-    dbuff[16] = opts.etamx1;
-    dbuff[17] = opts.etamxf;
-    dbuff[18] = opts.h0;
-    dbuff[19] = opts.hmin;
-    dbuff[20] = opts.hmax;
-    dbuff[21] = opts.rtol;
-    dbuff[22] = opts.atol;
-    dbuff[23] = opts.nlconvcoef;
-    dbuff[24] = udata.MassUnits;
-    dbuff[25] = udata.LengthUnits;
-    dbuff[26] = udata.TimeUnits;
-    dbuff[27] = opts.htrans;
+    dbuff[0]  = (double) udata.xl;
+    dbuff[1]  = (double) udata.xr;
+    dbuff[2]  = (double) udata.yl;
+    dbuff[3]  = (double) udata.yr;
+    dbuff[4]  = (double) udata.zl;
+    dbuff[5]  = (double) udata.zr;
+    dbuff[6]  = (double) udata.t0;
+    dbuff[7]  = (double) udata.tf;
+    dbuff[8]  = (double) udata.gamma;
+    dbuff[9]  = (double) udata.cfl;
+    dbuff[10] = (double) opts.safety;
+    dbuff[11] = (double) opts.bias;
+    dbuff[12] = (double) opts.growth;
+    dbuff[13] = (double) opts.k1;
+    dbuff[14] = (double) opts.k2;
+    dbuff[15] = (double) opts.k3;
+    dbuff[16] = (double) opts.etamx1;
+    dbuff[17] = (double) opts.etamxf;
+    dbuff[18] = (double) opts.h0;
+    dbuff[19] = (double) opts.hmin;
+    dbuff[20] = (double) opts.hmax;
+    dbuff[21] = (double) opts.rtol;
+    dbuff[22] = (double) opts.atol;
+    dbuff[23] = (double) opts.nlconvcoef;
+    dbuff[24] = (double) udata.MassUnits;
+    dbuff[25] = (double) udata.LengthUnits;
+    dbuff[26] = (double) udata.TimeUnits;
+    dbuff[27] = (double) opts.htrans;
+
   }
+
+  if (myid == 0)  cerr << "Broadcasting input parameters to all MPI tasks\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (load_inputs)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
   retval = MPI_Bcast(ibuff, 25, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
+
+  if (myid == 0)  cerr << "Unpacking broadcasting buffers\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (load_inputs)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // unpack buffers
   udata.nx = ibuff[0];
@@ -533,7 +551,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
     if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (print_stats)", 0)) return -1;
   }
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
-  if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (check_flag(&retval, "ARKStepGetNumSteps (print_stats)", 1)) MPI_Abort(udata.comm, 1);
 
   // handle output of dimensionless vs CGS values
   realtype DUnits, MUnits, EUnits;
