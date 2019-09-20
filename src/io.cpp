@@ -666,7 +666,7 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "etamxf = " ESYM "\n", opts.etamxf);
     fprintf(UFID, "h0 = " ESYM "\n", hcur);
     fprintf(UFID, "hmin = " ESYM "\n", opts.hmin);
-    fprintf(UFID, "hmax = " ESYM "\n", ZERO);
+    fprintf(UFID, "hmax = " ESYM "\n", opts.hmax);
     fprintf(UFID, "fixedstep = %i\n", opts.fixedstep);
     fprintf(UFID, "htrans = " ESYM "\n", opts.htrans);
     fprintf(UFID, "rtol = " ESYM "\n", opts.rtol);
