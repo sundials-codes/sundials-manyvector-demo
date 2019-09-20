@@ -153,6 +153,15 @@ int main(int argc, char* argv[]) {
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
+  if (myid == 0)  cout << "Setting up parallel decomposition\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+  // set up udata structure
+  retval = udata.SetupDecomp();
+  if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
+  bool outproc = (udata.myid == 0);
+
   // set NoOutput flag based on nout input
   NoOutput = 0;
   if (udata.nout <= 0) {
@@ -163,16 +172,16 @@ int main(int argc, char* argv[]) {
   // set output time frequency
   realtype dTout = (udata.tf-udata.t0)/udata.nout;
   retval = udata.profile[PR_IO].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set slow timestep size as h0 (if >0), or dTout otherwise
   realtype hslow = (opts.h0 > 0) ? opts.h0 : dTout;
 
   // if fixed time stepping is specified, ensure that hmax>0
   if (opts.fixedstep && (opts.hmax <= ZERO)) {
-    if (myid == 0)  cerr << "\nError: fixed time stepping requires hmax > 0 ("
-                         << opts.hmax << " given)\n";
-    MPI_Abort(MPI_COMM_WORLD, 1);
+    if (outproc)  cerr << "\nError: fixed time stepping requires hmax > 0 ("
+                       << opts.hmax << " given)\n";
+    MPI_Abort(udata.comm, 1);
   }
 
   // update fixedstep parameter when initial transient evolution is requested
@@ -180,27 +189,17 @@ int main(int argc, char* argv[]) {
 
   // ensure that htrans < dTout
   if (opts.htrans >= dTout) {
-    if (myid == 0)  cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
-    MPI_Abort(MPI_COMM_WORLD, 1);
+    if (outproc)  cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
+    MPI_Abort(udata.comm, 1);
   }
   
-  if (myid == 0)  cout << "Setting up parallel decomposition\n";
-  retval = MPI_Barrier(MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-
-  // set up udata structure
-  retval = udata.SetupDecomp();
-  if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // ensure that this was compiled with chemical species
   if (udata.nchem == 0) {
-    if (udata.myid == 0)
-      cerr << "\nError: executable <must> be compiled with chemical species enabled\n";
+    if (outproc)  cerr << "\nError: executable <must> be compiled with chemical species enabled\n";
     MPI_Abort(udata.comm, 1);
   }
 
   // Output problem setup information
-  bool outproc = (udata.myid == 0);
   if (outproc) {
     cout << "\n3D compressible inviscid Euler + primordial chemistry driver (multirate):\n";
     cout << "   nprocs: " << udata.nprocs << " (" << udata.npx << " x "
@@ -216,6 +215,11 @@ int main(int argc, char* argv[]) {
       cout << "   fixed timestep size: " << opts.hmax << "\n";
     if (opts.fixedstep == 2)
       cout << "   initial transient evolution: " << opts.htrans << "\n";
+    if (NoOutput == 1) {
+      cout << "   solution output disabled\n";
+    } else {
+      cout << "   output timestep size: " << dTout << "\n";
+    }
     cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
