@@ -29,11 +29,47 @@
 #   module show <module name>
 # --------------------------------------------------------------------------
 
+# check for correct number of inputs
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Please specify compiler xl or gcc"
+    return 1
+fi
+
 # set environment variables
 export HOST=summit
 export PROJHOME=/ccs/proj/csc317
 
-# load modules
+# load compiler
+compiler=$1
+case "$compiler" in
+    xl)
+        # default xl compiler as of 1 Sept 2019
+        module load xl/16.1.1-3
+        export COMPILERNAME="xl-16.1.1-3-r"
+        export CC=${OLCF_XLC_ROOT}/bin/xlc_r
+        export CXX=${OLCF_XLC_ROOT}/bin/xlc++_r
+        export FC=${OLCF_XLF_ROOT}/bin/xlf_r
+        ;;
+    gcc)
+        # default gcc compiler as of 1 Sept 2019
+        module load gcc/6.4.0
+        export COMPILERNAME="gcc-6.4.0"
+        export CC=${OLCF_GCC_ROOT}/bin/gcc
+        export CXX=${OLCF_GCC_ROOT}/bin/g++
+        export FC=${OLCF_GCC_ROOT}/bin/gfortran
+        ;;
+    *)
+        echo "ERROR: Unknown compiler option: $compiler"
+        return 1
+        ;;
+esac
+
+# setup MPI compiler environment variables
+export MPICC=${MPI_ROOT}/bin/mpicc
+export MPICXX=${MPI_ROOT}/bin/mpic++
+export MPIFC=${MPI_ROOT}/bin/mpif90
+
+# load other modules
 module load cmake
 module load essl
 module load metis
@@ -44,11 +80,5 @@ module load hpctoolkit
 # unload modules (needed to build KLU)
 module unload xalt
 
-# set compiler environment variables
-export CC=${OLCF_XLC_ROOT}/bin/xlc
-export CXX=${OLCF_XLC_ROOT}/bin/xlc++
-export FC=${OLCF_XLF_ROOT}/bin/xlf
-
-export MPICC=${MPI_ROOT}/bin/mpicc
-export MPICXX=${MPI_ROOT}/bin/mpic++
-export MPIFC=${MPI_ROOT}/bin/mpif90
+# list currently loaded modules
+module list

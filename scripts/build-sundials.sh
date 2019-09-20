@@ -15,14 +15,26 @@
 # Script to build SUNDIALS on Summit
 # --------------------------------------------------------------------------
 
-# build options
-realtype="double"  # single, double, or extended
-indexsize="32"     # 32 or 64
-bldtype="opt"      # opt or dbg
+# check for correct number of inputs
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Please specify build type opt or dbg"
+    exit 1
+fi
 
-srcdir=${HOME}/sundials-5.0.0-dev.1
-installdir=${PROJHOME}/xl-16.1.1-3/sundials-${realtype}-${indexsize}-${bldtype}
-kludir=${PROJHOME}/xl-16.1.1-3/suitesparse-5.4.0
+# build type: opt (optimized) or dbg (debug)
+bldtype=$1
+case "$bldtype" in
+    opt|dbg) ;;
+    *)
+        echo "ERROR: Unknown build type: $bldtype"
+        exit 1
+        ;;
+esac
+
+# set paths
+srcdir=${HOME}/sundials
+installdir=${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-${bldtype}
+kludir=${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
 
 # -------------------------------------------------------------------------------
 # Setup Build
@@ -61,8 +73,8 @@ cmake \
     -D BUILD_IDAS=OFF \
     -D BUILD_KINSOL=OFF \
     \
-    -D SUNDIALS_PRECISION=$realtype \
-    -D SUNDIALS_INDEX_SIZE=$indexsize \
+    -D SUNDIALS_PRECISION="double" \
+    -D SUNDIALS_INDEX_SIZE="64" \
     \
     -D MPI_ENABLE=ON \
     -D MPI_C_COMPILER=${MPICC} \

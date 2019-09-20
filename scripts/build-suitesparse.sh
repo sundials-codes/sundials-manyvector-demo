@@ -17,7 +17,7 @@
 
 # set paths
 srcdir=${HOME}/SuiteSparse
-installdir=${PROJHOME}/xl-16.1.1-3/suitesparse-5.4.0
+installdir=${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
 
 # ------------------------------------------------------------------------------
 # Configure, build, and install

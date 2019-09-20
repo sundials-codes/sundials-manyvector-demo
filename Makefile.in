@@ -88,17 +88,16 @@ else ifeq ($(HOST),descartes.local)
 #    summit -- see scripts/setup_summit.sh for environment setup
 else ifeq ($(HOST),summit)
   CXX = ${MPI_ROOT}/bin/mpic++ -std=c++11
-  OMPFLAGS = -qsmp=omp
 
   ifeq ($(LIBTYPE),OPT)
-    SUNDIR = ${PROJHOME}/xl-16.1.1-3/sundials-double-64-opt
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-opt
   else
-    SUNDIR = ${PROJHOME}/xl-16.1.1-3/sundials-double-64-dbg
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-dbg
   endif
   SUNINCDIRS = -I${SUNDIR}/include
   SUNLIBDIR = ${SUNDIR}/lib
 
-  KLUDIR = ${PROJHOME}/xl-16.1.1-3/suitesparse-5.4.0
+  KLUDIR = ${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
   KLUINCDIRS = -I$(KLUDIR)/include/
   KLULIBDIR = $(KLUDIR)/lib
 
