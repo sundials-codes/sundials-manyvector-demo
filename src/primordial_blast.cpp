@@ -80,7 +80,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // output test problem information
   if (udata.myid == 0)
-    cout << "\nPrimordial blast test problem\n\n";
+    cout << "\nPrimordial blast test problem\n";
 
   // ensure that this is compiled with 10 chemical species
   if (udata.nchem != 10) {
@@ -91,14 +91,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   if (udata.nchem > 0) {
     chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
     if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
-  }
-
-  // return error if input parameters are inappropriate
-  if ( (udata.xlbc != BC_REFLECTING) || (udata.xrbc != BC_REFLECTING) ||
-       (udata.ylbc != BC_REFLECTING) || (udata.yrbc != BC_REFLECTING) ||
-       (udata.zlbc != BC_REFLECTING) || (udata.zrbc != BC_REFLECTING) ) {
-    cerr << "\nInappropriate boundary conditions (should be reflecting), exiting\n\n";
-    return -1;
   }
 
   // ensure that local subdomain size does not exceed dengo 'MAX_NCELLS' preprocessor value
@@ -146,7 +138,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // output clump information
   if (udata.myid == 0) {
-    cout << "\nInitializing problem with " << nclumps << " clumps:\n";
+    cout << "\nInitializing problem with " << nclumps << " clumps\n";
     // for (i=0; i<nclumps; i++)
     //   cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
     //        << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
@@ -235,18 +227,18 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // set initial mass densities into local variables -- blast clump is essentially
         // only HI and HeI, but outside we have trace amounts of other species.
-        H2I   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        HII   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
-        HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        HeII  = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
-        HeIII = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
-        // H2I   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        // H2I   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         // H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        // HII   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        // HII   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
         // HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        // HeII  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        // HeIII = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        // HeII  = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        // HeIII = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        H2I   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HII   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HeII  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HeIII = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         HeI = (ONE-Hfrac)*density - HeII - HeIII;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 
