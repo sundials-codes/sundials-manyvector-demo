@@ -575,7 +575,6 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
         }
     retval = MPI_Reduce(rmsvals, totrms, NVAR, MPI_SUNREALTYPE, MPI_SUM, 0, udata.comm);
     if (check_flag(&retval, "MPI_Reduce (print_stats)", 3)) MPI_Abort(udata.comm, 1);
-    for (v=0; v<NVAR; v++)  totrms[v] = sqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
   }
 
   // perform output
@@ -591,6 +590,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
     cout << "-------\n";
   }
   if (firstlast<2) {
+    for (v=0; v<NVAR; v++)  totrms[v] = sqrt(totrms[v]/udata.nx/udata.ny/udata.nz);
     if (scientific) {
       printf("  %9.1e %9.1e %9.1e %9.1e %9.1e %9.1e", t,
              totrms[0], totrms[1], totrms[2], totrms[3], totrms[4]);
