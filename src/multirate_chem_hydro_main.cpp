@@ -544,6 +544,9 @@ int main(int argc, char* argv[]) {
       return(1);
     }
 
+    // stop transient solver profiler
+    retval = udata.profile[PR_TRANS].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
     if (outproc) {
       nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
@@ -639,9 +642,6 @@ int main(int argc, char* argv[]) {
     retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    // stop transient solver profiler
-    retval = udata.profile[PR_TRANS].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
   
