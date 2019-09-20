@@ -541,6 +541,32 @@ int main(int argc, char* argv[]) {
       return(1);
     }
 
+
+    // periodic output of solution/statistics
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    //    output diagnostic information (if applicable)
+    retval = output_diagnostics(t, w, udata);
+    if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    //    output normalized statistics to stdout (if requested)
+    if (udata.showstats) {
+      if (PRINT_CGS == 1) {
+        retval = apply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
+      if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+      if (PRINT_CGS == 1) {
+        retval = unapply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+    }
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+    
+    
     // disable adaptivity and set fixed fast step size
     retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -557,6 +583,10 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
   tout = udata.t0+dTout;
   for (int iout=restart; iout<restart+udata.nout; iout++) {
+
+    // set stop time for next evolution
+    retval = MRIStepSetStopTime(outer_arkode_mem, tout);
+    if (check_flag(&retval, "MRIStepSetStopTime (main)", 1)) MPI_Abort(udata.comm, 1);
 
     // evolve solution
     retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);
