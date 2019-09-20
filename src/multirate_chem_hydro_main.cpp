@@ -115,6 +115,7 @@ int main(int argc, char* argv[]) {
 
   // general problem variables
   long int N, Ntot, i, j, k, l;
+  long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nls, nni, ncf, nje;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
@@ -140,6 +141,8 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // start various code profilers
+  retval = udata.profile[PR_TOTAL].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   retval = udata.profile[PR_SETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   retval = udata.profile[PR_IO].start();
@@ -542,6 +545,71 @@ int main(int argc, char* argv[]) {
     }
 
 
+    if (outproc) {
+      nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
+      retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
+      if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
+      if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
+      if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
+      if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
+      if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
+      if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
+      if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
+      if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
+      if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      cout << "\nTransient portion of simulation complete:\n";
+      cout << "   Slow solver steps = " << nsts << "\n";
+      cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
+      cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
+      cout << "   Total number of fast error test failures = " << netf << "\n";
+      if (nls > 0)
+        cout << "   Total number of fast lin solv setups = " << nls << "\n";
+      if (nni > 0) {
+        cout << "   Total number of fast nonlin iters = " << nni << "\n";
+        cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
+      }
+      cout << "\nCurrent profiling results:\n";
+    }
+    retval = MPI_Barrier(udata.comm);
+    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+    udata.profile[PR_SETUP].print_cumulative_times("setup");
+    udata.profile[PR_IO].print_cumulative_times("I/O");
+    udata.profile[PR_MPI].print_cumulative_times("MPI");
+    udata.profile[PR_PACKDATA].print_cumulative_times("pack");
+    udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
+    udata.profile[PR_RHSEULER].print_cumulative_times("Euler RHS");
+    udata.profile[PR_RHSSLOW].print_cumulative_times("slow RHS");
+    udata.profile[PR_RHSFAST].print_cumulative_times("fast RHS");
+    udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
+    udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
+    udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
+    // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
+    udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+    udata.profile[PR_TRANS].print_cumulative_times("trans");
+    if (outproc)  cout << std::endl;
+
+    // reset current evolution-related profilers for subsequent fixed-step evolution
+    udata.profile[PR_IO].reset();
+    udata.profile[PR_MPI].reset();
+    udata.profile[PR_PACKDATA].reset();
+    udata.profile[PR_FACEFLUX].reset();
+    udata.profile[PR_RHSEULER].reset();
+    udata.profile[PR_RHSSLOW].reset();
+    udata.profile[PR_RHSFAST].reset();
+    udata.profile[PR_JACFAST].reset();
+    udata.profile[PR_LSETUP].reset();
+    udata.profile[PR_LSOLVE].reset();
+    // udata.profile[PR_POSTFAST].reset();
+    udata.profile[PR_DTSTAB].reset();
+
     // periodic output of solution/statistics
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -556,7 +624,7 @@ int main(int argc, char* argv[]) {
         retval = apply_Dengo_scaling(w, udata);
         if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
       }
-      retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
+      retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, outer_arkode_mem, udata);
       if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
       if (PRINT_CGS == 1) {
         retval = unapply_Dengo_scaling(w, udata);
@@ -646,39 +714,34 @@ int main(int argc, char* argv[]) {
     fclose(DFID_INNER);
   }
 
-  // compute simulation time
+  // compute simulation time, total time
   retval = udata.profile[PR_SIMUL].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // Get some slow integrator statistics
-  long int nsts, nfs;
-  nsts = nfs = 0;
-  retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
-  if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
-  if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  // Get some fast integrator statistics
-  long int nstf, nstf_a, nfe, nfi, netf, nls, nni, ncf, nje;
-  nstf = nstf_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
-  retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
-  if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
-  if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
-  if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
-  if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
-  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
-  if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
-  if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_TOTAL].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Print some final statistics
   if (outproc) {
-    cout << "\nFinal Solver Statistics:\n";
+    nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
+    retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
+    if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
+    if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
+    if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
+    if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
+    if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
+    if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
+    if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
+    if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
+    if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    cout << "\nOverall Solver Statistics:\n";
     cout << "   Slow solver steps = " << nsts << "\n";
     cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
     cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
@@ -689,7 +752,7 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of fast nonlin iters = " << nni << "\n";
       cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
     }
-    cout << "\nProfiling Results:\n";
+    cout << "\nFinal profiling results:\n";
   }
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
@@ -706,8 +769,8 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
   // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
-  udata.profile[PR_TRANS].print_cumulative_times("trans");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
+  udata.profile[PR_TOTAL].print_cumulative_times("Total");
 
   // Output mass/energy conservation error
   if (udata.showstats) {
