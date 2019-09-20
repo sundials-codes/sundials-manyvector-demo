@@ -65,6 +65,13 @@ public:
     return 0;
   }
 
+  // resets a profiler (time=count=0)
+  void reset()
+  {
+    time = 0.0;
+    count = 0;
+  }
+
   // returns the mean/min/max (over MPI tasks) cumulative profiler times to
   // all calling tasks
   int cumulative_times(MPI_Comm comm, double& tmean, double& tmin, double& tmax)
