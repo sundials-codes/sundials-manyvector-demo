@@ -92,6 +92,7 @@ using namespace std;
 #define  PR_DTSTAB    12
 #define  PR_LSETUP    13
 #define  PR_LSOLVE    14
+#define  PR_TOTAL     15
 
 
 // Utility routine to check function return values:
