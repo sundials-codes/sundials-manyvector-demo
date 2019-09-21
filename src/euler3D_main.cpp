@@ -10,14 +10,14 @@
  This evolves the 3D compressible, inviscid Euler equations.
 
  The problem is evolved using ARKode's ARKStep time-stepping
- module for a temporally adaptive explicit Runge--Kutta solve.  
+ module for a temporally adaptive explicit Runge--Kutta solve.
  Nearly all adaptivity options are controllable via user inputs.
- If the input file specifies fixedstep=1, then temporal adaptivity 
- is disabled, and the solver will use the fixed step size 
- h=hmax.  In this case, if the input file specifies htrans>0, 
- then temporal adaptivity will be used for the start of the 
- simulation [t0,t0+htrans], followed by fixed time-stepping using 
- h=hmax.  We require that htrans is smaller than the first 
+ If the input file specifies fixedstep=1, then temporal adaptivity
+ is disabled, and the solver will use the fixed step size
+ h=hmax.  In this case, if the input file specifies htrans>0,
+ then temporal adaptivity will be used for the start of the
+ simulation [t0,t0+htrans], followed by fixed time-stepping using
+ h=hmax.  We require that htrans is smaller than the first
  output time interval, i.e., t0+htrans < t0+dTout.
 
  ---------------------------------------------------------------*/
@@ -31,7 +31,7 @@
 #endif
 
 // macros for handling formatting of diagnostic output (1 enable, 0 disable)
-#define PRINT_CGS 1 
+#define PRINT_CGS 1
 #define PRINT_SCIENTIFIC 1
 
 
@@ -142,7 +142,9 @@ int main(int argc, char* argv[]) {
 
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
-  if (outproc)  DFID=fopen("diags_euler3D.txt","w");
+  if (udata.showstats && outproc) {
+    DFID=fopen("diags_euler3D.txt","w");
+  }
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -215,7 +217,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set diagnostics file
-  if (outproc) {
+  if (udata.showstats && outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
     if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -235,19 +237,19 @@ int main(int argc, char* argv[]) {
 
   // set adaptive timestepping parameters (if applicable)
   if (opts.fixedstep != 1) {
-    
+
     // set safety factor
     retval = ARKStepSetSafetyFactor(arkode_mem, opts.safety);
     if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set error bias
     retval = ARKStepSetErrorBias(arkode_mem, opts.bias);
     if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set step growth factor
     retval = ARKStepSetMaxGrowth(arkode_mem, opts.growth);
     if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set time step adaptivity method
     realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
     int idefault = 1;
@@ -255,31 +257,31 @@ int main(int argc, char* argv[]) {
     retval = ARKStepSetAdaptivityMethod(arkode_mem, opts.adapt_method, idefault,
                                         opts.pq, adapt_params);
     if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set first step growth factor
     retval = ARKStepSetMaxFirstGrowth(arkode_mem, opts.etamx1);
     if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set error failure growth factor
     retval = ARKStepSetMaxEFailGrowth(arkode_mem, opts.etamxf);
     if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set initial time step size
     retval = ARKStepSetInitStep(arkode_mem, opts.h0);
     if (check_flag(&retval, "ARKStepSetInitStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set minimum time step size
     retval = ARKStepSetMinStep(arkode_mem, opts.hmin);
     if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set maximum time step size
     retval = ARKStepSetMaxStep(arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set maximum allowed error test failures
     retval = ARKStepSetMaxErrTestFails(arkode_mem, opts.maxnef);
     if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set maximum allowed hnil warnings
     retval = ARKStepSetMaxHnilWarns(arkode_mem, opts.mxhnil);
     if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -289,15 +291,15 @@ int main(int argc, char* argv[]) {
       retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
       if (check_flag(&retval, "ARKStepSetStabilityFn (main)", 1)) MPI_Abort(udata.comm, 1);
     }
-    
+
   // otherwise, set fixed timestep size
   } else {
-    
+
     retval = ARKStepSetFixedStep(arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
   }
-  
+
   // set maximum allowed steps
   retval = ARKStepSetMaxNumSteps(arkode_mem, opts.mxsteps);
   if (check_flag(&retval, "ARKStepSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -316,13 +318,13 @@ int main(int argc, char* argv[]) {
   else   // otherwise tell integrator to use dense output
     idense = 1;
 
-  
+
   //--- Initial batch of outputs ---//
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   if (udata.myid == 0)  cout << "\nWriting initial batch of outputs\n";
-  
+
   // Optionally output total mass/energy
   if (udata.showstats) {
     retval = check_conservation(udata.t0, w, udata);
@@ -439,7 +441,7 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   }
-  if (outproc)  fclose(DFID);
+  if (udata.showstats && outproc)  fclose(DFID);
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();

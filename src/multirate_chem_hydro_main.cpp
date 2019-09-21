@@ -22,23 +22,23 @@
  The fast time scale is evolved implicitly using ARKode's ARKStep
  time-stepping module, using the DIRK Butcher tableau that is
  specified by the user.  Here, time adaptivity is employed, with
- nearly all adaptivity options controllable via user inputs.   
- If the input file specifies fixedstep=1, then temporal adaptivity 
- is disabled, and the solver will use the fixed step size 
- h=hmax.  In this case, if the input file specifies htrans>0, 
- then temporal adaptivity will be used for the start of the 
- simulation [t0,t0+htrans], followed by fixed time-stepping using 
- h=hmax.  We require that htrans is smaller than the first 
- output time interval, i.e., t0+htrans < t0+dTout.  Implicit 
- subsystems are solved using the default Newton SUNNonlinearSolver 
- module, but with a custom SUNLinearSolver module.  This is a 
- direct solver for block-diagonal matrices (one block per MPI 
- rank) that unpacks the MPIManyVector to access a specified 
- subvector component (per rank), and then uses a standard 
- SUNLinearSolver module for each rank-local linear system.  The 
- specific SUNLinearSolver module to use on each block, and the 
- MPIManyVector subvector index are provided in the module 
- 'constructor'.  Here, we use the KLU SUNLinearSolver module for 
+ nearly all adaptivity options controllable via user inputs.
+ If the input file specifies fixedstep=1, then temporal adaptivity
+ is disabled, and the solver will use the fixed step size
+ h=hmax.  In this case, if the input file specifies htrans>0,
+ then temporal adaptivity will be used for the start of the
+ simulation [t0,t0+htrans], followed by fixed time-stepping using
+ h=hmax.  We require that htrans is smaller than the first
+ output time interval, i.e., t0+htrans < t0+dTout.  Implicit
+ subsystems are solved using the default Newton SUNNonlinearSolver
+ module, but with a custom SUNLinearSolver module.  This is a
+ direct solver for block-diagonal matrices (one block per MPI
+ rank) that unpacks the MPIManyVector to access a specified
+ subvector component (per rank), and then uses a standard
+ SUNLinearSolver module for each rank-local linear system.  The
+ specific SUNLinearSolver module to use on each block, and the
+ MPIManyVector subvector index are provided in the module
+ 'constructor'.  Here, we use the KLU SUNLinearSolver module for
  the block on each rank.
  ---------------------------------------------------------------*/
 
@@ -57,8 +57,8 @@
 //#define DISABLE_HYDRO
 
 // macros for handling formatting of diagnostic output
-#define PRINT_CGS 1 
-#define PRINT_SCIENTIFIC 1 
+#define PRINT_CGS 1
+#define PRINT_SCIENTIFIC 1
 
 
 
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
     if (outproc)  cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
     MPI_Abort(udata.comm, 1);
   }
-  
+
   // ensure that this was compiled with chemical species
   if (udata.nchem == 0) {
     if (outproc)  cerr << "\nError: executable <must> be compiled with chemical species enabled\n";
@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
     }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
-#ifdef DISABLE_HYDRO    
+#ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
   }
@@ -261,7 +261,7 @@ int main(int argc, char* argv[]) {
   // open solver diagnostics output files for writing
   FILE *DFID_OUTER = NULL;
   FILE *DFID_INNER = NULL;
-  if (outproc && udata.showstats) {
+  if (udata.showstats && outproc) {
     cout << "Creating diagnostics output files\n";
     DFID_OUTER=fopen("diags_hydro.txt","w");
     DFID_INNER=fopen("diags_chem.txt","w");
@@ -362,7 +362,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set diagnostics file
-  if (outproc) {
+  if (udata.showstats && outproc) {
     retval = ARKStepSetDiagnostics(inner_arkode_mem, DFID_INNER);
     if (check_flag(&retval, "ARKStepSetDiagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -375,7 +375,7 @@ int main(int argc, char* argv[]) {
 
   // set adaptive timestepping parameters (if applicable)
   if (opts.fixedstep != 1) {
-    
+
     // set safety factor
     retval = ARKStepSetSafetyFactor(inner_arkode_mem, opts.safety);
     if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -383,11 +383,11 @@ int main(int argc, char* argv[]) {
     // set error bias
     retval = ARKStepSetErrorBias(inner_arkode_mem, opts.bias);
     if (check_flag(&retval, "ARKStepSetErrorBias (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set step growth factor
     retval = ARKStepSetMaxGrowth(inner_arkode_mem, opts.growth);
     if (check_flag(&retval, "ARKStepSetMaxGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set time step adaptivity method
     realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
     int idefault = 1;
@@ -395,39 +395,39 @@ int main(int argc, char* argv[]) {
     retval = ARKStepSetAdaptivityMethod(inner_arkode_mem, opts.adapt_method,
                                         idefault, opts.pq, adapt_params);
     if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set first step growth factor
     retval = ARKStepSetMaxFirstGrowth(inner_arkode_mem, opts.etamx1);
     if (check_flag(&retval, "ARKStepSetMaxFirstGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set error failure growth factor
     retval = ARKStepSetMaxEFailGrowth(inner_arkode_mem, opts.etamxf);
     if (check_flag(&retval, "ARKStepSetMaxEFailGrowth (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set minimum time step size
     retval = ARKStepSetMinStep(inner_arkode_mem, opts.hmin);
     if (check_flag(&retval, "ARKStepSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set maximum time step size
     retval = ARKStepSetMaxStep(inner_arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set maximum allowed error test failures
     retval = ARKStepSetMaxErrTestFails(inner_arkode_mem, opts.maxnef);
     if (check_flag(&retval, "ARKStepSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // set maximum allowed hnil warnings
     retval = ARKStepSetMaxHnilWarns(inner_arkode_mem, opts.mxhnil);
     if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // otherwise, set fixed timestep size
   } else {
-    
+
     retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
   }
-  
+
   // set maximum allowed steps
   retval = ARKStepSetMaxNumSteps(inner_arkode_mem, opts.mxsteps);
   if (check_flag(&retval, "ARKStepSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -448,7 +448,7 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetNonlinConvCoef(inner_arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  
+
   //--- create the slow integrator and set options ---//
 
   // initialize the integrator memory
@@ -460,7 +460,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MRIStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set diagnostics file
-  if (outproc) {
+  if (udata.showstats && outproc) {
     retval = MRIStepSetDiagnostics(outer_arkode_mem, DFID_OUTER);
     if (check_flag(&retval, "MRIStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -515,7 +515,7 @@ int main(int argc, char* argv[]) {
   // stop IO profiler
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // stop problem setup profiler
   retval = udata.profile[PR_SETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -636,15 +636,15 @@ int main(int argc, char* argv[]) {
     }
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-    
-    
+
+
     // disable adaptivity and set fixed fast step size
     retval = ARKStepSetFixedStep(inner_arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
 
   }
 
-  
+
   //--- Main time-stepping loop: calls MRIStepEvolve to perform the integration, ---//
   //--- then prints results.  Stops when the final time has been reached.        ---//
   retval = udata.profile[PR_SIMUL].start();
@@ -709,7 +709,7 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  if (outproc) {
+  if (udata.showstats && outproc) {
     fclose(DFID_OUTER);
     fclose(DFID_INNER);
   }
@@ -927,7 +927,7 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = fEuler(t, w, wdot, user_data);
   if (check_flag(&retval, "fEuler (fslow)", 1)) return(retval);
 #endif
-  
+
   // overwrite chemistry energy "fslow" with total energy "fslow" (with
   // appropriate unit scaling) and zero out total energy fslow
   //
@@ -1081,7 +1081,7 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   BDMPIMV_LASTFLAG(S) = SUNLinSolSolve(BDMPIMV_BLS(S), A,
                                        xsub, bsub, tol);
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);  
+  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
   return(BDMPIMV_LASTFLAG(S));
 }
 

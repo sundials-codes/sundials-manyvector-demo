@@ -7,9 +7,9 @@
  ----------------------------------------------------------------
  Implementation file to test Dengo interface -- note that although
  this uses the EulerData structure, we do not actually create the
- fluid fields, and all spatial domain and MPI information is 
- ignored.  We only use this infrastructure to enable simplified 
- input of the time interval and ARKode solver options, and to 
+ fluid fields, and all spatial domain and MPI information is
+ ignored.  We only use this infrastructure to enable simplified
+ input of the time interval and ARKode solver options, and to
  explore 'equilbrium' configurations for a clumpy density field
  with non-uniform temperature field.
  ---------------------------------------------------------------*/
@@ -142,7 +142,9 @@ int main(int argc, char* argv[]) {
 
   // open solver diagnostics output file for writing
   FILE *DFID = NULL;
-  if (outproc)  DFID=fopen("diags_primordial_ode.txt","w");
+  if (udata.showstats && outproc) {
+    DFID=fopen("diags_primordial_ode.txt","w");
+  }
 
   // initialize primordial rate tables, etc
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
@@ -272,7 +274,7 @@ int main(int argc, char* argv[]) {
         zdist = abs(zloc-cz);
         rsq = xdist*xdist + ydist*ydist + zdist*zdist;
         density += cs*exp(-2.0*rsq/cr/cr);
-        
+
         // set location-dependent temperature
         T = T0;
         cs = T0*(BLAST_TEMPERATURE-ONE);
@@ -440,7 +442,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    set diagnostics file
-  if (outproc) {
+  if (udata.showstats && outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
     if (check_flag(&retval, "ARKStepSetDiagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -587,7 +589,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   }
-  if (outproc) fclose(DFID);
+  if (udata.showstats && outproc)  fclose(DFID);
 
 
   // reconstruct overall solution values, converting back to mass densities
@@ -747,9 +749,9 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
           cmax[l]  = max(cmax[l], network_data->scale[0][idx]*wdata[idx]);
           cmin[l]  = min(cmin[l], network_data->scale[0][idx]*wdata[idx]);
         }
-  for (long int l=0; l<udata.nchem; l++) 
+  for (long int l=0; l<udata.nchem; l++)
     cmean[l] /= (udata.nxl * udata.nyl * udata.nzl);
-  
+
   // print solutions at first location
   printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
   printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",

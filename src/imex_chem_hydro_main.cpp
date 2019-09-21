@@ -19,22 +19,22 @@
  for a temporally adaptive additive Runge--Kutta solve.  Aside
  from this selection of Butcher tables, nearly all adaptivity
  and implicit solver options are controllable via user inputs.
- If the input file specifies fixedstep=1, then temporal adaptivity 
- is disabled, and the solver will use the fixed step size 
- h=hmax.  In this case, if the input file specifies htrans>0, 
- then temporal adaptivity will be used for the start of the 
- simulation [t0,t0+htrans], followed by fixed time-stepping using 
- h=hmax.  We require that htrans is smaller than the first 
- output time interval, i.e., t0+htrans < t0+dTout.  Implicit 
- subsystems are solved using the default Newton SUNNonlinearSolver 
- module, but with a custom SUNLinearSolver module.  This is a 
- direct solver for block-diagonal matrices (one block per MPI 
- rank) that unpacks the MPIManyVector to access a specified 
- subvector component (per rank), and then uses a standard 
- SUNLinearSolver module for each rank-local linear system.  The 
- specific SUNLinearSolver module to use on each block, and the 
- MPIManyVector subvector index are provided in the module 
- 'constructor'.  Here, we use the KLU SUNLinearSolver module for 
+ If the input file specifies fixedstep=1, then temporal adaptivity
+ is disabled, and the solver will use the fixed step size
+ h=hmax.  In this case, if the input file specifies htrans>0,
+ then temporal adaptivity will be used for the start of the
+ simulation [t0,t0+htrans], followed by fixed time-stepping using
+ h=hmax.  We require that htrans is smaller than the first
+ output time interval, i.e., t0+htrans < t0+dTout.  Implicit
+ subsystems are solved using the default Newton SUNNonlinearSolver
+ module, but with a custom SUNLinearSolver module.  This is a
+ direct solver for block-diagonal matrices (one block per MPI
+ rank) that unpacks the MPIManyVector to access a specified
+ subvector component (per rank), and then uses a standard
+ SUNLinearSolver module for each rank-local linear system.  The
+ specific SUNLinearSolver module to use on each block, and the
+ MPIManyVector subvector index are provided in the module
+ 'constructor'.  Here, we use the KLU SUNLinearSolver module for
  the block on each rank.
  ---------------------------------------------------------------*/
 
@@ -52,8 +52,8 @@
 //#define DISABLE_HYDRO
 
 // macros for handling formatting of diagnostic output
-#define PRINT_CGS 1 
-#define PRINT_SCIENTIFIC 1 
+#define PRINT_CGS 1
+#define PRINT_SCIENTIFIC 1
 
 
 // Initialization and preparation routines for Dengo data structure
@@ -163,7 +163,7 @@ int main(int argc, char* argv[]) {
       cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
     MPI_Abort(udata.comm, 1);
   }
-  
+
   // set up udata structure
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -213,7 +213,7 @@ int main(int argc, char* argv[]) {
     }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
-#ifdef DISABLE_HYDRO    
+#ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
   }
@@ -229,7 +229,9 @@ int main(int argc, char* argv[]) {
 
   // open solver diagnostics output files for writing
   FILE *DFID = NULL;
-  if (outproc)  DFID=fopen("diags_chem_hydro.txt","w");
+  if (udata.showstats && outproc) {
+    DFID=fopen("diags_chem_hydro.txt","w");
+  }
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -332,7 +334,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSetPostprocessStepFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set diagnostics file
-  if (outproc) {
+  if (udata.showstats && outproc) {
     retval = ARKStepSetDiagnostics(arkode_mem, DFID);
     if (check_flag(&retval, "ARKStepSetDiagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   }
@@ -347,7 +349,7 @@ int main(int argc, char* argv[]) {
 
   // set adaptive timestepping parameters (if applicable)
   if (opts.fixedstep != 1) {
-    
+
     // set safety factor
     retval = ARKStepSetSafetyFactor(arkode_mem, opts.safety);
     if (check_flag(&retval, "ARKStepSetSafetyFactor (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -395,7 +397,7 @@ int main(int argc, char* argv[]) {
     // set maximum allowed hnil warnings
     retval = ARKStepSetMaxHnilWarns(arkode_mem, opts.mxhnil);
     if (check_flag(&retval, "ARKStepSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
     // supply cfl-stable step routine (if requested)
     if (udata.cfl > ZERO) {
       retval = ARKStepSetStabilityFn(arkode_mem, stability, (void *) (&udata));
@@ -404,12 +406,12 @@ int main(int argc, char* argv[]) {
 
   // otherwise, set fixed timestep size
   } else {
-    
+
     retval = ARKStepSetFixedStep(arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
-    
+
   }
-  
+
   // set maximum allowed steps
   retval = ARKStepSetMaxNumSteps(arkode_mem, opts.mxsteps);
   if (check_flag(&retval, "ARKStepSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -440,13 +442,13 @@ int main(int argc, char* argv[]) {
   else   // otherwise tell integrator to use dense output
     idense = 1;
 
-  
+
   //--- Initial batch of outputs ---//
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   if (udata.myid == 0)  cout << "\nWriting initial batch of outputs\n";
-  
+
   // Optionally output total mass/energy
   if (udata.showstats) {
     retval = check_conservation(udata.t0, w, udata);
@@ -478,11 +480,11 @@ int main(int argc, char* argv[]) {
   // stop IO profiler
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // stop problem setup profiler
   retval = udata.profile[PR_SETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
- 
+
 
   //--- Initial transient evolution: call ARKStepEvolve to perform integration   ---//
   //--- over [t0,t0+htrans], then disable adaptivity and set fixed-step size     ---//
@@ -515,7 +517,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  
+
   //--- Main time-stepping loop: calls ARKStepEvolve to perform the integration, ---//
   //--- then prints results.  Stops when the final time has been reached.        ---//
   retval = udata.profile[PR_SIMUL].start();
@@ -538,7 +540,7 @@ int main(int argc, char* argv[]) {
       cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
       return(1);
     }
-    
+
     // periodic output of solution/statistics
     retval = udata.profile[PR_IO].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -579,7 +581,7 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  if (outproc)  fclose(DFID);
+  if (udata.showstats && outproc)  fclose(DFID);
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();
@@ -789,7 +791,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = fEuler(t, w, wdot, user_data);
   if (check_flag(&retval, "fEuler (fexpl)", 1)) return(retval);
 #endif
-  
+
   // overwrite chemistry energy "fexpl" with total energy "fexpl" (with
   // appropriate unit scaling) and zero out total energy fexpl
   //
@@ -958,7 +960,7 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   BDMPIMV_LASTFLAG(S) = SUNLinSolSolve(BDMPIMV_BLS(S), A,
                                        xsub, bsub, tol);
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);  
+  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
   return(BDMPIMV_LASTFLAG(S));
 }
 
