@@ -82,3 +82,14 @@ module unload xalt
 
 # list currently loaded modules
 module list
+
+# set environment variables
+export BLAS_LIB="${OLCF_ESSL_ROOT}/lib64/libessl.so"
+export LAPACK_LIB="${OLCF_ESSL_ROOT}/lib64/libessl.so"
+
+export METIS_INC_DIR="${OLCF_METIS_ROOT}/include"
+export METIS_LIB="${OLCF_METIS_ROOT}/lib/libmetis.so"
+
+KLU_ROOT="${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0"
+export KLU_INC_DIR="${KLU_ROOT}/include"
+export KLU_LIB_DIR="${KLU_ROOT}/lib"

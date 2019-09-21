@@ -12,7 +12,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # SUNDIALS Copyright End
 # --------------------------------------------------------------------------
-# Script to build SUNDIALS on Summit
+# Script to build SUNDIALS
 # --------------------------------------------------------------------------
 
 # check for correct number of inputs
@@ -34,7 +34,6 @@ esac
 # set paths
 srcdir=${HOME}/sundials
 installdir=${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-${bldtype}
-kludir=${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
 
 # -------------------------------------------------------------------------------
 # Setup Build
@@ -81,11 +80,11 @@ cmake \
     -D MPI_CXX_COMPILER=${MPICXX} \
     -D MPI_Fortran_COMPILER=${MPIFC} \
     \
-    -D CUDA_ENABLE=ON \
+    -D CUDA_ENABLE=OFF \
     \
     -D KLU_ENABLE=ON \
-    -D KLU_INCLUDE_DIR="${kludir}/include" \
-    -D KLU_LIBRARY_DIR="${kludir}/lib" \
+    -D KLU_INCLUDE_DIR="${KLU_INC_DIR}" \
+    -D KLU_LIBRARY_DIR="${KLU_LIB_DIR}" \
     \
     -D EXAMPLES_ENABLE_C=ON \
     -D EXAMPLES_ENABLE_CXX=ON \

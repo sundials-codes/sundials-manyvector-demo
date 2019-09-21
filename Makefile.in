@@ -104,6 +104,25 @@ else ifeq ($(HOST),summit)
   HDFINCDIRS = -I${OLCF_HDF5_ROOT}/include
   HDFLIBDIR = ${OLCF_HDF5_ROOT}/lib
 
+#    quartz -- see scripts/setup_quartz.sh for environment setup
+else ifeq ($(HOST),quartz)
+  CXX = mpic++ -std=c++11
+
+  ifeq ($(LIBTYPE),OPT)
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-opt
+  else
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-dbg
+  endif
+  SUNINCDIRS = -I${SUNDIR}/include
+  SUNLIBDIR = ${SUNDIR}/lib
+
+  KLUDIR = ${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
+  KLUINCDIRS = -I$(KLUDIR)/include/
+  KLULIBDIR = $(KLUDIR)/lib
+
+  HDFINCDIRS = -I${HDF5}/include
+  HDFLIBDIR = ${HDF5}/lib
+
 #    default -- assume that spack-related build instructions
 #    from README.md have been followed
 else

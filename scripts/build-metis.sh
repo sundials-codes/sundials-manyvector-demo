@@ -16,8 +16,8 @@
 # --------------------------------------------------------------------------
 
 # set paths
-srcdir=${HOME}/SuiteSparse
-installdir=${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
+srcdir=${HOME}/metis-5.1.0
+installdir=${PROJHOME}/${COMPILERNAME}/metis-5.1.0
 
 # ------------------------------------------------------------------------------
 # Configure, build, and install
@@ -29,45 +29,24 @@ set -e
 # move to source
 cd $srcdir
 
-# use external version of metis
-\rm -rf metis-*
+# set realtype and indextypes to 64-bit
+sed -i s/"#define REALTYPEWIDTH.*"/"#define REALTYPEWIDTH 64"/ include/metis.h
+sed -i s/"#define IDXTYPEWIDTH.*"/"#define IDXTYPEWIDTH 64"/ include/metis.h
 
-# comment out all lines containing SPQR (i.e., don't build SPQR)
-sed -i "/SPQR/s/^/#/g" Makefile
-
-# displays parameter settings; does not compile
-make config \
-    CC=${CC} \
-    CXX=${CXX} \
-    F77=${FC} \
-    BLAS=${BLAS_LIB} \
-    LAPACK=${LAPACK_LIB} \
-    MY_METIS_INC=${METIS_INC_DIR} \
-    MY_METIS_LIB=${METIS_LIB} \
-    INSTALL="$installdir" \
-    JOBS=12 \
-    2>&1 | tee configure.log
-
-# compiles SuiteSparse
-make library \
-    CC=${CC} \
-    CXX=${CXX} \
-    F77=${FC} \
-    BLAS=${BLAS_LIB} \
-    LAPACK=${LAPACK_LIB} \
-    MY_METIS_INC=${METIS_INC_DIR} \
-    MY_METIS_LIB=${METIS_LIB} \
-    INSTALL="$installdir" \
-    JOBS=12 \
-    2>&1 | tee make.log
-
-# create install directory
+# set source and install directory paths
 \rm -rf $installdir
 mkdir -p $installdir
 
-# install headers and libraries
-cp -r include $installdir
-cp -r lib $installdir
+# configure
+make config \
+    CC=${CC} \
+    CXX=${CXX} \
+    prefix=$installdir \
+    shared=1 \
+    2>&1 | tee configure.log
+
+# build and install
+make install 2>&1 | tee install.log
 
 # move log files
-cp *.log $installdir/.
+mv *.log $installdir/.
