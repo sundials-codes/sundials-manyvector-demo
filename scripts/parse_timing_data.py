@@ -43,15 +43,26 @@ def main():
     parser.add_argument('outputfile', type=str,
                         help='output file name')
 
+    parser.add_argument('--debug', action='store_true',
+                        help='enabout debugging output')
+
     # parse command line args
     args = parser.parse_args()
 
     # create  dictionary for timing data
-    timings = parseoutput(args.outputfile)
+    rundata = parseoutput(args.outputfile)
 
     # print dictionary keys and values
-    # for key,val in timings.items():
-    #     print key, "=>", val
+    if (args.debug):
+        for key,val in rundata.items():
+            if type(val) is dict:
+                for key2,val2 in val.items():
+                    print key2, "=>", val2
+            else:
+                print key, "=>", val
+
+    # get timing data
+    timings = rundata["timing"]
 
     keys = ["setup", "trans", "sim"]
     plotstackedbars(timings, keys, title="Total time breakdown", ylabel="seconds")
@@ -64,12 +75,16 @@ def main():
 
 def parseoutput(filename):
 
-    # creat empty dictionary for output data
-    data = {}
+
+    # create empty dictionary for test
+    test = {}
+
+    # create empty dictionary for timings
+    timing = {}
 
     # flags for parsing output file
-    readdata  = False
-    firstread = True
+    readtiming = False
+    firstread  = True
 
     # parse output file
     with open(filename, 'r') as f:
@@ -77,113 +92,191 @@ def parseoutput(filename):
         # read output file line by line
         for line in f:
 
-            # skip lines without data
-            if "profiling results:" in line:
-                readdata = True
-                continue
-            elif not readdata:
-                continue
-
             # split line into list
             text = shlex.split(line)
 
-            # get data
+            if "nprocs:" in line:
+                ntotal = int(text[1])
+                nx     = int(text[2][1:])
+                ny     = int(text[4])
+                nz     = int(text[6][:-1])
+                test["nprocs"] = [ntotal, nx, ny, nz]
+                continue
+
+            if "spatial domain:" in line:
+                xlow  = float(text[2][1:-1])
+                xhigh = float(text[3][:-1])
+                ylow  = float(text[5][1:-1])
+                yhigh = float(text[6][:-1])
+                zlow  = float(text[8][1:-1])
+                zhigh = float(text[9][:-1])
+                test["domain"] = [ [xlow, xhigh], [ylow, yhigh], [zlow, zhigh] ]
+
+            if "time domain:" in line:
+                t0 = float(text[3][1:-1])
+                tf = float(text[4][:-2])
+                test["sim time"] = [t0, tf]
+                t0 = float(text[6][1:-1])
+                tf = float(text[7][:-1])
+                test["sim time cgs"] = [t0, tf]
+
+            if "slow timestep size:" in line:
+                dt = float(text[-1])
+                test["slow dt"] = dt
+
+            if "fixed timestep size:" in line:
+                dt = float(text[-1])
+                test["fast dt"] = dt
+
+            if "initial transient evolution:" in line:
+                tt = float(text[-1])
+                test["trans time"] = tt
+
+            if "solution output" in line:
+                if text[-1] == "disabled":
+                    test["output"] = False
+                else:
+                    test["output"] = True
+
+            if "bdry cond" in line:
+                xlow  = int(text[6][1:-1])
+                xhigh = int(text[7][:-1])
+                ylow  = int(text[9][1:-1])
+                yhigh = int(text[10][:-1])
+                zlow  = int(text[12][1:-1])
+                zhigh = int(text[13][:-1])
+                test["bdry"] = [ [xlow, xhigh], [ylow, yhigh], [zlow, zhigh] ]
+
+            if "gamma:" in line:
+                test["gamma"] = float(text[-1])
+
+            if "num chemical species:" in line:
+                test["nspecies"] = int(text[-1])
+
+            if "spatial grid:" in line:
+                nx = int(text[2])
+                ny = int(text[4])
+                nz = int(text[6])
+                test["mesh"] = [ nx, ny, nz ]
+
+            if "fused N_Vector" in line:
+                if text[-1] == "enabled":
+                    test["fused ops"] = True
+                else:
+                    test["fused ops"] = False
+
+            if "local N_Vector" in line:
+                if text[-1] == "enabled":
+                    test["local ops"] = True
+                else:
+                    test["local ops"] = False
+
+            # skip lines without timings
+            if "profiling results:" in line:
+                readtiming = True
+                continue
+            elif not readtiming:
+                continue
+
+            # get timings
             avgtime = float(text[-10])
             mintime = float(text[-4])
             maxtime = float(text[-2])
 
-            # add data to dictionary
+            # add timing to dictionary
             if "Total setup" in line:
                 if firstread:
-                    data["setup"] = [avgtime, mintime, maxtime]
+                    timing["setup"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total I/O" in line:
                 if firstread:
-                    data["trans I/O"] = [avgtime, mintime, maxtime]
+                    timing["trans I/O"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim I/O"] = [avgtime, mintime, maxtime]
+                    timing["sim I/O"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total MPI" in line:
                 if firstread:
-                    data["trans MPI"] = [avgtime, mintime, maxtime]
+                    timing["trans MPI"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim MPI"] = [avgtime, mintime, maxtime]
+                    timing["sim MPI"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total pack" in line:
                 if firstread:
-                    data["trans pack"] = [avgtime, mintime, maxtime]
+                    timing["trans pack"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim pack"] = [avgtime, mintime, maxtime]
+                    timing["sim pack"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total flux" in line:
                 if firstread:
-                    data["trans flux"] = [avgtime, mintime, maxtime]
+                    timing["trans flux"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim flux"] = [avgtime, mintime, maxtime]
+                    timing["sim flux"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total Euler" in line:
                 if firstread:
-                    data["trans euler"] = [avgtime, mintime, maxtime]
+                    timing["trans euler"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim euler"] = [avgtime, mintime, maxtime]
+                    timing["sim euler"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total slow RHS" in line:
                 if firstread:
-                    data["trans slow RHS"] = [avgtime, mintime, maxtime]
+                    timing["trans slow RHS"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim slow RHS"] = [avgtime, mintime, maxtime]
+                    timing["sim slow RHS"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total fast RHS" in line:
                 if firstread:
-                    data["trans fast RHS"] = [avgtime, mintime, maxtime]
+                    timing["trans fast RHS"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim fast RHS"] = [avgtime, mintime, maxtime]
+                    timing["sim fast RHS"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total fast Jac" in line:
                 if firstread:
-                    data["trans fast Jac"] = [avgtime, mintime, maxtime]
+                    timing["trans fast Jac"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim fast Jac"] = [avgtime, mintime, maxtime]
+                    timing["sim fast Jac"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total lsetup" in line:
                 if firstread:
-                    data["trans lsetup"] = [avgtime, mintime, maxtime]
+                    timing["trans lsetup"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim lsetup"] = [avgtime, mintime, maxtime]
+                    timing["sim lsetup"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total lsolve" in line:
                 if firstread:
-                    data["trans lsolve"] = [avgtime, mintime, maxtime]
+                    timing["trans lsolve"] = [avgtime, mintime, maxtime]
                 else:
-                    data["sim lsolve"] = [avgtime, mintime, maxtime]
+                    timing["sim lsolve"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total trans" in line:
-                data["trans"] = [avgtime, mintime, maxtime]
-                readdata = False
-                firstread = False
+                timing["trans"] = [avgtime, mintime, maxtime]
+                readtiming = False
+                firstread  = False
                 continue
 
             if "Total sim" in line:
-                data["sim"] = [avgtime, mintime, maxtime]
+                timing["sim"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total Total" in line:
-                data["total"] = [avgtime, mintime, maxtime]
-                readdata = False
+                timing["total"] = [avgtime, mintime, maxtime]
+                readtiming = False
                 break
 
-    return data
+    test["timing"] = timing
+
+    return test
 
 # ===============================================================================
 
