@@ -40,41 +40,60 @@ def main():
     parser = argparse.ArgumentParser(
         description='Plot error over time between two runs')
 
-    parser.add_argument('outputfile', type=str,
-                        help='output file name')
+    parser.add_argument('outputfiles', type=str, nargs='+',
+                        help='output files')
+
+    parser.add_argument('--plotbreakdown', action='store_true',
+                        help='plot breakdown of timings')
+
+    parser.add_argument('--savefigs', action='store_true',
+                        help='save figures to file')
 
     parser.add_argument('--debug', action='store_true',
-                        help='enabout debugging output')
+                        help='enable debugging output')
 
     # parse command line args
     args = parser.parse_args()
 
-    # create  dictionary for timing data
-    rundata = parseoutput(args.outputfile)
+    # create array of run data
+    rundata = []
+
+    for f in args.outputfiles:
+        rundata.append(parseoutput(f))
+
+    # sort run data by number of processes
+    rundata.sort(key=sortnprocs)
 
     # print dictionary keys and values
     if (args.debug):
-        for key,val in rundata.items():
-            if type(val) is dict:
-                for key2,val2 in val.items():
-                    print key2, "=>", val2
-            else:
-                print key, "=>", val
+        for d in rundata:
+            print "Output from:",d["file"]
+            for key,val in d.items():
+                if type(val) is dict:
+                    for key2,val2 in val.items():
+                        print key2, "=>", val2
+                else:
+                    print key, "=>", val
+            print "----------"
 
     # get timing data
-    timings = rundata["timing"]
+    if (args.plotbreakdown):
+        for d in rundata:
+            timings = d["timing"]
 
-    keys = ["setup", "trans", "sim"]
-    plotstackedbars(timings, keys, title="Total time breakdown", ylabel="seconds")
+            keys = ["setup", "trans", "sim"]
+            plotstackedbars(timings, keys, title="Total time breakdown", ylabel="seconds")
 
-    keys = ["sim I/O", "sim MPI", "sim slow RHS", "sim fast RHS",
-            "sim fast Jac", "sim lsetup", "sim lsolve"]
-    plotstackedbars(timings, keys, ylabel="seconds")
+            keys = ["sim I/O", "sim MPI", "sim slow RHS", "sim fast RHS",
+                    "sim fast Jac", "sim lsetup", "sim lsolve"]
+            plotstackedbars(timings, keys, ylabel="seconds")
+
+    # plot scaling data
+    plotscaling(rundata, save=args.savefigs)
 
 # ===============================================================================
 
 def parseoutput(filename):
-
 
     # create empty dictionary for test
     test = {}
@@ -85,6 +104,9 @@ def parseoutput(filename):
     # flags for parsing output file
     readtiming = False
     firstread  = True
+
+    # add output file name to dictionary
+    test["file"] = filename
 
     # parse output file
     with open(filename, 'r') as f:
@@ -280,7 +302,7 @@ def parseoutput(filename):
 
 # ===============================================================================
 
-def plotstackedbars(data, keys, title=None, ylabel=None):
+def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 
     # bar colors
     color = ['#e41a1c','#377eb8','#4daf4a','#984ea3',
@@ -311,6 +333,51 @@ def plotstackedbars(data, keys, title=None, ylabel=None):
         labelbottom=False) # labels along the bottom edge are off
     plt.legend(keys)
     plt.show()
+
+# ===============================================================================
+
+def plotscaling(rundata, save = None):
+
+    f_nprocs    = []
+    f_totaltime = []
+
+    u_nprocs    = []
+    u_totaltime = []
+
+    for d in rundata:
+        if d["fused ops"]:
+            f_nprocs.append(d["nprocs"][0])
+            f_totaltime.append(d["timing"]["total"][0])
+        else:
+            u_nprocs.append(d["nprocs"][0])
+            u_totaltime.append(d["timing"]["total"][0])
+
+    # print f_nprocs
+    # print f_totaltime
+    # print u_nprocs
+    # print u_totaltime
+
+    # normalize run times
+    mintime = min(min(f_totaltime), min(u_totaltime))
+    f_totaltime = [ x / mintime for x in f_totaltime]
+    u_totaltime = [ x / mintime for x in u_totaltime]
+
+    plt.plot(f_nprocs, f_totaltime, label="fused")
+    plt.plot(u_nprocs, u_totaltime, label="unfused")
+
+    plt.xlabel("number of MPI processes")
+    plt.ylabel("normalized run time")
+    plt.legend()
+
+    if (save):
+        plt.savefig("scaling.pdf")
+    else:
+        plt.show()
+
+# ===============================================================================
+
+def sortnprocs(elem):
+    return elem["nprocs"][0]
 
 # ===============================================================================
 
