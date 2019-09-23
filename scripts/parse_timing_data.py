@@ -108,22 +108,20 @@ def main():
                 fname="scaling_unfused_with_setup.pdf")
 
     # plot scaling data with setup time removed
-    keys = ["total", "sim", "trans"]
+    keys = ["total w/o setup", "sim", "trans"]
     plotscaling(rundata,                        # list with test dictionaries
                 keys,                           # keys to plot
                 filterkey=["fused ops", True],  # fiter key and value to include
                 normalize=True,                 # normalie runtimes
-                subtractkey=["setup", "total"], # subtract setup time from total
                 title="Fused Scaling",          # plot title
                 save=args.savefigs,             # save figure to file or show
                 fname="scaling_fused_no_setup.pdf")
 
-    keys = ["total", "sim", "trans"]
+    keys = ["total w/o setup", "sim", "trans"]
     plotscaling(rundata,                        # list with test dictionaries
                 keys,                           # keys to plot
                 filterkey=["fused ops", False], # fiter key and value to include
                 normalize=True,                 # normalie runtimes
-                subtractkey=["setup", "total"], # subtract setup time from total
                 title="Unfused Scaling",        # plot title
                 save=args.savefigs,             # save figure to file or show
                 fname="scaling_unfused_no_setup.pdf")
@@ -138,12 +136,11 @@ def main():
                        save=args.savefigs,               # save figure to file or show
                        fname="scaling_compare_fused_and_unfused_with_setup.pdf")
 
-    keys = ["total", "sim", "trans"]
+    keys = ["total w/o setup", "sim", "trans"]
     plotcomparescaling(rundata,                          # list with test dictionaries
                        keys,                             # keys to plot
                        filterkey=["fused ops", True],    # fiter key and value to include
                        normalize=True,                   # normalie runtimes
-                       subtractkey=["setup", "total"],   # subtract setup time from total
                        title="Fused vs Unfused Scaling", # plot title
                        save=args.savefigs,               # save figure to file or show
                        fname="scaling_compare_fused_and_unfused_no_setup.pdf")
@@ -353,6 +350,13 @@ def parseoutput(filename):
                 readtiming = False
                 break
 
+    # compute total time without setup
+    time = []
+    for i in range(0,3):
+        time.append(timing["total"][i] - timing["setup"][i])
+    timing["total w/o setup"] = time
+
+    # attaching timing dictonary
     test["timing"] = timing
 
     return test
@@ -394,8 +398,7 @@ def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 # ===============================================================================
 
 def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
-                subtractkey = [None, None], title = None, save = False,
-                fname = None):
+                title = None, save = False, fname = None):
     """
     Plot timing data as function of the number of processes
 
@@ -404,8 +407,6 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
     keys:        list of keys in timing dictionary of each test to plot
     filterkey:   filter test dictionaries, [ key to check, value to pass check ]
     normalize:   if True, normalize times by min value of first key in keys input
-    subtractkey: subtract times from some or all keys in keys input
-                 [ key to subtract, keys to subtract from (optional, default is all keys) ]
     title:       string to use for plot title
     save:        if True, save plot to file else show plot on screen
     """
@@ -422,25 +423,6 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
 
     if len(filterkey) < 2:
         raise Exception('Too few values in filterkey, expected [ key, value ].')
-
-    if type(subtractkey) is not list:
-        raise Exception('subtractkey must be a list, [ key ] or [ key1, key2, ...].')
-
-    # get times to remove
-    subtractfrom = None
-    if subtractkey[0]:
-        stime = []
-        for d in rundata:
-            # check if tests are included/excluded based on a key
-            if filterkey[0]:
-                if d[filterkey[0]] == filterkey[1]:
-                    stime.append(d["timing"][subtractkey[0]][0])
-            else:
-                stime.append(d["timing"][subtractkey[0]][0])
-        stime = np.array(stime)
-        # check if only certain keys should be subtracted from
-        if len(subtractkey) > 1:
-            subtractfrom = subtractkey[1:]
 
     # normalize based on the first key
     firstkey = True
@@ -467,14 +449,6 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
         # convert lits to numpy array
         nprocs = np.array(nprocs)
         time   = np.array(time)
-
-        # subtract time ### only subtract from some keys
-        if subtractkey[0]:
-            if subtractfrom:
-                if k in subtractfrom:
-                    time = time - stime
-            else:
-                time = time - stime
 
         # normalize run times
         if normalize:
@@ -510,8 +484,7 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
 # ===============================================================================
 
 def plotcomparescaling(rundata, keys, filterkey, normalize = False,
-                       subtractkey = [None, None], title = None, save = False,
-                       fname = None):
+                       title = None, save = False, fname = None):
     """
     Compare timing data as function of the number of processes for two setups
 
@@ -520,8 +493,6 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
     keys:        list of keys in timing dictionary of each test to plot
     filterkey:   filter defining groups to compare, [ key to check, value for group 1 ]
     normalize:   if True, normalize times by min value of first key in keys input
-    subtractkey: subtract times from some or all keys in keys input
-                 [ key to subtract, keys to subtract from (optional, default is all keys) ]
     title:       string to use for plot title
     save:        if True, save plot to file else show plot on screen
     """
@@ -539,28 +510,11 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
     if len(filterkey) < 2:
         raise Exception('Too few values in filterkey, expected [ key, value ].')
 
-    if type(subtractkey) is not list:
-        raise Exception('subtractkey must be a list, [ key ] or [ key1, key2, ...].')
-
-    # line colors
     color = ['#e41a1c','#377eb8','#4daf4a','#984ea3',
              '#ff7f00','#a65628','#f781bf','#999999','#000000']
-
-    # get times to remove
-    subtractfrom = None
-    if subtractkey[0]:
-        stime1 = []
-        stime2 = []
-        for d in rundata:
-            if d[filterkey[0]] == filterkey[1]:
-                stime1.append(d["timing"][subtractkey[0]][0])
-            else:
-                stime2.append(d["timing"][subtractkey[0]][0])
-        stime1 = np.array(stime1)
-        stime2 = np.array(stime2)
-        # check if only certain keys should be subtracted from
-        if len(subtractkey) > 1:
-            subtractfrom = subtractkey[1:]
+    # color = ['#a6cee3','#1f78b4','#b2df8a','#33a02c',
+    #          '#fb9a99','#e31a1c','#fdbf6f','#ff7f00','#cab2d6',
+    #          '#6a3d9a','#ffff99','#b15928','#000000']
 
     # normalize based on the first key
     firstkey = True
@@ -595,16 +549,6 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
 
         nprocs2 = np.array(nprocs2)
         time2   = np.array(time2)
-
-        # subtract time ### only subtract from some keys
-        if subtractkey[0]:
-            if subtractfrom:
-                if k in subtractfrom:
-                    time1 = time1 - stime1
-                    time2 = time2 - stime2
-            else:
-                time1 = time1 - stime1
-                time2 = time2 - stime2
 
         # normalize run times
         if normalize:
