@@ -356,6 +356,28 @@ def parseoutput(filename):
         time.append(timing["total"][i] - timing["setup"][i])
     timing["total w/o setup"] = time
 
+    # compute SUNDIALS trans time
+    time = []
+    for i in range(0,3):
+        time.append(timing["trans"][i] -
+                    (timing["trans slow RHS"][i] +
+                     timing["trans fast RHS"][i] +
+                     timing["trans fast Jac"][i] +
+                     timing["trans lsetup"][i] +
+                     timing["trans lsolve"][i]))
+    timing["trans sundials"] = time
+
+    # compute SUNDIALS sim time
+    time = []
+    for i in range(0,3):
+        time.append(timing["sim"][i] -
+                    (timing["sim slow RHS"][i] +
+                     timing["sim fast RHS"][i] +
+                     timing["sim fast Jac"][i] +
+                     timing["sim lsetup"][i] +
+                     timing["sim lsolve"][i]))
+    timing["sim sundials"] = time
+
     # attaching timing dictonary
     test["timing"] = timing
 
