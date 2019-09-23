@@ -89,7 +89,24 @@ def main():
             plotstackedbars(timings, keys, ylabel="seconds")
 
     # plot scaling data
-    plotscaling(rundata, save=args.savefigs)
+    keys = ["total", "sim", "trans"]
+    plotscaling(rundata,                        # list with test dictionaries
+                keys,                           # keys to plot
+                filterkey=["fused ops", True],  # fiter key and value to include
+                normalize=True,                 # normalie runtimes
+                subtractkey=["setup", "total"], # subtract setup time from total
+                title="Fused Scaling",          # plot title
+                save=args.savefigs)             # save figure to file or show
+
+    # plot scaling data
+    keys = ["total", "sim", "trans"]
+    plotscaling(rundata,                        # list with test dictionaries
+                keys,                           # keys to plot
+                filterkey=["fused ops", False], # fiter key and value to include
+                normalize=True,                 # normalie runtimes
+                subtractkey=["setup", "total"], # subtract setup time from total
+                title="Unfused Scaling",        # plot title
+                save=args.savefigs)             # save figure to file or show
 
 # ===============================================================================
 
@@ -336,39 +353,110 @@ def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 
 # ===============================================================================
 
-def plotscaling(rundata, save = None):
+def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
+                subtractkey = [None, None], title = None, save = False):
+    """
+    Plot timing data as function of the number of processes
 
-    f_nprocs    = []
-    f_totaltime = []
+    Parameters:
+    rundata:     list of test dictionaries to plot data from
+    keys:        list of keys in timing dictionary of each test to plot
+    filterkey:   filter test dictionaries, [ timing key to check, value to pass check ]
+    normalize:   if True, normalize times by min value of first key in keys input
+    subtractkey: subtract times from some or all keys in keys input
+                 [ key to subtract, keys to subtract from (optional, default is all keys) ]
+    title:       string to use for plot title
+    save:        if True, save plot to file else show plot on screen
+    """
 
-    u_nprocs    = []
-    u_totaltime = []
+    # check inputs
+    if type(rundata) is not list:
+        raise Exception('rundata must be a list, [ test1, test2, ...].')
 
-    for d in rundata:
-        if d["fused ops"]:
-            f_nprocs.append(d["nprocs"][0])
-            f_totaltime.append(d["timing"]["total"][0])
-        else:
-            u_nprocs.append(d["nprocs"][0])
-            u_totaltime.append(d["timing"]["total"][0])
+    if type(keys) is not list:
+        raise Exception('keys must be a list, [ key1, key2, ...].')
 
-    # print f_nprocs
-    # print f_totaltime
-    # print u_nprocs
-    # print u_totaltime
+    if type(filterkey) is not list:
+        raise Exception('filterkey must be a list, [ key, value ].')
 
-    # normalize run times
-    mintime = min(min(f_totaltime), min(u_totaltime))
-    f_totaltime = [ x / mintime for x in f_totaltime]
-    u_totaltime = [ x / mintime for x in u_totaltime]
+    if len(filterkey) < 2:
+        raise Exception('Too few values in filterkey, expected [ key, value ].')
 
-    plt.plot(f_nprocs, f_totaltime, label="fused")
-    plt.plot(u_nprocs, u_totaltime, label="unfused")
+    if type(subtractkey) is not list:
+        raise Exception('subtractkey must be a list, [ key ] or [ key1, key2, ...].')
 
+    # get times to remove
+    subtractfrom = None
+    if subtractkey[0]:
+        stime = []
+        for d in rundata:
+            # check if tests are included/excluded based on a key
+            if filterkey[0]:
+                if d[filterkey[0]] == filterkey[1]:
+                    stime.append(d["timing"][subtractkey[0]][0])
+            else:
+                stime.append(d["timing"][subtractkey[0]][0])
+        stime = np.array(stime)
+        # check if only certain keys should be subtracted from
+        if len(subtractkey) > 1:
+            subtractfrom = subtractkey[1:]
+
+    # normalize based on the first key
+    firstkey = True
+
+    # get timing data for each key
+    for k in keys:
+
+        # clear list for timing data
+        nprocs = []
+        time   = []
+
+        # extract timing data for each test
+        for d in rundata:
+
+            # check if tests are included/excluded based on a key
+            if filterkey[0]:
+                if d[filterkey[0]] == filterkey[1]:
+                    nprocs.append(d["nprocs"][0])
+                    time.append(d["timing"][k][0])
+            else:
+                nprocs.append(d["nprocs"][0])
+                time.append(d["timing"][k][0])
+
+        # convert lits to numpy array
+        nprocs = np.array(nprocs)
+        time   = np.array(time)
+
+        # subtract time ### only subtract from some keys
+        if subtractkey[0]:
+            if subtractfrom:
+                if k in subtractfrom:
+                    time = time - stime
+            else:
+                time = time - stime
+
+        # normalize run times
+        if normalize:
+            if firstkey:
+                mintime  = np.amin(time)
+                firstkey = False
+            time = time / mintime
+
+        # plot times
+        plt.semilogx(nprocs, time, label=k)
+
+    # add title, labels, legend, etc.
+    if (title):
+        plt.title(title)
     plt.xlabel("number of MPI processes")
-    plt.ylabel("normalized run time")
+    if (normalize):
+        plt.ylabel("run time")
+    else:
+        plt.ylabel("normalized run time")
     plt.legend()
+    plt.grid(linestyle="--")
 
+    # save or show figure
     if (save):
         plt.savefig("scaling.pdf")
     else:
