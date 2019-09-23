@@ -88,7 +88,24 @@ def main():
                     "sim fast Jac", "sim lsetup", "sim lsolve"]
             plotstackedbars(timings, keys, ylabel="seconds")
 
-    # plot scaling data
+    # plot scaling data with setup time included
+    keys = ["total", "sim", "trans", "setup"]
+    plotscaling(rundata,                        # list with test dictionaries
+                keys,                           # keys to plot
+                filterkey=["fused ops", True],  # fiter key and value to include
+                normalize=True,                 # normalie runtimes
+                title="Fused Scaling",          # plot title
+                save=args.savefigs)             # save figure to file or show
+
+    keys = ["total", "sim", "trans", "setup"]
+    plotscaling(rundata,                        # list with test dictionaries
+                keys,                           # keys to plot
+                filterkey=["fused ops", False], # fiter key and value to include
+                normalize=True,                 # normalie runtimes
+                title="Unfused Scaling",        # plot title
+                save=args.savefigs)             # save figure to file or show
+
+    # plot scaling data with setup time removed
     keys = ["total", "sim", "trans"]
     plotscaling(rundata,                        # list with test dictionaries
                 keys,                           # keys to plot
@@ -98,7 +115,6 @@ def main():
                 title="Fused Scaling",          # plot title
                 save=args.savefigs)             # save figure to file or show
 
-    # plot scaling data
     keys = ["total", "sim", "trans"]
     plotscaling(rundata,                        # list with test dictionaries
                 keys,                           # keys to plot
@@ -107,6 +123,24 @@ def main():
                 subtractkey=["setup", "total"], # subtract setup time from total
                 title="Unfused Scaling",        # plot title
                 save=args.savefigs)             # save figure to file or show
+
+    # compare scaling data with and without setup time
+    keys = ["total", "sim", "trans", "setup" ]
+    plotcomparescaling(rundata,                          # list with test dictionaries
+                       keys,                             # keys to plot
+                       filterkey=["fused ops", True],    # fiter key and value to include
+                       normalize=True,                   # normalie runtimes
+                       title="Fused vs Unfused Scaling", # plot title
+                       save=args.savefigs)               # save figure to file or show
+
+    keys = ["total", "sim", "trans"]
+    plotcomparescaling(rundata,                          # list with test dictionaries
+                       keys,                             # keys to plot
+                       filterkey=["fused ops", True],    # fiter key and value to include
+                       normalize=True,                   # normalie runtimes
+                       subtractkey=["setup", "total"],   # subtract setup time from total
+                       title="Fused vs Unfused Scaling", # plot title
+                       save=args.savefigs)               # save figure to file or show
 
 # ===============================================================================
 
@@ -361,7 +395,7 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
     Parameters:
     rundata:     list of test dictionaries to plot data from
     keys:        list of keys in timing dictionary of each test to plot
-    filterkey:   filter test dictionaries, [ timing key to check, value to pass check ]
+    filterkey:   filter test dictionaries, [ key to check, value to pass check ]
     normalize:   if True, normalize times by min value of first key in keys input
     subtractkey: subtract times from some or all keys in keys input
                  [ key to subtract, keys to subtract from (optional, default is all keys) ]
@@ -450,9 +484,139 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
         plt.title(title)
     plt.xlabel("number of MPI processes")
     if (normalize):
-        plt.ylabel("run time")
+        plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
     else:
-        plt.ylabel("normalized run time")
+        plt.ylabel("run time (s)")
+    plt.legend()
+    plt.grid(linestyle="--")
+
+    # save or show figure
+    if (save):
+        plt.savefig("scaling.pdf")
+    else:
+        plt.show()
+
+# ===============================================================================
+
+def plotcomparescaling(rundata, keys, filterkey, normalize = False,
+                       subtractkey = [None, None], title = None, save = False):
+    """
+    Compare timing data as function of the number of processes for two setups
+
+    Parameters:
+    rundata:     list of test dictionaries to plot data from
+    keys:        list of keys in timing dictionary of each test to plot
+    filterkey:   filter defining groups to compare, [ key to check, value for group 1 ]
+    normalize:   if True, normalize times by min value of first key in keys input
+    subtractkey: subtract times from some or all keys in keys input
+                 [ key to subtract, keys to subtract from (optional, default is all keys) ]
+    title:       string to use for plot title
+    save:        if True, save plot to file else show plot on screen
+    """
+
+    # check inputs
+    if type(rundata) is not list:
+        raise Exception('rundata must be a list, [ test1, test2, ...].')
+
+    if type(keys) is not list:
+        raise Exception('keys must be a list, [ key1, key2, ...].')
+
+    if type(filterkey) is not list:
+        raise Exception('filterkey must be a list, [ key, value ].')
+
+    if len(filterkey) < 2:
+        raise Exception('Too few values in filterkey, expected [ key, value ].')
+
+    if type(subtractkey) is not list:
+        raise Exception('subtractkey must be a list, [ key ] or [ key1, key2, ...].')
+
+    # line colors
+    color = ['#e41a1c','#377eb8','#4daf4a','#984ea3',
+             '#ff7f00','#a65628','#f781bf','#999999','#000000']
+
+    # get times to remove
+    subtractfrom = None
+    if subtractkey[0]:
+        stime1 = []
+        stime2 = []
+        for d in rundata:
+            if d[filterkey[0]] == filterkey[1]:
+                stime1.append(d["timing"][subtractkey[0]][0])
+            else:
+                stime2.append(d["timing"][subtractkey[0]][0])
+        stime1 = np.array(stime1)
+        stime2 = np.array(stime2)
+        # check if only certain keys should be subtracted from
+        if len(subtractkey) > 1:
+            subtractfrom = subtractkey[1:]
+
+    # normalize based on the first key
+    firstkey = True
+
+    # loop counter
+    i = 0
+
+    # get timing data for each key
+    for k in keys:
+
+        # clear list for timing data
+        nprocs1 = []
+        time1   = []
+
+        nprocs2 = []
+        time2   = []
+
+        # extract timing data for each test
+        for d in rundata:
+
+            # check if tests are included/excluded based on a key
+            if d[filterkey[0]] == filterkey[1]:
+                nprocs1.append(d["nprocs"][0])
+                time1.append(d["timing"][k][0])
+            else:
+                nprocs2.append(d["nprocs"][0])
+                time2.append(d["timing"][k][0])
+
+        # convert lits to numpy array
+        nprocs1 = np.array(nprocs1)
+        time1   = np.array(time1)
+
+        nprocs2 = np.array(nprocs2)
+        time2   = np.array(time2)
+
+        # subtract time ### only subtract from some keys
+        if subtractkey[0]:
+            if subtractfrom:
+                if k in subtractfrom:
+                    time1 = time1 - stime1
+                    time2 = time2 - stime2
+            else:
+                time1 = time1 - stime1
+                time2 = time2 - stime2
+
+        # normalize run times
+        if normalize:
+            if firstkey:
+                mintime = min(np.amin(time1), np.amin(time2))
+                firstkey = False
+            time1 = time1 / mintime
+            time2 = time2 / mintime
+
+        # plot times
+        plt.semilogx(nprocs1, time1, label=k, color=color[i], linestyle='-')
+        plt.semilogx(nprocs2, time2, label=k, color=color[i], linestyle='--')
+
+        # update counter
+        i += 1
+
+    # add title, labels, legend, etc.
+    if (title):
+        plt.title(title)
+    plt.xlabel("number of MPI processes")
+    if (normalize):
+        plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
+    else:
+        plt.ylabel("run time (s)")
     plt.legend()
     plt.grid(linestyle="--")
 
