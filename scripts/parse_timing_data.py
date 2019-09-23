@@ -65,7 +65,7 @@ def main():
     rundata.sort(key=sortnprocs)
 
     # print dictionary keys and values
-    if (args.debug):
+    if args.debug:
         for d in rundata:
             print "Output from:",d["file"]
             for key in sorted(d.keys()):
@@ -77,7 +77,7 @@ def main():
             print "----------"
 
     # get timing data
-    if (args.plotbreakdown):
+    if args.plotbreakdown:
         for d in rundata:
             timings = d["timing"]
 
@@ -118,32 +118,43 @@ def main():
 
     # total times without setup stime
     keys = ["total w/o setup",
-            "total I/O", "total MPI", "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup", "total lsolve", "total sundials"]
+            "total fast RHS", "total sundials", "total lsolve"]
     plotscaling(rundata,                       # list with test dictionaries
                 keys,                          # keys to plot
                 filterkey=["fused ops", True], # fiter key and value to include
                 normalize=True,                # normalie runtimes
-                title="Fused Scaling",       # plot title
+                errorbars=True,                # add error bars to plot
+                title="Fused Scaling",         # plot title
                 save=args.savefigs,            # save figure to file or show
                 fname="scaling_total_fused_with_setup.pdf")
 
     keys = ["total w/o setup",
-            "total I/O", "total MPI", "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup", "total lsolve", "total sundials"]
+            "total fast RHS", "total sundials", "total lsolve"]
     plotscaling(rundata,                        # list with test dictionaries
                 keys,                           # keys to plot
                 filterkey=["fused ops", False], # fiter key and value to include
                 normalize=True,                 # normalie runtimes
+                errorbars=True,                 # add error bars to plot
                 title="Unfused Scaling",        # plot title
                 save=args.savefigs,             # save figure to file or show
                 fname="scaling_total_unfused_with_setup.pdf")
 
     keys = ["total w/o setup",
-            "total I/O", "total MPI", "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup", "total lsolve", "total sundials"]
+            "total fast RHS", "total sundials", "total lsolve"]
     plotcomparescaling(rundata,                          # list with test dictionaries
                        keys,                             # keys to plot
                        filterkey=["fused ops", True],    # fiter key and value to include
                        normalize=True,                   # normalie runtimes
+                       errorbars=True,                   # add error bars to plot
                        title="Fused vs Unfused Scaling", # plot title
+                       labels=["total fused",
+                               "total unfused",
+                               "fast RHS fused",
+                               "fast RHS unfused",
+                               "Sundials fused",
+                               "Sundials unfused",
+                               "LSolve fused",
+                               "LSolve unfused"],
                        save=args.savefigs,               # save figure to file or show
                        fname="scaling_total_fused_vs_unfused_no_setup.pdf")
 
@@ -430,7 +441,8 @@ def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 
 # ===============================================================================
 
-def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
+def plotscaling(rundata, keys,
+                filterkey = [None, None], normalize = False, errorbars = False,
                 title = None, save = False, fname = None):
     """
     Plot timing data as function of the number of processes
@@ -457,15 +469,27 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
     if len(filterkey) < 2:
         raise Exception('Too few values in filterkey, expected [ key, value ].')
 
+    color = ['#e41a1c','#377eb8','#4daf4a','#984ea3',
+             '#ff7f00','#a65628','#f781bf','#999999','#000000']
+
     # normalize based on the first key
     firstkey = True
+
+    # loop counter
+    i = 0
+
+    # create figure and get axes
+    fig = plt.figure()
+    ax  = plt.axes()
 
     # get timing data for each key
     for k in keys:
 
         # clear list for timing data
-        nprocs = []
-        time   = []
+        nprocs  = []
+        time    = []
+        mintime = []
+        maxtime = []
 
         # extract timing data for each test
         for d in rundata:
@@ -475,55 +499,80 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
                 if d[filterkey[0]] == filterkey[1]:
                     nprocs.append(d["nprocs"][0])
                     time.append(d["timing"][k][0])
+                    mintime.append(d["timing"][k][0] - d["timing"][k][1])
+                    maxtime.append(d["timing"][k][2] - d["timing"][k][0])
             else:
                 nprocs.append(d["nprocs"][0])
                 time.append(d["timing"][k][0])
+                mintime.append(d["timing"][k][0] - d["timing"][k][1])
+                maxtime.append(d["timing"][k][2] - d["timing"][k][0])
 
         # convert lits to numpy array
         nprocs = np.array(nprocs)
         time   = np.array(time)
+        minmax = np.array([mintime, maxtime])
 
         # normalize run times
         if normalize:
             if firstkey:
-                mintime  = np.amin(time)
+                reftime  = np.amin(time)
                 firstkey = False
-            time = time / mintime
+            time = time / reftime
+            minmax = minmax / reftime
 
         # plot times
-        plt.semilogx(nprocs, time, label=k)
+        if errorbars:
+            plt.errorbar(nprocs, time, minmax,
+                         color=color[i], label=k)
+        else:
+            plt.semilogx(nprocs, time,
+                         color=color[i], label=k)
+
+        # update counter
+        i += 1
 
     # add title, labels, legend, etc.
-    if (title):
+    if title:
         plt.title(title)
     plt.xlabel("number of MPI tasks")
-    if (normalize):
-        plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
+    if normalize:
+        plt.ylabel("normalized run time (ref time = "+str(reftime)+" s)")
     else:
         plt.ylabel("run time (s)")
 
+    if errorbars:
+        ax.set_xscale('log')
+
     # put the legend to the right of the current axis
-    ax = plt.gca()
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-    plt.grid(linestyle="--")
+    # remove error bars from legend
+    handles, labels = ax.get_legend_handles_labels()
+    if errorbars:
+        handles = [h[0] for h in handles]
+
+    # add legend
+    lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))
+
+    # add background grid
+    plt.grid(linestyle="--", alpha=0.2)
 
     # save or show figure
-    if (save):
-        if (fname):
-            plt.savefig(fname)
+    if save:
+        if fname:
+            plt.savefig(fname, bbox_extra_artists=(lgd,), bbox_inches='tight')
         else:
-            plt.savefig("scaling.pdf")
+            plt.savefig("scaling.pdf", bbox_extra_artists=(lgd,), bbox_inches='tight')
         plt.close()
     else:
         plt.show()
 
 # ===============================================================================
 
-def plotcomparescaling(rundata, keys, filterkey, normalize = False,
-                       title = None, save = False, fname = None):
+def plotcomparescaling(rundata, keys, filterkey,
+                       normalize = False, errorbars = False,
+                       title = None, labels = None, save = False, fname = None):
     """
     Compare timing data as function of the number of processes for two setups
 
@@ -561,15 +610,23 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
     # loop counter
     i = 0
 
+    # create figure and get axes
+    fig = plt.figure()
+    ax  = plt.axes()
+
     # get timing data for each key
     for k in keys:
 
         # clear list for timing data
-        nprocs1 = []
-        time1   = []
+        nprocs1  = []
+        time1    = []
+        mintime1 = []
+        maxtime1 = []
 
-        nprocs2 = []
-        time2   = []
+        nprocs2  = []
+        time2    = []
+        mintime2 = []
+        maxtime2 = []
 
         # extract timing data for each test
         for d in rundata:
@@ -578,55 +635,88 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
             if d[filterkey[0]] == filterkey[1]:
                 nprocs1.append(d["nprocs"][0])
                 time1.append(d["timing"][k][0])
+                mintime1.append(d["timing"][k][0] - d["timing"][k][1])
+                maxtime1.append(d["timing"][k][2] - d["timing"][k][0])
             else:
                 nprocs2.append(d["nprocs"][0])
                 time2.append(d["timing"][k][0])
+                mintime2.append(d["timing"][k][0] - d["timing"][k][1])
+                maxtime2.append(d["timing"][k][2] - d["timing"][k][0])
 
         # convert lits to numpy array
         nprocs1 = np.array(nprocs1)
         time1   = np.array(time1)
+        minmax1 = np.array([mintime1, maxtime1])
 
         nprocs2 = np.array(nprocs2)
         time2   = np.array(time2)
+        minmax2 = np.array([mintime2, maxtime2])
 
         # normalize run times
         if normalize:
             if firstkey:
-                mintime = min(np.amin(time1), np.amin(time2))
+                reftime = min(np.amin(time1), np.amin(time2))
                 firstkey = False
-            time1 = time1 / mintime
-            time2 = time2 / mintime
+            time1   = time1 / reftime
+            minmax1 = minmax1 / reftime
+            time2   = time2 / reftime
+            minmax2 = minmax2 / reftime
+
+        if labels:
+            label1 = labels[i]
+            label2 = labels[i+1]
+        else:
+            label1 = k
+            label2 = k
 
         # plot times
-        plt.semilogx(nprocs1, time1, label=k, color=color[i], linestyle='-')
-        plt.semilogx(nprocs2, time2, label=k, color=color[i], linestyle='--')
+        if errorbars:
+            plt.errorbar(nprocs1, time1, minmax1,
+                         color=color[i], linestyle='-', label=label1)
+            plt.errorbar(nprocs2, time2, minmax2,
+                         color=color[i+1], linestyle='--', label=label2)
+        else:
+            plt.semilogx(nprocs1, time1,
+                         color=color[i], linestyle='-', label=label1)
+            plt.semilogx(nprocs2, time2,
+                         color=color[i+1], linestyle='--', label=label2)
 
         # update counter
-        i += 1
+        i += 2
 
     # add title, labels, legend, etc.
-    if (title):
+    if title:
         plt.title(title)
     plt.xlabel("number of MPI tasks")
-    if (normalize):
-        plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
+    if normalize:
+        plt.ylabel("normalized run time (ref time = "+str(reftime)+" s)")
     else:
         plt.ylabel("run time (s)")
 
+    if errorbars:
+        ax.set_xscale('log')
+
     # put the legend to the right of the current axis
-    ax = plt.gca()
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-    plt.grid(linestyle="--")
+    # remove error bars from legend
+    handles, labels = ax.get_legend_handles_labels()
+    if errorbars:
+        handles = [h[0] for h in handles]
+
+    # add legend
+    lgd = ax.legend(handles, labels, loc='upper left', bbox_to_anchor=(1, 1))
+
+    # add background grid
+    plt.grid(linestyle="--", alpha=0.2)
 
     # save or show figure
-    if (save):
-        if (fname):
-            plt.savefig(fname)
+    if save:
+        if fname:
+            plt.savefig(fname, bbox_extra_artists=(lgd,), bbox_inches='tight')
         else:
-            plt.savefig("scaling.pdf")
+            plt.savefig("scaling.pdf", bbox_extra_artists=(lgd,), bbox_inches='tight')
         plt.close()
     else:
         plt.show()
