@@ -88,25 +88,6 @@ def main():
                     "sim fast Jac", "sim lsetup", "sim lsolve"]
             plotstackedbars(timings, keys, ylabel="seconds")
 
-    # plot scaling data with setup time included
-    keys = ["total", "sim", "trans", "setup"]
-    plotscaling(rundata,                        # list with test dictionaries
-                keys,                           # keys to plot
-                filterkey=["fused ops", True],  # fiter key and value to include
-                normalize=True,                 # normalie runtimes
-                title="Fused Scaling",          # plot title
-                save=args.savefigs,             # save figure to file or show
-                fname="scaling_fused_with_setup.pdf")
-
-    keys = ["total", "sim", "trans", "setup"]
-    plotscaling(rundata,                        # list with test dictionaries
-                keys,                           # keys to plot
-                filterkey=["fused ops", False], # fiter key and value to include
-                normalize=True,                 # normalie runtimes
-                title="Unfused Scaling",        # plot title
-                save=args.savefigs,             # save figure to file or show
-                fname="scaling_unfused_with_setup.pdf")
-
     # plot scaling data with setup time removed
     keys = ["total w/o setup", "sim", "trans"]
     plotscaling(rundata,                        # list with test dictionaries
@@ -126,16 +107,6 @@ def main():
                 save=args.savefigs,             # save figure to file or show
                 fname="scaling_unfused_no_setup.pdf")
 
-    # compare scaling data with and without setup time
-    keys = ["total", "sim", "trans", "setup" ]
-    plotcomparescaling(rundata,                          # list with test dictionaries
-                       keys,                             # keys to plot
-                       filterkey=["fused ops", True],    # fiter key and value to include
-                       normalize=True,                   # normalie runtimes
-                       title="Fused vs Unfused Scaling", # plot title
-                       save=args.savefigs,               # save figure to file or show
-                       fname="scaling_compare_fused_and_unfused_with_setup.pdf")
-
     keys = ["total w/o setup", "sim", "trans"]
     plotcomparescaling(rundata,                          # list with test dictionaries
                        keys,                             # keys to plot
@@ -144,6 +115,37 @@ def main():
                        title="Fused vs Unfused Scaling", # plot title
                        save=args.savefigs,               # save figure to file or show
                        fname="scaling_compare_fused_and_unfused_no_setup.pdf")
+
+    # total times without setup stime
+    keys = ["total w/o setup",
+            "total I/O", "total MPI", "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup", "total lsolve", "total sundials"]
+    plotscaling(rundata,                       # list with test dictionaries
+                keys,                          # keys to plot
+                filterkey=["fused ops", True], # fiter key and value to include
+                normalize=True,                # normalie runtimes
+                title="Fused Scaling",       # plot title
+                save=args.savefigs,            # save figure to file or show
+                fname="scaling_total_fused_with_setup.pdf")
+
+    keys = ["total w/o setup",
+            "total I/O", "total MPI", "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup", "total lsolve", "total sundials"]
+    plotscaling(rundata,                        # list with test dictionaries
+                keys,                           # keys to plot
+                filterkey=["fused ops", False], # fiter key and value to include
+                normalize=True,                 # normalie runtimes
+                title="Unfused Scaling",        # plot title
+                save=args.savefigs,             # save figure to file or show
+                fname="scaling_total_unfused_with_setup.pdf")
+
+    keys = ["total w/o setup",
+            "total I/O", "total MPI", "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup", "total lsolve", "total sundials"]
+    plotcomparescaling(rundata,                          # list with test dictionaries
+                       keys,                             # keys to plot
+                       filterkey=["fused ops", True],    # fiter key and value to include
+                       normalize=True,                   # normalie runtimes
+                       title="Fused vs Unfused Scaling", # plot title
+                       save=args.savefigs,               # save figure to file or show
+                       fname="scaling_total_fused_vs_unfused_no_setup.pdf")
 
 # ===============================================================================
 
@@ -499,7 +501,13 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
         plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
     else:
         plt.ylabel("run time (s)")
-    plt.legend()
+
+    # put the legend to the right of the current axis
+    ax = plt.gca()
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
     plt.grid(linestyle="--")
 
     # save or show figure
@@ -604,7 +612,13 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
         plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
     else:
         plt.ylabel("run time (s)")
-    plt.legend()
+
+    # put the legend to the right of the current axis
+    ax = plt.gca()
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
     plt.grid(linestyle="--")
 
     # save or show figure
