@@ -95,7 +95,8 @@ def main():
                 filterkey=["fused ops", True],  # fiter key and value to include
                 normalize=True,                 # normalie runtimes
                 title="Fused Scaling",          # plot title
-                save=args.savefigs)             # save figure to file or show
+                save=args.savefigs,             # save figure to file or show
+                fname="scaling_fused_with_setup.pdf")
 
     keys = ["total", "sim", "trans", "setup"]
     plotscaling(rundata,                        # list with test dictionaries
@@ -103,7 +104,8 @@ def main():
                 filterkey=["fused ops", False], # fiter key and value to include
                 normalize=True,                 # normalie runtimes
                 title="Unfused Scaling",        # plot title
-                save=args.savefigs)             # save figure to file or show
+                save=args.savefigs,             # save figure to file or show
+                fname="scaling_unfused_with_setup.pdf")
 
     # plot scaling data with setup time removed
     keys = ["total", "sim", "trans"]
@@ -113,7 +115,8 @@ def main():
                 normalize=True,                 # normalie runtimes
                 subtractkey=["setup", "total"], # subtract setup time from total
                 title="Fused Scaling",          # plot title
-                save=args.savefigs)             # save figure to file or show
+                save=args.savefigs,             # save figure to file or show
+                fname="scaling_fused_no_setup.pdf")
 
     keys = ["total", "sim", "trans"]
     plotscaling(rundata,                        # list with test dictionaries
@@ -122,7 +125,8 @@ def main():
                 normalize=True,                 # normalie runtimes
                 subtractkey=["setup", "total"], # subtract setup time from total
                 title="Unfused Scaling",        # plot title
-                save=args.savefigs)             # save figure to file or show
+                save=args.savefigs,             # save figure to file or show
+                fname="scaling_unfused_no_setup.pdf")
 
     # compare scaling data with and without setup time
     keys = ["total", "sim", "trans", "setup" ]
@@ -131,7 +135,8 @@ def main():
                        filterkey=["fused ops", True],    # fiter key and value to include
                        normalize=True,                   # normalie runtimes
                        title="Fused vs Unfused Scaling", # plot title
-                       save=args.savefigs)               # save figure to file or show
+                       save=args.savefigs,               # save figure to file or show
+                       fname="scaling_compare_fused_and_unfused_with_setup.pdf")
 
     keys = ["total", "sim", "trans"]
     plotcomparescaling(rundata,                          # list with test dictionaries
@@ -140,7 +145,8 @@ def main():
                        normalize=True,                   # normalie runtimes
                        subtractkey=["setup", "total"],   # subtract setup time from total
                        title="Fused vs Unfused Scaling", # plot title
-                       save=args.savefigs)               # save figure to file or show
+                       save=args.savefigs,               # save figure to file or show
+                       fname="scaling_compare_fused_and_unfused_no_setup.pdf")
 
 # ===============================================================================
 
@@ -388,7 +394,8 @@ def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 # ===============================================================================
 
 def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
-                subtractkey = [None, None], title = None, save = False):
+                subtractkey = [None, None], title = None, save = False,
+                fname = None):
     """
     Plot timing data as function of the number of processes
 
@@ -492,14 +499,19 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
 
     # save or show figure
     if (save):
-        plt.savefig("scaling.pdf")
+        if (fname):
+            plt.savefig(fname)
+        else:
+            plt.savefig("scaling.pdf")
+        plt.close()
     else:
         plt.show()
 
 # ===============================================================================
 
 def plotcomparescaling(rundata, keys, filterkey, normalize = False,
-                       subtractkey = [None, None], title = None, save = False):
+                       subtractkey = [None, None], title = None, save = False,
+                       fname = None):
     """
     Compare timing data as function of the number of processes for two setups
 
@@ -622,7 +634,11 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
 
     # save or show figure
     if (save):
-        plt.savefig("scaling.pdf")
+        if (fname):
+            plt.savefig(fname)
+        else:
+            plt.savefig("scaling.pdf")
+        plt.close()
     else:
         plt.show()
 
