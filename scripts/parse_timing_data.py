@@ -68,12 +68,12 @@ def main():
     if (args.debug):
         for d in rundata:
             print "Output from:",d["file"]
-            for key,val in d.items():
-                if type(val) is dict:
-                    for key2,val2 in val.items():
-                        print key2, "=>", val2
+            for key in sorted(d.keys()):
+                if type(d[key]) is dict:
+                    for key2 in sorted(d[key].keys()):
+                        print key2, "=>", d[key][key2]
                 else:
-                    print key, "=>", val
+                    print key, "=>", d[key]
             print "----------"
 
     # get timing data
