@@ -496,7 +496,7 @@ def plotscaling(rundata, keys, filterkey = [None, None], normalize = False,
     # add title, labels, legend, etc.
     if (title):
         plt.title(title)
-    plt.xlabel("number of MPI processes")
+    plt.xlabel("number of MPI tasks")
     if (normalize):
         plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
     else:
@@ -607,7 +607,7 @@ def plotcomparescaling(rundata, keys, filterkey, normalize = False,
     # add title, labels, legend, etc.
     if (title):
         plt.title(title)
-    plt.xlabel("number of MPI processes")
+    plt.xlabel("number of MPI tasks")
     if (normalize):
         plt.ylabel("normalized run time (ref time = "+str(mintime)+" s)")
     else:
