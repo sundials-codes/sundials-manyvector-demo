@@ -378,6 +378,15 @@ def parseoutput(filename):
                      timing["sim lsolve"][i]))
     timing["sim sundials"] = time
 
+    # compute total times (trans + sim)
+    keys = ["I/O", "MPI", "pack", "flux", "euler", "slow RHS", "fast RHS",
+            "fast Jac", "lsetup", "lsolve", "sundials"]
+    for k in keys:
+        time = []
+        for i in range(0,3):
+            time.append(timing["trans "+k][i] + timing["sim "+k][i])
+        timing["total "+k] = time
+
     # attaching timing dictonary
     test["timing"] = timing
 
