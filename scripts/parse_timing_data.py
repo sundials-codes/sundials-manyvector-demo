@@ -158,6 +158,17 @@ def main():
                        save=args.savefigs,               # save figure to file or show
                        fname="scaling_total_fused_vs_unfused_no_setup.pdf")
 
+    # keys = ["total w/o setup",
+    #         "total I/O", "total MPI", "total pack", "total flux", "total euler",
+    #         "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup",
+    #         "total lsolve", "total sundials"]
+    # printpercenttime(rundata,                          # list with test dictionaries
+    #                  "total w/o setup",                # key for total time
+    #                  keys,                             # keys to plot
+    #                  filterkey=["fused ops", True],    # fiter key and value to include
+    #                  normalize=True,                   # normalie runtimes
+    #                  errorbars=True)                   # add error bars to plot
+
 # ===============================================================================
 
 def parseoutput(filename, minmax = "mostvar", wminmax = False):
@@ -911,6 +922,154 @@ def plotcomparescaling(rundata, keys, filterkey,
         plt.close()
     else:
         plt.show()
+
+# ===============================================================================
+
+def printpercenttime(rundata, keytotal, keys, filterkey,
+                     normalize = False, errorbars = False):
+    """
+    Compare timing data as function of the number of processes for two setups
+
+    Parameters:
+    rundata:     list of test dictionaries to plot data from
+    keys:        list of keys in timing dictionary of each test to plot
+    filterkey:   filter defining groups to compare, [ key to check, value for group 1 ]
+    normalize:   if True, normalize times by min value of first key in keys input
+    """
+
+    # check inputs
+    if type(rundata) is not list:
+        raise Exception('rundata must be a list, [ test1, test2, ...].')
+
+    if type(keys) is not list:
+        raise Exception('keys must be a list, [ key1, key2, ...].')
+
+    if type(filterkey) is not list:
+        raise Exception('filterkey must be a list, [ key, value ].')
+
+    if len(filterkey) < 2:
+        raise Exception('Too few values in filterkey, expected [ key, value ].')
+
+    # normalize based on the first key
+    firstkey = True
+
+    # loop counter
+    i = 0
+
+    # create figure and get axes
+    fig = plt.figure()
+    ax  = plt.axes()
+
+    # get timing data for each key
+    for k in keys:
+
+        # clear list for timing data
+        nprocs1  = []
+        time1    = []
+        mintime1 = []
+        maxtime1 = []
+        ptime1   = []
+        minpvar1 = []
+        maxpvar1 = []
+
+        nprocs2  = []
+        time2    = []
+        mintime2 = []
+        maxtime2 = []
+        ptime2   = []
+        minpvar2 = []
+        maxpvar2 = []
+
+        # extract timing data for each test
+        for d in rundata:
+
+            # check if tests are included/excluded based on a key
+            if d[filterkey[0]] == filterkey[1]:
+                nprocs1.append(d["nprocs"][0])
+                time1.append(d["timing"][k][0])
+                mintime1.append(d["timing"][k][1])
+                maxtime1.append(d["timing"][k][2])
+                ptime1.append(d["timing"][k][0] / d["timing"][keytotal][0] * 100)
+                minpvar1.append((d["timing"][k][0] - d["timing"][k][1]) / d["timing"][k][0] * 100)
+                maxpvar1.append((d["timing"][k][2] - d["timing"][k][0]) / d["timing"][k][0] * 100)
+            else:
+                nprocs2.append(d["nprocs"][0])
+                time2.append(d["timing"][k][0])
+                mintime2.append(d["timing"][k][1])
+                maxtime2.append(d["timing"][k][2])
+                ptime2.append(d["timing"][k][0] / d["timing"][keytotal][0] * 100)
+                minpvar2.append((d["timing"][k][0] - d["timing"][k][1]) / d["timing"][k][0] * 100)
+                maxpvar2.append((d["timing"][k][2] - d["timing"][k][0]) / d["timing"][k][0] * 100)
+
+        # convert lits to numpy array
+        nprocs1  = np.array(nprocs1)
+        time1    = np.array(time1)
+        mintime1 = np.array(mintime1)
+        maxtime1 = np.array(maxtime1)
+        ptime1   = np.array(ptime1)
+        minpvar1 = np.array(minpvar1)
+        maxpvar1 = np.array(maxpvar1)
+
+        nprocs2  = np.array(nprocs2)
+        time2    = np.array(time2)
+        mintime2 = np.array(mintime2)
+        maxtime2 = np.array(maxtime2)
+        ptime2   = np.array(ptime2)
+        minpvar2 = np.array(minpvar2)
+        maxpvar2 = np.array(maxpvar2)
+
+        # normalize run times
+        if normalize:
+            if firstkey:
+                reftime  = min(np.amin(time1), np.amin(time2))
+                firstkey = False
+            ntime1 = time1 / reftime
+            ntime2 = time2 / reftime
+
+        formatstr1 = ("nprocs: {0:7d}, " +
+                     "avg time: {1:8.2f}, " +
+                     "avg normalized: {2:6.2f}, " +
+                     "percent total: {3:6.2f}%")
+
+        formatstr2 = ("nprocs: {0:7d}, " +
+                      "avg time: {1:8.2f}, " +
+                      "min time: {2:8.2f}, " +
+                      "percent min var: {3:6.2f}%")
+
+        formatstr3 = ("nprocs: {0:7d}, " +
+                      "avg time: {1:8.2f}, " +
+                      "max time: {2:8.2f}, " +
+                      "percent max var: {3:6.2f}%")
+
+        print k, "1"
+        for w, x, y, z in np.nditer([nprocs1, time1, ntime1, ptime1]):
+            print(formatstr1.format(int(w), float(x), float(y), float(z)))
+        print
+
+        print k, "1"
+        for w, x, y, z in np.nditer([nprocs1, time1, mintime1, minpvar1]):
+            print(formatstr2.format(int(w), float(x), float(y), float(z)))
+        print
+
+        print k, "1"
+        for w, x, y, z in np.nditer([nprocs1, time1, maxtime1, maxpvar1]):
+            print(formatstr3.format(int(w), float(x), float(y), float(z)))
+        print
+
+        print k, "2"
+        for w, x, y, z in np.nditer([nprocs2, time2, ntime2, ptime2]):
+            print(formatstr1.format(int(w), float(x), float(y), float(z)))
+        print
+
+        print k, "2"
+        for w, x, y, z in np.nditer([nprocs2, time2, mintime2, minpvar2]):
+            print(formatstr2.format(int(w), float(x), float(y), float(z)))
+        print
+
+        print k, "2"
+        for w, x, y, z in np.nditer([nprocs2, time2, maxtime2, maxpvar2]):
+            print(formatstr3.format(int(w), float(x), float(y), float(z)))
+        print
 
 # ===============================================================================
 
