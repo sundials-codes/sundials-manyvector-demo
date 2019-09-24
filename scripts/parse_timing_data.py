@@ -160,7 +160,7 @@ def main():
 
 # ===============================================================================
 
-def parseoutput(filename):
+def parseoutput(filename, minmax = "mostvar", wminmax = False):
 
     # create empty dictionary for test
     test = {}
@@ -365,30 +365,221 @@ def parseoutput(filename):
 
     # compute total time without setup
     time = []
-    for i in range(0,3):
-        time.append(timing["total"][i] - timing["setup"][i])
+    time.append(timing["total"][0] - timing["setup"][0]) # avg = avg - avg
+    if minmax == "skewmax":
+        # largest min time, largest max time: more variability in max time
+        time.append(timing["total"][1] - timing["setup"][1]) # min = min - min
+        time.append(timing["total"][2] - timing["setup"][1]) # max = max - min
+    elif minmax == "skewmin":
+        # smallest min time, smallest max time: more variability in min time
+        time.append(timing["total"][1] - timing["setup"][2]) # min = min - max
+        time.append(timing["total"][2] - timing["setup"][2]) # max = max - max
+    elif minmax == "leastvar":
+        # largest min time, smallest max time: least variability
+        time.append(timing["total"][1] - timing["setup"][1]) # min = min - min
+        time.append(timing["total"][2] - timing["setup"][2]) # max = max - max
+    elif minmax == "mostvar":
+        # smallest min time, largest max time: most variability
+        time.append(timing["total"][1] - timing["setup"][2]) # min = min - max
+        time.append(timing["total"][2] - timing["setup"][1]) # max = max - min
+    else:
+        raise Exception('unknown minmax option: skewmax, skewmin, leastvar, mostvar')
+
+    # check if min is larger than avg
+    if time[1] > time[0]:
+        if wminmax:
+            print "Warning: total time w/o setup min > avg for file:",filename
+            print "min = ",time[1]
+            print "avg = ",time[0]
+            print "Setting min = avg"
+        time[1] = time[0]
+    # check if max is smaller than avg
+    if time[2] < time[0]:
+        if wminmax:
+            print "Warning: total time w/o setup max < avg for file:",filename
+            print "max = ",time[2]
+            print "avg = ",time[0]
+            print "Setting max = avg"
+        time[2] = time[0]
+
     timing["total w/o setup"] = time
 
     # compute SUNDIALS trans time
     time = []
-    for i in range(0,3):
-        time.append(timing["trans"][i] -
-                    (timing["trans slow RHS"][i] +
-                     timing["trans fast RHS"][i] +
-                     timing["trans fast Jac"][i] +
-                     timing["trans lsetup"][i] +
-                     timing["trans lsolve"][i]))
+    time.append(timing["trans"][0] -
+                (timing["trans slow RHS"][0] +
+                 timing["trans fast RHS"][0] +
+                 timing["trans fast Jac"][0] +
+                 timing["trans lsetup"][0] +
+                 timing["trans lsolve"][0]))
+
+    if minmax == "skewmax":
+        # largest min time, largest max time: more variability in max time
+        time.append(timing["trans"][1] -           # min = min - min
+                    (timing["trans slow RHS"][1] +
+                     timing["trans fast RHS"][1] +
+                     timing["trans fast Jac"][1] +
+                     timing["trans lsetup"][1] +
+                     timing["trans lsolve"][1]))
+        time.append(timing["trans"][2] -           # max = max - min
+                    (timing["trans slow RHS"][1] +
+                     timing["trans fast RHS"][1] +
+                     timing["trans fast Jac"][1] +
+                     timing["trans lsetup"][1] +
+                     timing["trans lsolve"][1]))
+    elif minmax == "skewmin":
+        # smallest min time, smallest max time: more variability in min time
+        time.append(timing["trans"][1] -           # min = min - max
+                    (timing["trans slow RHS"][2] +
+                     timing["trans fast RHS"][2] +
+                     timing["trans fast Jac"][2] +
+                     timing["trans lsetup"][2] +
+                     timing["trans lsolve"][2]))
+        time.append(timing["trans"][2] -           # max = max - max
+                    (timing["trans slow RHS"][2] +
+                     timing["trans fast RHS"][2] +
+                     timing["trans fast Jac"][2] +
+                     timing["trans lsetup"][2] +
+                     timing["trans lsolve"][2]))
+
+    elif minmax == "leastvar":
+        # largest min time, smallest max time: least variability
+        time.append(timing["trans"][1] -           # min = min - min
+                    (timing["trans slow RHS"][1] +
+                     timing["trans fast RHS"][1] +
+                     timing["trans fast Jac"][1] +
+                     timing["trans lsetup"][1] +
+                     timing["trans lsolve"][1]))
+        time.append(timing["trans"][2] -           # max = max - max
+                    (timing["trans slow RHS"][2] +
+                     timing["trans fast RHS"][2] +
+                     timing["trans fast Jac"][2] +
+                     timing["trans lsetup"][2] +
+                     timing["trans lsolve"][2]))
+
+    elif minmax == "mostvar":
+        # smallest min time, largest max time: most variability
+        time.append(timing["trans"][1] -           # min = min - max
+                    (timing["trans slow RHS"][2] +
+                     timing["trans fast RHS"][2] +
+                     timing["trans fast Jac"][2] +
+                     timing["trans lsetup"][2] +
+                     timing["trans lsolve"][2]))
+        time.append(timing["trans"][2] -           # max = max - min
+                    (timing["trans slow RHS"][1] +
+                     timing["trans fast RHS"][1] +
+                     timing["trans fast Jac"][1] +
+                     timing["trans lsetup"][1] +
+                     timing["trans lsolve"][1]))
+    else:
+        raise Exception('unknown minmax option: skewmax, skewmin, leastvar, mostvar')
+
+    # check if min is larger than avg
+    if time[1] > time[0]:
+        if wminmax:
+            print "Warning: trans sundials min > avg for file:",filename
+            print "min = ",time[1]
+            print "avg = ",time[0]
+            print "Setting min = avg"
+        time[1] = time[0]
+    # check if max is smaller than avg
+    if time[2] < time[0]:
+        if wminmax:
+            print "Warning: trans sundials max < avg for file:",filename
+            print "max = ",time[2]
+            print "avg = ",time[0]
+            print "Setting max = avg"
+        time[2] = time[0]
+
     timing["trans sundials"] = time
 
     # compute SUNDIALS sim time
     time = []
-    for i in range(0,3):
-        time.append(timing["sim"][i] -
-                    (timing["sim slow RHS"][i] +
-                     timing["sim fast RHS"][i] +
-                     timing["sim fast Jac"][i] +
-                     timing["sim lsetup"][i] +
-                     timing["sim lsolve"][i]))
+    time.append(timing["sim"][0] -
+                (timing["sim slow RHS"][0] +
+                 timing["sim fast RHS"][0] +
+                 timing["sim fast Jac"][0] +
+                 timing["sim lsetup"][0] +
+                 timing["sim lsolve"][0]))
+
+    if minmax == "skewmax":
+        # largest min time, largest max time: more variability in max time
+        time.append(timing["sim"][1] -           # min = min - min
+                    (timing["sim slow RHS"][1] +
+                     timing["sim fast RHS"][1] +
+                     timing["sim fast Jac"][1] +
+                     timing["sim lsetup"][1] +
+                     timing["sim lsolve"][1]))
+        time.append(timing["sim"][2] -           # max = max - min
+                    (timing["sim slow RHS"][1] +
+                     timing["sim fast RHS"][1] +
+                     timing["sim fast Jac"][1] +
+                     timing["sim lsetup"][1] +
+                     timing["sim lsolve"][1]))
+    elif minmax == "skewmin":
+        # smallest min time, smallest max time: more variability in min time
+        time.append(timing["sim"][1] -           # min = min - max
+                    (timing["sim slow RHS"][2] +
+                     timing["sim fast RHS"][2] +
+                     timing["sim fast Jac"][2] +
+                     timing["sim lsetup"][2] +
+                     timing["sim lsolve"][2]))
+        time.append(timing["sim"][2] -           # max = max - max
+                    (timing["sim slow RHS"][2] +
+                     timing["sim fast RHS"][2] +
+                     timing["sim fast Jac"][2] +
+                     timing["sim lsetup"][2] +
+                     timing["sim lsolve"][2]))
+
+    elif minmax == "leastvar":
+        # largest min time, smallest max time: least variability
+        time.append(timing["sim"][1] -           # min = min - min
+                    (timing["sim slow RHS"][1] +
+                     timing["sim fast RHS"][1] +
+                     timing["sim fast Jac"][1] +
+                     timing["sim lsetup"][1] +
+                     timing["sim lsolve"][1]))
+        time.append(timing["sim"][2] -           # max = max - max
+                    (timing["sim slow RHS"][2] +
+                     timing["sim fast RHS"][2] +
+                     timing["sim fast Jac"][2] +
+                     timing["sim lsetup"][2] +
+                     timing["sim lsolve"][2]))
+
+    elif minmax == "mostvar":
+        # smallest min time, largest max time: most variability
+        time.append(timing["sim"][1] -           # min = min - max
+                    (timing["sim slow RHS"][2] +
+                     timing["sim fast RHS"][2] +
+                     timing["sim fast Jac"][2] +
+                     timing["sim lsetup"][2] +
+                     timing["sim lsolve"][2]))
+        time.append(timing["sim"][2] -           # max = max - min
+                    (timing["sim slow RHS"][1] +
+                     timing["sim fast RHS"][1] +
+                     timing["sim fast Jac"][1] +
+                     timing["sim lsetup"][1] +
+                     timing["sim lsolve"][1]))
+    else:
+        raise Exception('unknown minmax option: skewmax, skewmin, leastvar, mostvar')
+
+    # check if min is larger than avg
+    if time[1] > time[0]:
+        if wminmax:
+            print "Warning: sim sundials min > avg for file:",filename
+            print "min = ",time[1]
+            print "avg = ",time[0]
+            print "Setting min = avg"
+        time[1] = time[0]
+    # check if max is smaller than avg
+    if time[2] < time[0]:
+        if wminmax:
+            print "Warning: sim sundials max < avg for file:",filename
+            print "max = ",time[2]
+            print "avg = ",time[0]
+            print "Setting max = avg"
+        time[2] = time[0]
+
     timing["sim sundials"] = time
 
     # compute total times (trans + sim)
