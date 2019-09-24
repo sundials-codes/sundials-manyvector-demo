@@ -46,6 +46,9 @@ def main():
     parser.add_argument('--plotbreakdown', action='store_true',
                         help='plot breakdown of timings')
 
+    parser.add_argument('--printtime', action='store_true',
+                        help='print runtimes')
+
     parser.add_argument('--savefigs', action='store_true',
                         help='save figures to file')
 
@@ -90,63 +93,23 @@ def main():
 
     # plot scaling data with setup time removed
     keys = ["total w/o setup", "sim", "trans"]
-    plotscaling(rundata,                        # list with test dictionaries
-                keys,                           # keys to plot
-                filterkey=["fused ops", True],  # fiter key and value to include
-                normalize=True,                 # normalie runtimes
-                title="Fused Scaling",          # plot title
-                save=args.savefigs,             # save figure to file or show
-                fname="scaling_fused_no_setup.pdf")
+    plotcomparescaling(rundata,                           # list with test dictionaries
+                       keys,                              # keys to plot
+                       filterkey=["fused ops", True],     # fiter key and value to include
+                       normalize=True,                    # normalie runtimes
+                       title="Scaling: Fused vs Unfused", # plot title
+                       save=args.savefigs,                # save figure to file or show
+                       fname="scaling_compare_fused_vs_unfused_no_setup.pdf")
 
-    keys = ["total w/o setup", "sim", "trans"]
-    plotscaling(rundata,                        # list with test dictionaries
-                keys,                           # keys to plot
-                filterkey=["fused ops", False], # fiter key and value to include
-                normalize=True,                 # normalie runtimes
-                title="Unfused Scaling",        # plot title
-                save=args.savefigs,             # save figure to file or show
-                fname="scaling_unfused_no_setup.pdf")
-
-    keys = ["total w/o setup", "sim", "trans"]
-    plotcomparescaling(rundata,                          # list with test dictionaries
-                       keys,                             # keys to plot
-                       filterkey=["fused ops", True],    # fiter key and value to include
-                       normalize=True,                   # normalie runtimes
-                       title="Fused vs Unfused Scaling", # plot title
-                       save=args.savefigs,               # save figure to file or show
-                       fname="scaling_compare_fused_and_unfused_no_setup.pdf")
-
-    # total times without setup stime
+    # total times without setup time
     keys = ["total w/o setup",
             "total fast RHS", "total sundials", "total lsolve"]
-    plotscaling(rundata,                       # list with test dictionaries
-                keys,                          # keys to plot
-                filterkey=["fused ops", True], # fiter key and value to include
-                normalize=True,                # normalie runtimes
-                errorbars=True,                # add error bars to plot
-                title="Fused Scaling",         # plot title
-                save=args.savefigs,            # save figure to file or show
-                fname="scaling_total_fused_with_setup.pdf")
-
-    keys = ["total w/o setup",
-            "total fast RHS", "total sundials", "total lsolve"]
-    plotscaling(rundata,                        # list with test dictionaries
-                keys,                           # keys to plot
-                filterkey=["fused ops", False], # fiter key and value to include
-                normalize=True,                 # normalie runtimes
-                errorbars=True,                 # add error bars to plot
-                title="Unfused Scaling",        # plot title
-                save=args.savefigs,             # save figure to file or show
-                fname="scaling_total_unfused_with_setup.pdf")
-
-    keys = ["total w/o setup",
-            "total fast RHS", "total sundials", "total lsolve"]
-    plotcomparescaling(rundata,                          # list with test dictionaries
-                       keys,                             # keys to plot
-                       filterkey=["fused ops", True],    # fiter key and value to include
-                       normalize=True,                   # normalie runtimes
-                       errorbars=True,                   # add error bars to plot
-                       title="Fused vs Unfused Scaling", # plot title
+    plotcomparescaling(rundata,                           # list with test dictionaries
+                       keys,                              # keys to plot
+                       filterkey=["fused ops", True],     # fiter key and value to include
+                       normalize=True,                    # normalie runtimes
+                       errorbars=True,                    # add error bars to plot
+                       title="Scaling: Fused vs Unfused", # plot title
                        labels=["total fused",
                                "total unfused",
                                "fast RHS fused",
@@ -155,23 +118,24 @@ def main():
                                "Sundials unfused",
                                "LSolve fused",
                                "LSolve unfused"],
-                       save=args.savefigs,               # save figure to file or show
+                       save=args.savefigs,                # save figure to file or show
                        fname="scaling_total_fused_vs_unfused_no_setup.pdf")
 
-    # keys = ["total w/o setup",
-    #         "total I/O", "total MPI", "total pack", "total flux", "total euler",
-    #         "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup",
-    #         "total lsolve", "total sundials"]
-    # printpercenttime(rundata,                          # list with test dictionaries
-    #                  "total w/o setup",                # key for total time
-    #                  keys,                             # keys to plot
-    #                  filterkey=["fused ops", True],    # fiter key and value to include
-    #                  normalize=True,                   # normalie runtimes
-    #                  errorbars=True)                   # add error bars to plot
+    if args.printtime:
+        keys = ["total w/o setup",
+                "total I/O", "total MPI", "total pack", "total flux", "total euler",
+                "total slow RHS", "total fast RHS", "total fast Jac", "total lsetup",
+                "total lsolve", "total sundials"]
+        printpercenttime(rundata,                          # list with test dictionaries
+                         "total w/o setup",                # key for total time
+                         keys,                             # keys to plot
+                         filterkey=["fused ops", True],    # fiter key and value to include
+                         normalize=True,                   # normalie runtimes
+                         errorbars=True)                   # add error bars to plot
 
 # ===============================================================================
 
-def parseoutput(filename, minmax = "mostvar", wminmax = False):
+def parseoutput(filename, minmax = "minvar", wminmax = False):
 
     # create empty dictionary for test
     test = {}
@@ -385,16 +349,16 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
         # smallest min time, smallest max time: more variability in min time
         time.append(timing["total"][1] - timing["setup"][2]) # min = min - max
         time.append(timing["total"][2] - timing["setup"][2]) # max = max - max
-    elif minmax == "leastvar":
+    elif minmax == "minvar":
         # largest min time, smallest max time: least variability
         time.append(timing["total"][1] - timing["setup"][1]) # min = min - min
         time.append(timing["total"][2] - timing["setup"][2]) # max = max - max
-    elif minmax == "mostvar":
+    elif minmax == "maxvar":
         # smallest min time, largest max time: most variability
         time.append(timing["total"][1] - timing["setup"][2]) # min = min - max
         time.append(timing["total"][2] - timing["setup"][1]) # max = max - min
     else:
-        raise Exception('unknown minmax option: skewmax, skewmin, leastvar, mostvar')
+        raise Exception('unknown minmax option: skewmax, skewmin, minvar, maxvar')
 
     # check if min is larger than avg
     if time[1] > time[0]:
@@ -453,7 +417,7 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
                      timing["trans lsetup"][2] +
                      timing["trans lsolve"][2]))
 
-    elif minmax == "leastvar":
+    elif minmax == "minvar":
         # largest min time, smallest max time: least variability
         time.append(timing["trans"][1] -           # min = min - min
                     (timing["trans slow RHS"][1] +
@@ -468,7 +432,7 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
                      timing["trans lsetup"][2] +
                      timing["trans lsolve"][2]))
 
-    elif minmax == "mostvar":
+    elif minmax == "maxvar":
         # smallest min time, largest max time: most variability
         time.append(timing["trans"][1] -           # min = min - max
                     (timing["trans slow RHS"][2] +
@@ -483,7 +447,7 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
                      timing["trans lsetup"][1] +
                      timing["trans lsolve"][1]))
     else:
-        raise Exception('unknown minmax option: skewmax, skewmin, leastvar, mostvar')
+        raise Exception('unknown minmax option: skewmax, skewmin, minvar, maxvar')
 
     # check if min is larger than avg
     if time[1] > time[0]:
@@ -542,7 +506,7 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
                      timing["sim lsetup"][2] +
                      timing["sim lsolve"][2]))
 
-    elif minmax == "leastvar":
+    elif minmax == "minvar":
         # largest min time, smallest max time: least variability
         time.append(timing["sim"][1] -           # min = min - min
                     (timing["sim slow RHS"][1] +
@@ -557,7 +521,7 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
                      timing["sim lsetup"][2] +
                      timing["sim lsolve"][2]))
 
-    elif minmax == "mostvar":
+    elif minmax == "maxvar":
         # smallest min time, largest max time: most variability
         time.append(timing["sim"][1] -           # min = min - max
                     (timing["sim slow RHS"][2] +
@@ -572,7 +536,7 @@ def parseoutput(filename, minmax = "mostvar", wminmax = False):
                      timing["sim lsetup"][1] +
                      timing["sim lsolve"][1]))
     else:
-        raise Exception('unknown minmax option: skewmax, skewmin, leastvar, mostvar')
+        raise Exception('unknown minmax option: skewmax, skewmin, minvar, maxvar')
 
     # check if min is larger than avg
     if time[1] > time[0]:
