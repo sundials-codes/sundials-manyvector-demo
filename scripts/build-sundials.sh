@@ -33,7 +33,7 @@ esac
 
 # set paths
 srcdir=${HOME}/sundials
-installdir=${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-${bldtype}
+installdir=${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-${bldtype}
 
 # -------------------------------------------------------------------------------
 # Setup Build
@@ -80,7 +80,7 @@ cmake \
     -D MPI_CXX_COMPILER=${MPICXX} \
     -D MPI_Fortran_COMPILER=${MPIFC} \
     \
-    -D CUDA_ENABLE=OFF \
+    -D CUDA_ENABLE=ON \
     \
     -D KLU_ENABLE=ON \
     -D KLU_INCLUDE_DIR="${KLU_INC_DIR}" \
