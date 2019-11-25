@@ -96,7 +96,7 @@ def main():
     plotcomparescaling(rundata,                           # list with test dictionaries
                        keys,                              # keys to plot
                        filterkey=["fused ops", True],     # fiter key and value to include
-                       normalize=True,                    # normalie runtimes
+                       normalize=True,                    # normalize runtimes
                        title="Scaling: Fused vs Unfused", # plot title
                        save=args.savefigs,                # save figure to file or show
                        fname="scaling_compare_fused_vs_unfused_no_setup.pdf")
@@ -107,7 +107,7 @@ def main():
     plotcomparescaling(rundata,                           # list with test dictionaries
                        keys,                              # keys to plot
                        filterkey=["fused ops", True],     # fiter key and value to include
-                       normalize=True,                    # normalie runtimes
+                       normalize=True,                    # normalize runtimes
                        errorbars=True,                    # add error bars to plot
                        title="Scaling: Fused vs Unfused", # plot title
                        labels=["total fused",
@@ -120,6 +120,38 @@ def main():
                                "LSolve unfused"],
                        save=args.savefigs,                # save figure to file or show
                        fname="scaling_total_fused_vs_unfused_no_setup.pdf")
+
+    # total fused times without setup time
+    keys = ["total w/o setup", "total fast RHS", "total sundials", "total lsolve", "total slow RHS"]
+    plotscaling(rundata,                           # list with test dictionaries
+                keys,                              # keys to plot
+                filterkey=["fused ops", True],     # filter key and value to include
+                normalize=True,                    # normalize runtimes
+                errorbars=False,                   # add error bars to plot
+                title="Weak Scaling: Multirate Compressible Reacting Flow",   # plot title
+                Labels=["total",
+                        "fast RHS",
+                        "overhead",
+                        "fast LSolve",
+                        "slow RHS"],
+                save=args.savefigs,                # save figure to file or show
+                fname="scaling_fused_no_setup.pdf")
+
+    # total unfused times without setup time
+    keys = ["total w/o setup", "total fast RHS", "total sundials", "total lsolve", "total slow RHS"]
+    plotscaling(rundata,                           # list with test dictionaries
+                keys,                              # keys to plot
+                filterkey=["fused ops", False],    # filter key and value to include
+                normalize=True,                    # normalize runtimes
+                errorbars=False,                   # add error bars to plot
+                title="Weak Scaling: Multirate Compressible Reacting Flow",   # plot title
+                Labels=["total",
+                        "fast RHS",
+                        "overhead",
+                        "fast LSolve",
+                        "slow RHS"],
+                save=args.savefigs,                # save figure to file or show
+                fname="scaling_unfused_no_setup.pdf")
 
     if args.printtime:
         keys = ["total w/o setup",
@@ -607,9 +639,9 @@ def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 
 # ===============================================================================
 
-def plotscaling(rundata, keys,
-                filterkey = [None, None], normalize = False, errorbars = False,
-                title = None, save = False, fname = None):
+def plotscaling(rundata, keys, filterkey = [None, None],
+                normalize = False, errorbars = False, title = None,
+                Labels = None, save = False, fname = None):
     """
     Plot timing data as function of the number of processes
 
@@ -619,6 +651,7 @@ def plotscaling(rundata, keys,
     filterkey:   filter test dictionaries, [ key to check, value to pass check ]
     normalize:   if True, normalize times by min value of first key in keys input
     title:       string to use for plot title
+    Labels:      strings to use in legend for each plot
     save:        if True, save plot to file else show plot on screen
     """
 
@@ -673,7 +706,7 @@ def plotscaling(rundata, keys,
                 mintime.append(d["timing"][k][0] - d["timing"][k][1])
                 maxtime.append(d["timing"][k][2] - d["timing"][k][0])
 
-        # convert lits to numpy array
+        # convert lists to numpy arrays
         nprocs = np.array(nprocs)
         time   = np.array(time)
         minmax = np.array([mintime, maxtime])
@@ -686,13 +719,18 @@ def plotscaling(rundata, keys,
             time = time / reftime
             minmax = minmax / reftime
 
+        if Labels:
+            label_ = Labels[i]
+        else:
+            label_ = k
+
         # plot times
         if errorbars:
             plt.errorbar(nprocs, time, minmax,
-                         color=color[i], label=k)
+                         color=color[i], label=label_)
         else:
             plt.semilogx(nprocs, time,
-                         color=color[i], label=k)
+                         color=color[i], label=label_)
 
         # update counter
         i += 1
@@ -708,6 +746,9 @@ def plotscaling(rundata, keys,
 
     if errorbars:
         ax.set_xscale('log')
+
+    ax.set_yscale('log')
+
 
     # put the legend to the right of the current axis
     box = ax.get_position()
@@ -809,7 +850,7 @@ def plotcomparescaling(rundata, keys, filterkey,
                 mintime2.append(d["timing"][k][0] - d["timing"][k][1])
                 maxtime2.append(d["timing"][k][2] - d["timing"][k][0])
 
-        # convert lits to numpy array
+        # convert lists to numpy arrays
         nprocs1 = np.array(nprocs1)
         time1   = np.array(time1)
         minmax1 = np.array([mintime1, maxtime1])
@@ -965,7 +1006,7 @@ def printpercenttime(rundata, keytotal, keys, filterkey,
                 minpvar2.append((d["timing"][k][0] - d["timing"][k][1]) / d["timing"][k][0] * 100)
                 maxpvar2.append((d["timing"][k][2] - d["timing"][k][0]) / d["timing"][k][0] * 100)
 
-        # convert lits to numpy array
+        # convert lists to numpy arrays
         nprocs1  = np.array(nprocs1)
         time1    = np.array(time1)
         mintime1 = np.array(mintime1)
