@@ -12,7 +12,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # SUNDIALS Copyright End
 # --------------------------------------------------------------------------
-# Script to build KLU
+# Script to build Metis
 # --------------------------------------------------------------------------
 
 # set paths

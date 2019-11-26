@@ -31,7 +31,7 @@
 
 # check for correct number of inputs
 if [ "$#" -lt 1 ]; then
-    echo "ERROR: Please specify compiler xl or gcc"
+    echo "ERROR: Please specify compiler: xl or gcc"
     return 1
 fi
 
