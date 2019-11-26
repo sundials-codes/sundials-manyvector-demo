@@ -90,9 +90,9 @@ else ifeq ($(HOST),summit)
   CXX = ${MPI_ROOT}/bin/mpic++ -std=c++11
 
   ifeq ($(LIBTYPE),OPT)
-    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-opt
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-opt
   else
-    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-dbg
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dbg
   endif
   SUNINCDIRS = -I${SUNDIR}/include
   SUNLIBDIR = ${SUNDIR}/lib
@@ -109,9 +109,9 @@ else ifeq ($(HOST),quartz)
   CXX = mpic++ -std=c++11
 
   ifeq ($(LIBTYPE),OPT)
-    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-opt
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-opt
   else
-    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dev.2-dbg
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dbg
   endif
   SUNINCDIRS = -I${SUNDIR}/include
   SUNLIBDIR = ${SUNDIR}/lib
