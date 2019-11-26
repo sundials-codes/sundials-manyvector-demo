@@ -56,6 +56,7 @@
 #define PRINT_SCIENTIFIC 1
 
 
+
 // Initialization and preparation routines for Dengo data structure
 // (provided in specific test problem initializer)
 int initialize_Dengo_structures(EulerData& udata);
@@ -115,6 +116,7 @@ int main(int argc, char* argv[]) {
   int idense;                    // flag denoting integration type (dense output vs tstop)
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
+  int NoOutput;                  // flag for case when no output is desired
   N_Vector w = NULL;             // empty vectors for storing overall solution
   N_Vector *wsubvecs;
   N_Vector atols = NULL;
@@ -134,23 +136,46 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // start various code profilers
+  retval = udata.profile[PR_TOTAL].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   retval = udata.profile[PR_SETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
+  if (myid == 0)  cout << "Initializing problem\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // read problem and solver parameters from input file / command line
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-  realtype dTout = (udata.tf-udata.t0)/(udata.nout);
+
+  if (myid == 0)  cout << "Setting up parallel decomposition\n";
+  retval = MPI_Barrier(MPI_COMM_WORLD);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+  // set up udata structure
+  retval = udata.SetupDecomp();
+  if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
+  bool outproc = (udata.myid == 0);
+
+  // set NoOutput flag based on nout input
+  NoOutput = 0;
+  if (udata.nout <= 0) {
+    NoOutput = 1;
+    udata.nout = 1;
+  }
+
+  // set output time frequency
+  realtype dTout = (udata.tf-udata.t0)/udata.nout;
   retval = udata.profile[PR_IO].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // if fixed time stepping is specified, ensure that hmax>0
   if (opts.fixedstep && (opts.hmax <= ZERO)) {
-    if (udata.myid == 0)
-      cerr << "\nError: fixed time stepping requires hmax > 0 ("
-           << opts.hmax << " given)\n";
+    if (outproc)  cerr << "\nError: fixed time stepping requires hmax > 0 ("
+                       << opts.hmax << " given)\n";
     MPI_Abort(udata.comm, 1);
   }
 
@@ -159,24 +184,17 @@ int main(int argc, char* argv[]) {
 
   // ensure that htrans < dTout
   if (opts.htrans >= dTout) {
-    if (udata.myid == 0)
-      cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
+    if (outproc)  cerr << "\nError: htrans (" << opts.htrans << ") >= dTout (" << dTout << ")\n";
     MPI_Abort(udata.comm, 1);
   }
 
-  // set up udata structure
-  retval = udata.SetupDecomp();
-  if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // ensure that this was compiled with chemical species
   if (udata.nchem == 0) {
-    if (udata.myid == 0)
-      cerr << "\nError: executable <must> be compiled with chemical species enabled\n";
+    if (outproc)  cerr << "\nError: executable <must> be compiled with chemical species enabled\n";
     MPI_Abort(udata.comm, 1);
   }
 
   // Output problem setup information
-  bool outproc = (udata.myid == 0);
   if (outproc) {
     cout << "\n3D compressible inviscid Euler + primordial chemistry driver (imex):\n";
     cout << "   nprocs: " << udata.nprocs << " (" << udata.npx << " x "
@@ -191,6 +209,11 @@ int main(int argc, char* argv[]) {
       cout << "   fixed timestep size: " << opts.hmax << "\n";
     if (opts.fixedstep == 2)
       cout << "   initial transient evolution: " << opts.htrans << "\n";
+    if (NoOutput == 1) {
+      cout << "   solution output disabled\n";
+    } else {
+      cout << "   output timestep size: " << dTout << "\n";
+    }
     cout << "   bdry cond (" << BC_PERIODIC << "=per, " << BC_NEUMANN << "=Neu, "
          << BC_DIRICHLET << "=Dir, " << BC_REFLECTING << "=refl): ["
          << udata.xlbc << ", " << udata.xrbc << "] x ["
@@ -232,6 +255,8 @@ int main(int argc, char* argv[]) {
   if (udata.showstats && outproc) {
     DFID=fopen("diags_chem_hydro.txt","w");
   }
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -435,7 +460,7 @@ int main(int argc, char* argv[]) {
 
   // finish initialization
   realtype t = udata.t0;
-  realtype tout;
+  realtype tout = udata.t0+dTout;
   realtype hcur;
   if (opts.dense_order == -1)
     idense = 0;
@@ -447,19 +472,19 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  if (udata.myid == 0)  cout << "\nWriting initial batch of outputs\n";
-
-  // Optionally output total mass/energy
+  //    Optionally output total mass/energy
   if (udata.showstats) {
     retval = check_conservation(udata.t0, w, udata);
     if (check_flag(&retval, "check_conservation (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // Output initial conditions to disk
+  //    Output initial conditions to disk
   retval = apply_Dengo_scaling(w, udata);
   if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
-  if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (NoOutput == 0) {
+    retval = output_solution(udata.t0, w, opts.h0, restart, udata, opts);
+    if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
   //    Output CGS solution statistics (if requested)
   if (udata.showstats && PRINT_CGS == 1) {
     retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
@@ -473,7 +498,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // Output problem-specific diagnostic information
+  //    Output problem-specific diagnostic information
   retval = output_diagnostics(udata.t0, w, udata);
   if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -500,7 +525,7 @@ int main(int argc, char* argv[]) {
     retval = ARKStepSetStopTime(arkode_mem, tout);
     if (check_flag(&retval, "ARKStepSetStopTime (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    // adaptive evolution over (t0,t0+htrans]
+    // adaptive evolution over [t0,t0+htrans]
     retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);
     if (retval < 0) {    // unsuccessful solve: break
       if (outproc)  cerr << "Solver failure, stopping integration\n";
@@ -533,9 +558,9 @@ int main(int argc, char* argv[]) {
 
     // evolve solution
     retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);
-    if (retval >= 0) {                   // successful solve: update output time
+    if (retval >= 0) {                         // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
-    } else {                             // unsuccessful solve: break
+    } else {                                   // unsuccessful solve: break
       if (outproc)  cerr << "Solver failure, stopping integration\n";
       cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
       return(1);
@@ -560,8 +585,10 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepGetLastStep (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = apply_Dengo_scaling(w, udata);
     if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = output_solution(t, w, hcur, iout+1, udata, opts);
-    if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (NoOutput == 0) {
+      retval = output_solution(t, w, hcur, iout+1, udata, opts);
+      if (check_flag(&retval, "output_solution (main)", 1)) MPI_Abort(udata.comm, 1);
+    }
     //    output CGS statistics to stdout (if requested)
     if (udata.showstats && (PRINT_CGS == 1)) {
       retval = print_stats(t, w, 1, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
@@ -581,11 +608,16 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_IO].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
-  if (udata.showstats && outproc)  fclose(DFID);
+  if (udata.showstats && outproc) {
+    fclose(DFID);
+  }
 
-  // compute simulation time
+  // compute simulation time, total time
   retval = udata.profile[PR_SIMUL].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = udata.profile[PR_TOTAL].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+
 
   // Get some integrator statistics
   nst = nst_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
@@ -635,7 +667,7 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
   udata.profile[PR_TRANS].print_cumulative_times("trans");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
-
+  udata.profile[PR_TOTAL].print_cumulative_times("Total");
 
   // Output mass/energy conservation error
   if (udata.showstats) {
@@ -968,5 +1000,6 @@ long int SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
 }
+
 
 //---- end of file ----
