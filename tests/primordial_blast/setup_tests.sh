@@ -135,6 +135,9 @@ for nf in "${NodeFactor[@]}"; do
             sed -i "/fusedkernels =.*/ s/.*#/fusedkernels = 0 #/" $inputs
             sed -i "/localreduce =.*/ s/.*#/localreduce = 0 #/" $inputs
         fi
+        # disable output
+        sed -i "/nout =.*/ s/.* #/nout = 0 #/" $inputs
+        sed -i "/showstats =.*/ s/.*#/showstats = 0 #/" $inputs
 
         # modify submission script for this job
         #   max wall clock time (hours): WTIME -> {2,4,6,8}
