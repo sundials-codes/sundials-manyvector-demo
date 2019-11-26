@@ -69,6 +69,9 @@ export MPICC=${MPI_ROOT}/bin/mpicc
 export MPICXX=${MPI_ROOT}/bin/mpic++
 export MPIFC=${MPI_ROOT}/bin/mpif90
 
+# enable building Sundials with CUDA support
+export SUNDIALS_CUDA="ON"
+
 # load other modules
 module load cmake
 module load essl

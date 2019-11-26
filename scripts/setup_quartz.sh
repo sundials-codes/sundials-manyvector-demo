@@ -49,6 +49,9 @@ export MPICC=mpicc
 export MPICXX=mpic++
 export MPIFC=mpif90
 
+# disable building Sundials with CUDA support
+export SUNDIALS_CUDA="OFF"
+
 # load other modules
 module load cmake
 module load mkl
