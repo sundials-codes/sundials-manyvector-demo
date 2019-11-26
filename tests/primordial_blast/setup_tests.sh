@@ -1,21 +1,31 @@
 #!/bin/bash
-#
-# This script sets up input files for explicit method weak scaling
-# tests for the primordial_blast_mr.exe test code.  Here, the mesh
-# size is increased in proportion to the number of parallel tasks.
-# However, what makes it "explicit" is that the slow time step size
-# is decreased in proportion with the spatial mesh size (to satisfy
-# stability considerations), and the simulation is run for a fixed
+# ------------------------------------------------------------------------------
+# Programmer(s): Daniel R. Reynolds @ SMU
+#                David J. Gardner @ LLNL
+# ------------------------------------------------------------------------------
+# Copyright (c) 2019
+# Southern Methodist University and Lawrence Livermore National Security.
+# All rights reserved.
+# For details, see the LICENSE file.
+# ------------------------------------------------------------------------------
+# This script sets up input files for explicit method weak scaling tests for the
+# primordial_blast_mr.exe test code. Here, the mesh is refined in proportion to
+# the number of parallel tasks. However, what makes it "explicit" is that the
+# slow time step size is decreased in proportion with the spatial mesh size
+# (to satisfy stability considerations), and the simulation is run for a fixed
 # number of "slow" time steps (instead of to a fixed final time).
 #
-# In these tests, the fast time scale is evolved with a time step
-# that is independent of the mesh, meaning that as the domain is
-# refined, the multirate time scale separation factor decreases.
-# This can be modified by changing the "hmax=..." line below to
-# use the currently-commented version.
+# In these tests, the fast time scale is evolved with a time step that is
+# independent of the mesh, meaning that as the domain is refined, the multirate
+# time scale separation factor decreases. This can be modified by changing the
+# "hmax=..." line below to use the currently-commented version.
 #
-# Daniel R. Reynolds @ SMU
-# September 18, 2019
+# One input is required, the location where the test cases should be written.
+# For example,
+#
+# summit: ./setup_tests.sh $PROJWORK/project/ManyVector-demo-runs
+# lassen: ./setup_tests.sh /p/gpfs1/user/ManyVector-demo-runs
+# ------------------------------------------------------------------------------
 
 # basic variables
 TasksPerNode=40    # number of MPI tasks to use per node
