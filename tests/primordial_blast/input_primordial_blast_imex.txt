@@ -34,7 +34,7 @@ zrbc = 3
 MassUnits = 3.0e70       # mass unit scaling factor (code -> g)
 LengthUnits = 3.0857e30  # length unit scaling factor (code -> cm) -- 1e6 Mpc
 #TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
-TimeUnits = 1.0e12
+TimeUnits = 1.0e11
 #
 #
 #### Run Options ####
@@ -66,8 +66,8 @@ hmax = 0.005        # maximum time step size (0 => infinite)
 fixedstep = 1       # use adaptive/fixed timestepping (0 => adaptive)
 htrans = 0.05       # time interval for initial transient evolution (0 => none)
 predictor = 0       # algorithm for implicit predictor (0 => default)
-maxniters = 5       # max number nonlinear iterations (0 => default)
-nlconvcoef = 0.001  # nonlinear tolerance safety factor (0 => default)
+maxniters = 10      # max number nonlinear iterations (0 => default)
+nlconvcoef = 0.01   # nonlinear tolerance safety factor (0 => default)
 rtol = 1e-5         # relative solution tolerance (0 => default)
 atol = 1e-9         # absolute solution tolerance (0 => default)
 #
