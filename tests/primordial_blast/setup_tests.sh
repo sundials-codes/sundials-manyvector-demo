@@ -1,17 +1,17 @@
 #!/bin/bash
 #
-# This script sets up input files for explicit method weak scaling 
-# tests for the primordial_blast_mr.exe test code.  Here, the mesh 
-# size is increased in proportion to the number of parallel tasks.  
-# However, what makes it "explicit" is that the slow time step size 
-# is decreased in proportion with the spatial mesh size (to satisfy 
-# stability considerations), and the simulation is run for a fixed 
+# This script sets up input files for explicit method weak scaling
+# tests for the primordial_blast_mr.exe test code.  Here, the mesh
+# size is increased in proportion to the number of parallel tasks.
+# However, what makes it "explicit" is that the slow time step size
+# is decreased in proportion with the spatial mesh size (to satisfy
+# stability considerations), and the simulation is run for a fixed
 # number of "slow" time steps (instead of to a fixed final time).
 #
-# In these tests, the fast time scale is evolved with a time step 
-# that is independent of the mesh, meaning that as the domain is 
-# refined, the multirate time scale separation factor decreases.  
-# This can be modified by changing the "hmax=..." line below to 
+# In these tests, the fast time scale is evolved with a time step
+# that is independent of the mesh, meaning that as the domain is
+# refined, the multirate time scale separation factor decreases.
+# This can be modified by changing the "hmax=..." line below to
 # use the currently-commented version.
 #
 # Daniel R. Reynolds @ SMU
@@ -31,11 +31,29 @@ base_h0=0.1        # base slow time step size
 base_m=1000.0      # base fast/slow time scale separation factor
 base_htrans=0.1    # base fast transient evolution interval
 
-
 # testing 'dimensions'
 NodeFactor=(1 2 4 6 8 10 12)
 Fused=(fused unfused)
 
+# ------------------------------------------------------------------------------
+# Generate test files
+# ------------------------------------------------------------------------------
+
+# check for output directory
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Path to testing directory required"
+    exit 1
+fi
+testroot=$1
+
+# check that the HOST environment variable is valid
+case "$HOST" in
+    summit|lassen) ;;
+    *)
+        echo "ERROR: Unknown host: $HOST"
+        exit 1
+        ;;
+esac
 
 # set up each test
 for nf in "${NodeFactor[@]}"; do
@@ -47,6 +65,9 @@ for nf in "${NodeFactor[@]}"; do
 
         # set directory name for test
         d=n${n}_${f}
+
+        # path the test directory
+        testdir=$testroot/$d
 
         # compute Cartesian parallel decomposition
         let "npx = $base_npx * $nf"
@@ -68,7 +89,7 @@ for nf in "${NodeFactor[@]}"; do
         # compute total number of MPI tasks
         let "m = $TasksPerNode * $n"
 
-        # sanity check for agreement 
+        # sanity check for agreement
         let "m2 = $npx * $npy * $npz"
         if [ $m -ne $m2 ]; then
             echo "setup_tests.sh error, $m does not equal $m2"
@@ -83,14 +104,14 @@ for nf in "${NodeFactor[@]}"; do
         echo "    h_fast = $h_fast"
         echo "    h_transient = $h_transient"
         echo "  "
-        if [ -d $d ]; then
-            rm -rf $d
+        if [ -d $testdir ]; then
+            rm -rf $testdir
         fi
-        mkdir -p $d
-        cp input_primordial_blast_mr.txt $d/
-        cp primordial_tables.h5 $d/
-        cp primordial_blast_mr.exe $d/
-        cp jobscript.lsf $d/
+        mkdir -p $testdir
+        cp input_primordial_blast_mr.txt $testdir/
+        cp primordial_tables.h5 $testdir/
+        cp jobscript_${HOST}.lsf $testdir/
+        cp primordial_blast_mr.exe $testdir/
 
         # add specific flags to input file based on options:
         #   nx, ny, nz -- global problem grid size
@@ -99,20 +120,20 @@ for nf in "${NodeFactor[@]}"; do
         #   hmax -- fast time step size
         #   htrans -- initial interval for fast transient evolution
         #   fusedkernels, localreduce -- flags to enable new N_Vector operations
-        inputs=$d/input_primordial_blast_mr.txt
-        echo "nx = $nx" >> $inputs
-        echo "ny = $ny" >> $inputs
-        echo "nz = $nz" >> $inputs
-        echo "tf = $tfinal" >> $inputs
-        echo "h0 = $h_slow" >> $inputs
-        echo "hmax = $h_fast" >> $inputs
-        echo "htrans = $h_transient" >> $inputs
+        inputs=$testdir/input_primordial_blast_mr.txt
+        sed -i "s/nx = .*/nx = $nx/" $inputs
+        sed -i "s/ny = .*/ny = $ny/" $inputs
+        sed -i "s/nz = .*/nz = $nz/" $inputs
+        sed -i "s/tf = .*/tf = $tfinal/" $inputs
+        sed -i "s/h0 = .*/h0 = $h_slow/" $inputs
+        sed -i "s/hmax = .*/hmax = $h_fast/" $inputs
+        sed -i "s/htrans = .*/htrans = $h_transient/" $inputs
         if [ $f == fused ]; then
-            echo "fusedkernels = 1" >> $inputs
-            echo "localreduce = 1"  >> $inputs
+            sed -i "s/fusedkernels = .*/fusedkernels = 1/" $inputs
+            sed -i "s/localreduce = .*/localreduce = 1/" $inputs
         else
-            echo "fusedkernels = 0" >> $inputs
-            echo "localreduce = 0"  >> $inputs
+            sed -i "s/fusedkernels = .*/fusedkernels = 0/" $inputs
+            sed -i "s/localreduce = .*/localreduce = 0/" $inputs
         fi
 
         # modify submission script for this job
@@ -121,22 +142,22 @@ for nf in "${NodeFactor[@]}"; do
         #   job name: NAME -> pbmr-${d}
         #   run directory: RUNDIR -> ${d}
         #   number of resource sets: RESOURCESETS -> ${n} x 2
-        sed -i "s/NODES/${n}/g" $d/jobscript.lsf
-        sed -i "s/NAME/pbmr-${d}/g" $d/jobscript.lsf
-        sed -i "s/RUNDIR/${d}/g" $d/jobscript.lsf
+        jobscript=$testdir/jobscript_${HOST}.lsf
+        sed -i "s/NODES/${n}/g" $jobscript
+        sed -i "s/NAME/pbmr-${d}/g" $jobscript
+        sed -i "s|RUNDIR|${testdir}|g" $jobscript
         let "rs = $n * 2"
-        sed -i "s/RESOURCESETS/${rs}/g" $d/jobscript.lsf
+        sed -i "s/RESOURCESETS/${rs}/g" $jobscript
         if [ $nf -lt 3 ]; then
-            sed -i "s/WTIME/2/g" $d/jobscript.lsf
+            sed -i "s/WTIME/2/g" $jobscript
         elif [ $nf -lt 4 ]; then
-            sed -i "s/WTIME/4/g" $d/jobscript.lsf
+            sed -i "s/WTIME/4/g" $jobscript
         elif  [ $nf -lt 8 ]; then
-            sed -i "s/WTIME/6/g" $d/jobscript.lsf
+            sed -i "s/WTIME/6/g" $jobscript
         else
-            sed -i "s/WTIME/8/g" $d/jobscript.lsf
+            sed -i "s/WTIME/8/g" $jobscript
         fi
 
     done
 
 done
-

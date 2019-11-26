@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#BSUB -P csc317                  # charge csc317 project
+#BSUB -P sundials                # project to charge
 #BSUB -W WTIME:00                # max wall time (hours)
 #BSUB -nnodes NODES              # requested nodes
 #BSUB -J NAME                    # job name
@@ -16,12 +16,12 @@ echo "  "
 date
 
 # ensure that appropriate modules are loaded
-module load essl
-module load metis
-module load hdf5
-#module load cuda
-module load hpctoolkit
-module unload xalt
+module load xl/2019.02.07
+module load cmake
+module load essl/6.2
+module load hdf5-parallel/1.10.4
+module load cuda/10.1.243
+module load hpctoolkit/2019.03.10
 
 # write loaded modules (sent to stderr)
 module list
@@ -55,8 +55,3 @@ echo $CMD
 # run the job
 echo "  "
 $CMD
-
-# copy output/error files to project home folder and update premissions
-cp stdout*.txt stderr*.txt /ccs/proj/csc317/ManyVector-demo-run-results/
-chgrp csc317 /ccs/proj/csc317/ManyVector-demo-run-results/*.txt
-chmod g+rw /ccs/proj/csc317/ManyVector-demo-run-results/*.txt
