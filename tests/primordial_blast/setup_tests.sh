@@ -121,19 +121,19 @@ for nf in "${NodeFactor[@]}"; do
         #   htrans -- initial interval for fast transient evolution
         #   fusedkernels, localreduce -- flags to enable new N_Vector operations
         inputs=$testdir/input_primordial_blast_mr.txt
-        sed -i "s/nx = .*/nx = $nx/" $inputs
-        sed -i "s/ny = .*/ny = $ny/" $inputs
-        sed -i "s/nz = .*/nz = $nz/" $inputs
-        sed -i "s/tf = .*/tf = $tfinal/" $inputs
-        sed -i "s/h0 = .*/h0 = $h_slow/" $inputs
-        sed -i "s/hmax = .*/hmax = $h_fast/" $inputs
-        sed -i "s/htrans = .*/htrans = $h_transient/" $inputs
+        sed -i "/nx =.*/ s/.*#/nx = $nx #/" $inputs
+        sed -i "s/ny =.*/ny = $ny/" $inputs
+        sed -i "s/nz =.*/nz = $nz/" $inputs
+        sed -i "s/tf =.*/tf = $tfinal/" $inputs
+        sed -i "/h0 =.*/ s/.*#/h0 = $h_slow #/" $inputs
+        sed -i "/hmax =.*/ s/.*#/hmax = $h_fast #/" $inputs
+        sed -i "/htrans =.*/ s/.*#/htrans = $h_transient #/" $inputs
         if [ $f == fused ]; then
-            sed -i "s/fusedkernels = .*/fusedkernels = 1/" $inputs
-            sed -i "s/localreduce = .*/localreduce = 1/" $inputs
+            sed -i "/fusedkernels =.*/ s/.*#/fusedkernels = 1 #/" $inputs
+            sed -i "/localreduce =.*/ s/.*#/localreduce = 1 #/" $inputs
         else
-            sed -i "s/fusedkernels = .*/fusedkernels = 0/" $inputs
-            sed -i "s/localreduce = .*/localreduce = 0/" $inputs
+            sed -i "/fusedkernels =.*/ s/.*#/fusedkernels = 0 #/" $inputs
+            sed -i "/localreduce =.*/ s/.*#/localreduce = 0 #/" $inputs
         fi
 
         # modify submission script for this job
