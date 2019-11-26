@@ -73,7 +73,8 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 static int PostprocessStep(realtype t, N_Vector y, void* user_data);
 
 // utility routines
-void cleanup(void **arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
+void cleanup(void **arkode_mem,
+             SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
              N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
 
 
@@ -391,8 +392,8 @@ int main(int argc, char* argv[]) {
     realtype adapt_params[] = {opts.k1, opts.k2, opts.k3};
     int idefault = 1;
     if (abs(opts.k1)+abs(opts.k2)+abs(opts.k3) > 0.0)  idefault=0;
-    retval = ARKStepSetAdaptivityMethod(arkode_mem, opts.adapt_method, idefault,
-                                        opts.pq, adapt_params);
+    retval = ARKStepSetAdaptivityMethod(arkode_mem, opts.adapt_method,
+                                        idefault, opts.pq, adapt_params);
     if (check_flag(&retval, "ARKStepSetAdaptivityMethod (main)", 1)) MPI_Abort(udata.comm, 1);
 
     // set first step growth factor
@@ -533,13 +534,99 @@ int main(int argc, char* argv[]) {
       return(1);
     }
 
+    // stop transient solver profiler
+    retval = udata.profile[PR_TRANS].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    if (outproc) {
+      nst = nst_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
+      retval = ARKStepGetNumSteps(arkode_mem, &nst);
+      if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
+      if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumRhsEvals(arkode_mem, &nfe, &nfi);
+      if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
+      if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
+      if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+      if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumJacEvals(arkode_mem, &nje);
+      if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      cout << "\nTransient portion of simulation complete:\n";
+      cout << "   Solver steps = " << nst << " (attempted = " << nst_a << ")\n";
+      cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
+      cout << "   Total number of error test failures = " << netf << "\n";
+      if (nls > 0)
+        cout << "   Total number of lin solv setups = " << nls << "\n";
+      if (nni > 0) {
+        cout << "   Total number of nonlin iters = " << nni << "\n";
+        cout << "   Total number of nonlin conv fails = " << ncf << "\n";
+      }
+      cout << "\nCurrent profiling results:\n";
+    }
+    retval = MPI_Barrier(udata.comm);
+    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+    udata.profile[PR_SETUP].print_cumulative_times("setup");
+    udata.profile[PR_IO].print_cumulative_times("I/O");
+    udata.profile[PR_MPI].print_cumulative_times("MPI");
+    udata.profile[PR_PACKDATA].print_cumulative_times("pack");
+    udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
+    udata.profile[PR_RHSEULER].print_cumulative_times("Euler RHS");
+    udata.profile[PR_RHSSLOW].print_cumulative_times("explicit RHS");
+    udata.profile[PR_RHSFAST].print_cumulative_times("implicit RHS");
+    udata.profile[PR_JACFAST].print_cumulative_times("implicit Jac");
+    udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
+    udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
+    udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
+    udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
+    udata.profile[PR_TRANS].print_cumulative_times("trans");
+    if (outproc)  cout << std::endl;
+
+    // reset current evolution-related profilers for subsequent fixed-step evolution
+    udata.profile[PR_IO].reset();
+    udata.profile[PR_MPI].reset();
+    udata.profile[PR_PACKDATA].reset();
+    udata.profile[PR_FACEFLUX].reset();
+    udata.profile[PR_RHSEULER].reset();
+    udata.profile[PR_RHSSLOW].reset();
+    udata.profile[PR_RHSFAST].reset();
+    udata.profile[PR_JACFAST].reset();
+    udata.profile[PR_LSETUP].reset();
+    udata.profile[PR_LSOLVE].reset();
+    udata.profile[PR_POSTFAST].reset();
+    udata.profile[PR_DTSTAB].reset();
+
+    // periodic output of solution/statistics
+    retval = udata.profile[PR_IO].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    //    output diagnostic information (if applicable)
+    retval = output_diagnostics(t, w, udata);
+    if (check_flag(&retval, "output_diagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
+
+    //    output normalized statistics to stdout (if requested)
+    if (udata.showstats) {
+      if (PRINT_CGS == 1) {
+        retval = apply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "apply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+      retval = print_stats(t, w, 0, PRINT_SCIENTIFIC, PRINT_CGS, arkode_mem, udata);
+      if (check_flag(&retval, "print_stats (main)", 1)) MPI_Abort(udata.comm, 1);
+      if (PRINT_CGS == 1) {
+        retval = unapply_Dengo_scaling(w, udata);
+        if (check_flag(&retval, "unapply_Dengo_scaling (main)", 1)) MPI_Abort(udata.comm, 1);
+      }
+    }
+    retval = udata.profile[PR_IO].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+
+
     // disable adaptivity and set fixed step size
     retval = ARKStepSetFixedStep(arkode_mem, opts.hmax);
     if (check_flag(&retval, "ARKStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
 
-    // stop transient solver profiler
-    retval = udata.profile[PR_TRANS].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
 
@@ -618,27 +705,24 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_TOTAL].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
-
-  // Get some integrator statistics
-  nst = nst_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
-  retval = ARKStepGetNumSteps(arkode_mem, &nst);
-  if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
-  if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumRhsEvals(arkode_mem, &nfe, &nfi);
-  if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
-  if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
-  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
-  if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumJacEvals(arkode_mem, &nje);
-  if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // Print some final statistics
   if (outproc) {
-    cout << "\nFinal Solver Statistics:\n";
+    nst = nst_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
+    retval = ARKStepGetNumSteps(arkode_mem, &nst);
+    if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
+    if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumRhsEvals(arkode_mem, &nfe, &nfi);
+    if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
+    if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
+    if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+    if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumJacEvals(arkode_mem, &nje);
+    if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    cout << "\nOverall Solver Statistics:\n";
     cout << "   Solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
@@ -648,7 +732,7 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of nonlin iters = " << nni << "\n";
       cout << "   Total number of nonlin conv fails = " << ncf << "\n";
     }
-    cout << "\nProfiling Results:\n";
+    cout << "\nFinal profiling results:\n";
   }
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
@@ -657,15 +741,14 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_MPI].print_cumulative_times("MPI");
   udata.profile[PR_PACKDATA].print_cumulative_times("pack");
   udata.profile[PR_FACEFLUX].print_cumulative_times("flux");
-  udata.profile[PR_RHSEULER].print_cumulative_times("fEuler");
-  udata.profile[PR_RHSSLOW].print_cumulative_times("fexpl");
-  udata.profile[PR_RHSFAST].print_cumulative_times("fimpl");
-  udata.profile[PR_JACFAST].print_cumulative_times("Jimpl");
+  udata.profile[PR_RHSEULER].print_cumulative_times("Euler RHS");
+  udata.profile[PR_RHSSLOW].print_cumulative_times("explicit RHS");
+  udata.profile[PR_RHSFAST].print_cumulative_times("implicit RHS");
+  udata.profile[PR_JACFAST].print_cumulative_times("implicit Jac");
   udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
   udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
-  udata.profile[PR_TRANS].print_cumulative_times("trans");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
   udata.profile[PR_TOTAL].print_cumulative_times("Total");
 
