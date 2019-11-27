@@ -45,7 +45,7 @@ JSRUN_L=CPU-CPU
 JSRUN_D=packed
 
 # create jsrun command
-CMD="jsrun -n $JSRUN_N -a $JSRUN_A -c $JSRUN_C -g $JSRUN_G -b $JSRUN_B -r $JSRUN_R -l $JSRUN_L -d $JSRUN_D ./primordial_blast_mr.exe --infile=input_primordial_blast_mr.txt"
+CMD="jsrun -n $JSRUN_N -a $JSRUN_A -c $JSRUN_C -g $JSRUN_G -b $JSRUN_B -r $JSRUN_R -l $JSRUN_L -d $JSRUN_D ./primordial_blast_SUFFIX.exe --infile=input_primordial_blast_SUFFIX.txt"
 
 # echo jsrun command to stdout
 echo "  "

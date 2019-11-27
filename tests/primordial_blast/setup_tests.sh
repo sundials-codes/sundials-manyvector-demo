@@ -9,22 +9,26 @@
 # For details, see the LICENSE file.
 # ------------------------------------------------------------------------------
 # This script sets up input files for explicit method weak scaling tests for the
-# primordial_blast_mr.exe test code. Here, the mesh is refined in proportion to
-# the number of parallel tasks. However, what makes it "explicit" is that the
-# slow time step size is decreased in proportion with the spatial mesh size
-# (to satisfy stability considerations), and the simulation is run for a fixed
-# number of "slow" time steps (instead of to a fixed final time).
+# primordial_blast_mr.exe or primordial_blast_imex.exe test codes. Here, the
+# mesh is refined in proportion to the number of parallel tasks. However, what
+# makes it "explicit" is that the slow time step size is decreased in proportion
+# with the spatial mesh size (to satisfy stability considerations), and the
+# simulation is run for a fixed number of "slow" time steps (instead of to a
+# fixed final time).
 #
 # In these tests, the fast time scale is evolved with a time step that is
 # independent of the mesh, meaning that as the domain is refined, the multirate
 # time scale separation factor decreases. This can be modified by changing the
 # "hmax=..." line below to use the currently-commented version.
 #
-# One input is required, the location where the test cases should be written.
-# For example,
+# Two inputs are required:
+#   1. The location where the testing files should be written.
+#   2. The test type: multirate or imex
 #
-# summit: ./setup_tests.sh $PROJWORK/project/ManyVector-demo-runs
-# lassen: ./setup_tests.sh /p/gpfs1/user/ManyVector-demo-runs
+# Example usage:
+#
+# summit: ./setup_tests.sh $PROJWORK/project/ManyVector-demo-runs multirate
+# lassen: ./setup_tests.sh /p/gpfs1/user/ManyVector-demo-runs imex
 # ------------------------------------------------------------------------------
 
 # basic variables
@@ -49,18 +53,31 @@ Fused=(fused unfused)
 # Generate test files
 # ------------------------------------------------------------------------------
 
-# check for output directory
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Path to testing directory required"
+# check for required inputs
+if [ "$#" -lt 2 ]; then
+    echo "ERROR: Two inputs required:"
+    echo "  1. Location where test files should be written"
+    echo "  2. Test type: multirate or imex"
     exit 1
 fi
 testroot=$1
+testtype=$2
+
+# check for valid test type
+if [ "$testtype" == "multirate" ]; then
+    suffix=mr
+elif [ "$testtype" == "imex" ]; then
+    suffix=imex
+else
+    echo "ERROR: Invalid test type: $testtype"
+    exit 1
+fi
 
 # check that the HOST environment variable is valid
 case "$HOST" in
     summit|lassen) ;;
     *)
-        echo "ERROR: Unknown host: $HOST"
+        echo "ERROR: Unknown host name: $HOST"
         exit 1
         ;;
 esac
@@ -118,24 +135,26 @@ for nf in "${NodeFactor[@]}"; do
             rm -rf $testdir
         fi
         mkdir -p $testdir
-        cp input_primordial_blast_mr.txt $testdir/
         cp primordial_tables.h5 $testdir/
         cp jobscript_${HOST}.lsf $testdir/
-        cp primordial_blast_mr.exe $testdir/
+        cp input_primordial_blast_${suffix}.txt $testdir/
+        cp ../../primordial_blast_${suffix}.exe $testdir/
 
-        # add specific flags to input file based on options:
+        # modify input file based on options:
         #   nx, ny, nz -- global problem grid size
         #   tf -- final simulation time
         #   h0 -- slow time step size
         #   hmax -- fast time step size
         #   htrans -- initial interval for fast transient evolution
         #   fusedkernels, localreduce -- flags to enable new N_Vector operations
-        inputs=$testdir/input_primordial_blast_mr.txt
+        inputs=$testdir/input_primordial_blast_${suffix}.txt
         sed -i "/nx =.*/ s/.*#/nx = $nx #/" $inputs
         sed -i "s/ny =.*/ny = $ny/" $inputs
         sed -i "s/nz =.*/nz = $nz/" $inputs
         sed -i "s/tf =.*/tf = $tfinal/" $inputs
-        sed -i "/h0 =.*/ s/.*#/h0 = $h_slow #/" $inputs
+        if [ "$testtype" == "multirate" ]; then
+            sed -i "/h0 =.*/ s/.*#/h0 = $h_slow #/" $inputs
+        fi
         sed -i "/hmax =.*/ s/.*#/hmax = $h_fast #/" $inputs
         sed -i "/htrans =.*/ s/.*#/htrans = $h_transient #/" $inputs
         if [ $f == fused ]; then
@@ -149,13 +168,15 @@ for nf in "${NodeFactor[@]}"; do
         sed -i "/nout =.*/ s/.* #/nout = 0 #/" $inputs
         sed -i "/showstats =.*/ s/.*#/showstats = 0 #/" $inputs
 
-        # modify submission script for this job
+        # modify submission script for this job:
+        #   test suffix: SUFFIX -> {mr, imex}
         #   max wall clock time (hours): WTIME -> {2,4,6,8}
         #   requested nodes: NODES -> ${n}
         #   job name: NAME -> pbmr-${d}
         #   run directory: RUNDIR -> ${d}
         #   number of resource sets: RESOURCESETS -> ${n} x 2
         jobscript=$testdir/jobscript_${HOST}.lsf
+        sed -i "s/SUFFIX/${suffix}/g" $jobscript
         sed -i "s/NODES/${n}/g" $jobscript
         sed -i "s/NAME/pbmr-${d}/g" $jobscript
         sed -i "s|RUNDIR|${testdir}|g" $jobscript
