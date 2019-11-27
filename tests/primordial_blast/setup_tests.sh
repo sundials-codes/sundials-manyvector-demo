@@ -25,6 +25,9 @@
 #   1. The location where the testing files should be written.
 #   2. The test type: multirate or imex
 #
+# One optional input is supported:
+#   1. The h_fast type: fixed or refined (default refined)
+#
 # Example usage:
 #
 # summit: ./setup_tests.sh $PROJWORK/project/ManyVector-demo-runs multirate
@@ -73,6 +76,23 @@ else
     exit 1
 fi
 
+# set defaults for optional inputs
+hfasttype=refined
+
+# check for optional inputs
+if [ "$#" -gt 2 ]; then
+    hfasttype=$3
+fi
+
+# check for valid hfast type
+case "$hfasttype" in
+    fixed|refined) ;;
+    *)
+        echo "ERROR: Unknown h_fast type: $hfasttype"
+        exit 1
+        ;;
+esac
+
 # check that the HOST environment variable is valid
 case "$HOST" in
     summit|lassen) ;;
@@ -109,8 +129,11 @@ for nf in "${NodeFactor[@]}"; do
         # compute time-stepping parameters
         tfinal=`python -c "print $base_tf / $nf"`
         h_slow=`python -c "print $base_h0 / $nf"`
-        #h_fast=`python -c "print $base_h0 / $base_m"`  # fixed hfast
-        h_fast=`python -c "print $base_h0 / $base_m / $nf"`  # refined hfast
+        if [ "$hfasttype" == "fixed" ]; then
+            h_fast=`python -c "print $base_h0 / $base_m"`  # fixed hfast
+        else
+            h_fast=`python -c "print $base_h0 / $base_m / $nf"`  # refined hfast
+        fi
         h_transient=`python -c "print $base_htrans / $nf"`
 
         # compute total number of MPI tasks
