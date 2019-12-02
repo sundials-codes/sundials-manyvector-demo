@@ -1,19 +1,22 @@
 #!/bin/bash
 #
-#BSUB -P sundials                # project to charge
+#BSUB -G sundials                # account
 #BSUB -W WTIME:00                # max wall time (hours)
-#BSUB -nnodes NODES              # requested nodes
+#BSUB -nnodes NODES              # number of nodes
+#BSUB -q pbatch                  # queue to use
 #BSUB -J NAME                    # job name
-#BSUB -o stdout-%J.txt
-#BSUB -e stderr-%J.txt
+#BSUB -o stdout-%J.txt           # stdout
+#BSUB -e stderr-%J.txt           # stderr
 #BSUB -N                         # send email on job completion
 
 # change to run directory
 cd RUNDIR
 
-# write timestamp to stdout
+# write timestamp and job ID to stdout
 echo "  "
 date
+hostname
+echo -n 'JobID '; echo $LSB_JOBID
 
 # ensure that appropriate modules are loaded
 module load xl/2019.02.07
@@ -55,3 +58,5 @@ echo $CMD
 # run the job
 echo "  "
 $CMD
+
+echo 'Done'
