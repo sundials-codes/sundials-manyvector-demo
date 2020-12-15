@@ -15,9 +15,31 @@
 # Script to build KLU
 # --------------------------------------------------------------------------
 
-# set paths
-srcdir=${HOME}/SuiteSparse
-installdir=${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
+# check for correct number of inputs
+if [ "$#" -lt 3 ]; then
+    echo "ERROR: Three (3) inputs required:"
+    echo "  1) Path to SuiteSparse source e.g., ~/suitesparse-5.4.0"
+    echo "  2) SuiteSparse version e.g., 5.4.0"
+    echo "  3) Build type: opt or dbg"
+    exit 1
+fi
+
+# path to SUNDIALS source and version name or number
+srcdir=$1
+srcver=$2
+
+# build type: opt (optimized) or dbg (debug)
+bldtype=$3
+case "$bldtype" in
+    opt|dbg) ;;
+    *)
+        echo "ERROR: Unknown build type: $bldtype"
+        exit 1
+        ;;
+esac
+
+# set install path
+installdir=${PROJHOME}/${COMPILERNAME}/suitesparse-${srcver}-${bldtype}
 
 # ------------------------------------------------------------------------------
 # Configure, build, and install
@@ -25,6 +47,13 @@ installdir=${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
 
 # return on any error
 set -e
+
+# optimized or debug flags
+if [ "$bldtype" == "opt" ]; then
+    export FLAGS='-O3'
+else
+    export FLAGS='-O0 -g'
+fi
 
 # move to source
 cd $srcdir
@@ -40,6 +69,7 @@ make config \
     CC=${CC} \
     CXX=${CXX} \
     F77=${FC} \
+    OPTIMIZATION="${FLAGS}" \
     BLAS=${BLAS_LIB} \
     LAPACK=${LAPACK_LIB} \
     MY_METIS_INC=${METIS_INC_DIR} \
@@ -53,6 +83,7 @@ make library \
     CC=${CC} \
     CXX=${CXX} \
     F77=${FC} \
+    OPTIMIZATION="${FLAGS}" \
     BLAS=${BLAS_LIB} \
     LAPACK=${LAPACK_LIB} \
     MY_METIS_INC=${METIS_INC_DIR} \

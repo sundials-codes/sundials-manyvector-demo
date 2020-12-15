@@ -15,9 +15,31 @@
 # Script to build Metis
 # --------------------------------------------------------------------------
 
-# set paths
-srcdir=${HOME}/metis-5.1.0
-installdir=${PROJHOME}/${COMPILERNAME}/metis-5.1.0
+# check for correct number of inputs
+if [ "$#" -lt 3 ]; then
+    echo "ERROR: Three (3) inputs required:"
+    echo "  1) Path to metis source e.g., ~/metis-5.1.0"
+    echo "  2) Metis version e.g., 5.1.0"
+    echo "  3) Build type: opt or dbg"
+    exit 1
+fi
+
+# path to SUNDIALS source and version name or number
+srcdir=$1
+srcver=$2
+
+# build type: opt (optimized) or dbg (debug)
+bldtype=$3
+case "$bldtype" in
+    opt|dbg) ;;
+    *)
+        echo "ERROR: Unknown build type: $bldtype"
+        exit 1
+        ;;
+esac
+
+# set install path
+installdir=${PROJHOME}/${COMPILERNAME}/metis-${srcver}-${bldtype}
 
 # ------------------------------------------------------------------------------
 # Configure, build, and install

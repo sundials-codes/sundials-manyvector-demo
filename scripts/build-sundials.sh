@@ -16,13 +16,20 @@
 # --------------------------------------------------------------------------
 
 # check for correct number of inputs
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Please specify build type opt or dbg"
+if [ "$#" -lt 3 ]; then
+    echo "ERROR: Three (3) inputs required:"
+    echo "  1) Path to SUNDIALS source"
+    echo "  2) SUNDIALS version"
+    echo "  3) Build type: opt or dbg"
     exit 1
 fi
 
+# path to SUNDIALS source and version name or number
+srcdir=$1
+srcver=$2
+
 # build type: opt (optimized) or dbg (debug)
-bldtype=$1
+bldtype=$3
 case "$bldtype" in
     opt|dbg) ;;
     *)
@@ -31,9 +38,8 @@ case "$bldtype" in
         ;;
 esac
 
-# set paths
-srcdir=${HOME}/sundials
-installdir=${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-${bldtype}
+# set install path
+installdir=${PROJHOME}/${COMPILERNAME}/sundials-${srcver}-${bldtype}
 
 # -------------------------------------------------------------------------------
 # Setup Build
@@ -75,26 +81,19 @@ cmake \
     -D SUNDIALS_PRECISION="double" \
     -D SUNDIALS_INDEX_SIZE="64" \
     \
-    -D MPI_ENABLE=ON \
+    -D ENABLE_MPI=ON \
     -D MPI_C_COMPILER=${MPICC} \
     -D MPI_CXX_COMPILER=${MPICXX} \
     -D MPI_Fortran_COMPILER=${MPIFC} \
     \
-    -D CUDA_ENABLE=${SUNDIALS_CUDA} \
-    \
-    -D KLU_ENABLE=ON \
+    -D ENABLE_KLU=ON \
     -D KLU_INCLUDE_DIR="${KLU_INC_DIR}" \
     -D KLU_LIBRARY_DIR="${KLU_LIB_DIR}" \
-    \
-    -D EXAMPLES_ENABLE_C=ON \
-    -D EXAMPLES_ENABLE_CXX=ON \
-    -D EXAMPLES_ENABLE_CUDA=${SUNDIALS_CUDA} \
     \
     -D BUILD_SHARED_LIBS=ON \
     -D BUILD_STATIC_LIBS=OFF \
     \
     -D CMAKE_INSTALL_PREFIX=$installdir \
-    -D CMAKE_INSTALL_LIBDIR=lib \
     \
     -D CMAKE_VERBOSE_MAKEFILE=OFF \
     \
