@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
 # Programmer(s):  David J. Gardner @ LLNL
 # ------------------------------------------------------------------------------
-# Copyright (c) 2019, Southern Methodist University and
+# Copyright (c) 2020, Southern Methodist University and
 # Lawrence Livermore National Security.
 # All rights reserved.
 # For details, see the LICENSE file.
@@ -166,14 +166,20 @@ target_compile_definitions(hurricane_zx_color.exe PRIVATE TEST_ZX)
 add_executable(primordial_ode.exe
   primordial_ode_main.cpp
   dengo_primordial_network.cpp)
-target_link_libraries(primordial_ode.exe PRIVATE shared_obj)
+target_link_libraries(primordial_ode.exe
+  PRIVATE
+  shared_obj
+  SUNDIALS::sunlinsolklu)
 target_compile_definitions(primordial_ode.exe
   PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1)
 
 add_executable(primordial_ode_CVODE.exe
   primordial_ode_main.cpp
   dengo_primordial_network.cpp)
-target_link_libraries(primordial_ode_CVODE.exe PRIVATE shared_obj)
+target_link_libraries(primordial_ode_CVODE.exe
+  PRIVATE
+  shared_obj
+  SUNDIALS::sunlinsolklu)
 target_compile_definitions(primordial_ode_CVODE.exe
   PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 USE_CVODE)
 
@@ -182,14 +188,20 @@ add_executable(primordial_static_imex.exe
   primordial_static.cpp
   imex_chem_hydro_main.cpp
   dengo_primordial_network.cpp)
-target_link_libraries(primordial_static_imex.exe PRIVATE shared_obj)
+target_link_libraries(primordial_static_imex.exe
+  PRIVATE
+  shared_obj
+  SUNDIALS::sunlinsolklu)
 target_compile_definitions(primordial_static_imex.exe
   PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 NVAR=15)
-        
+
 add_executable(primordial_static_mr.exe
   primordial_static.cpp
   multirate_chem_hydro_main.cpp
   dengo_primordial_network.cpp)
-target_link_libraries(primordial_static_mr.exe PRIVATE shared_obj)
+target_link_libraries(primordial_static_mr.exe
+  PRIVATE
+  shared_obj
+  SUNDIALS::sunlinsolklu)
 target_compile_definitions(primordial_static_mr.exe
   PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 NVAR=15)
