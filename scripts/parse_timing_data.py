@@ -641,7 +641,7 @@ def plotstackedbars(data, keys, save = False, title=None, ylabel=None):
 
 def plotscaling(rundata, keys, filterkey = [None, None],
                 normalize = False, errorbars = False, title = None,
-                Labels = None, save = False, fname = None):
+                Labels = None, save = False, fname = None, lwidth = 1):
     """
     Plot timing data as function of the number of processes
 
@@ -653,6 +653,7 @@ def plotscaling(rundata, keys, filterkey = [None, None],
     title:       string to use for plot title
     Labels:      strings to use in legend for each plot
     save:        if True, save plot to file else show plot on screen
+    lwidth:      line width to use in plots
     """
 
     # check inputs
@@ -727,10 +728,10 @@ def plotscaling(rundata, keys, filterkey = [None, None],
         # plot times
         if errorbars:
             plt.errorbar(nprocs, time, minmax,
-                         color=color[i], label=label_)
+                         color=color[i], label=label_, linewidth=lwidth)
         else:
             plt.semilogx(nprocs, time,
-                         color=color[i], label=label_)
+                         color=color[i], label=label_, linewidth=lwidth)
 
         # update counter
         i += 1
@@ -779,7 +780,8 @@ def plotscaling(rundata, keys, filterkey = [None, None],
 
 def plotcomparescaling(rundata, keys, filterkey,
                        normalize = False, errorbars = False,
-                       title = None, labels = None, save = False, fname = None):
+                       title = None, labels = None, save = False, fname = None,
+                       lwidth = 1):
     """
     Compare timing data as function of the number of processes for two setups
 
@@ -790,6 +792,7 @@ def plotcomparescaling(rundata, keys, filterkey,
     normalize:   if True, normalize times by min value of first key in keys input
     title:       string to use for plot title
     save:        if True, save plot to file else show plot on screen
+    lwidth:      line width to use in plots
     """
 
     # check inputs
@@ -879,14 +882,14 @@ def plotcomparescaling(rundata, keys, filterkey,
         # plot times
         if errorbars:
             plt.errorbar(nprocs1, time1, minmax1,
-                         color=color[i], linestyle='-', label=label1)
+                         color=color[i], linestyle='-', label=label1, linewidth=lwidth)
             plt.errorbar(nprocs2, time2, minmax2,
-                         color=color[i+1], linestyle='--', label=label2)
+                         color=color[i+1], linestyle='--', label=label2, linewidth=lwidth)
         else:
             plt.semilogx(nprocs1, time1,
-                         color=color[i], linestyle='-', label=label1)
+                         color=color[i], linestyle='-', label=label1, linewidth=lwidth)
             plt.semilogx(nprocs2, time2,
-                         color=color[i+1], linestyle='--', label=label2)
+                         color=color[i+1], linestyle='--', label=label2, linewidth=lwidth)
 
         # update counter
         i += 2

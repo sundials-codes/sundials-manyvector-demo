@@ -201,7 +201,7 @@ for nf in "${NodeFactor[@]}"; do
         jobscript=$testdir/jobscript_${HOST}.lsf
         sed -i "s/SUFFIX/${suffix}/g" $jobscript
         sed -i "s/NODES/${n}/g" $jobscript
-        sed -i "s/NAME/pbmr-${d}/g" $jobscript
+        sed -i "s/NAME/pb-${suffix}-${d}/g" $jobscript
         sed -i "s|RUNDIR|${testdir}|g" $jobscript
         let "rs = $n * 2"
         sed -i "s/RESOURCESETS/${rs}/g" $jobscript

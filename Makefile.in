@@ -40,6 +40,27 @@ ifeq ($(HOST),longclaw)
   CXX = /usr/local/mpich-3.3/gnu/bin/mpicxx --std=c++11
   OMPFLAGS = -fopenmp
 
+#    behmoth
+else ifeq ($(HOST),behemoth)
+  ifeq ($(LIBTYPE),OPT)
+    SUNDIR = /home/dreynolds/research/Sundials/install_opt
+  else
+    SUNDIR = /home/dreynolds/research/Sundials/install_dbg
+  endif
+  SUNLIBDIR = ${SUNDIR}/lib
+  SUNINCDIRS = -I${SUNDIR}/include
+
+  KLUDIR = /usr/local/suite-sparse-5.3.0/gcc-7.4
+  KLUINCDIRS = -I$(KLUDIR)/include/ -Wl,--as-needed
+  KLULIBDIR = $(KLUDIR)/lib
+
+  HDF5DIR = /usr/local/hdf5-1.10.6/gcc-7.4
+  HDFINCDIRS = -I${HDF5DIR}/include
+  HDFLIBDIR = ${HDF5DIR}/lib
+
+  CXX = /usr/local/mpich-3.3.2/gcc-7.4/bin/mpicxx --std=c++11
+  OMPFLAGS = -fopenmp
+
 #    cauchy
 else ifeq ($(HOST),cauchy)
   ifeq ($(LIBTYPE),OPT)
