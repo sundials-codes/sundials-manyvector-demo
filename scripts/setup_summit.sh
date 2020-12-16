@@ -30,48 +30,58 @@
 #   7) DefApps
 # --------------------------------------------------------------------------
 
-# check for correct number of inputs
-if [ "$#" -lt 2 ]; then
-    echo "ERROR: Two (2) inputs required:"
-    echo "  1) Compiler: xl or gcc"
-    echo "  2) Build type: opt or dbg"
+# set compiler spec
+compiler="gcc@8.1.1"
+if [ "$#" -gt 0 ]; then
+    compiler=$1
+fi
+
+# get compiler name and version from spec
+compilername="${compiler%%@*}"
+compilerversion="${compiler##*@}"
+
+# build type
+bldtype="dbg"
+if [ "$#" -gt 1 ]; then
+    bldtype=$2
+fi
+
+if [[ "${bldtype}" != "dbg" && "${bldtype}" != "opt" ]]; then
+    echo "ERROR: Unknown build type option: $bldtype"
     return 1
 fi
 
-# compiler option
-compiler=$1
-
-# build type: opt (optimized) or dbg (debug)
-bldtype=$2
-case "$bldtype" in
-    opt|dbg) ;;
-    *)
-        echo "ERROR: Unknown build type: $bldtype"
-        exit 1
-        ;;
-esac
-
-# set environment variables
-export HOST=summit
-export PROJHOME=/ccs/proj/csc317
+# cuda version
+cudaver="11.1.1"
+if [ "$#" -gt 2 ]; then
+    cudaver=$3
+fi
 
 # load compiler
-case "$compiler" in
+case "$compilername" in
     xl)
-        # default xl compiler as of 1 Sept 2019
-        module load xl/16.1.1-5
-        export COMPILERNAME="xl-16.1.1-5-r"
+        module load xl/${compilerversion}
         export CC=${OLCF_XLC_ROOT}/bin/xlc_r
         export CXX=${OLCF_XLC_ROOT}/bin/xlc++_r
         export FC=${OLCF_XLF_ROOT}/bin/xlf_r
         ;;
     gcc)
-        # default gcc compiler as of 1 Sept 2019
-        module load gcc/6.4.0
-        export COMPILERNAME="gcc-6.4.0"
+        module load gcc/${compilerversion}
         export CC=${OLCF_GCC_ROOT}/bin/gcc
         export CXX=${OLCF_GCC_ROOT}/bin/g++
         export FC=${OLCF_GCC_ROOT}/bin/gfortran
+        ;;
+    llvm)
+        module load llvm/${complierversion}
+        export CC=${OLCF_LLVM_ROOT}/bin/clang
+        export CXX=${OLCF_LLVM_ROOT}/bin/clang++
+        export FC=""
+        ;;
+    pgi)
+        module load pgi/${compilerversion}
+        export CC=${OLCF_PGI_ROOT}/linuxpower/${compilerversion}/bin/pgcc
+        export CXX=${OLCF_PGI_ROOT}/linuxpower/${compilerversion}/bin/pgc++
+        export FC=${OLCF_PGI_ROOT}/linuxpower/${compilerversion}/bin/pgfortran
         ;;
     *)
         echo "ERROR: Unknown compiler option: $compiler"
@@ -79,17 +89,37 @@ case "$compiler" in
         ;;
 esac
 
+# export compiler name for use in build scripts
+export COMPILERNAME="${compilername}-${compilerversion}"
+
 # setup MPI compiler environment variables
 export MPICC=${MPI_ROOT}/bin/mpicc
 export MPICXX=${MPI_ROOT}/bin/mpic++
 export MPIFC=${MPI_ROOT}/bin/mpif90
+
+# optimization level (separate from C/CXX/F flags for KLU build)
+if [ "$bldtype" == "opt" ]; then
+    export OPTIMIZATION='-O3'
+else
+    export OPTIMIZATION='-O0'
+fi
+
+# other compiler flags
+export CFLAGS='-g -Wall'
+export CXXFLAGS='-g -Wall'
+export FCFLAGS='-g'
+
+# set environment variables
+export HOST=summit
+export PROJHOME=/ccs/proj/csc317
 
 # load other modules
 module load cmake
 module load essl
 module load metis
 module load hdf5
-module load cuda
+module load cuda/${cudaver}
+#module load hip
 module load hpctoolkit
 
 # unload modules (needed to build KLU)
@@ -98,15 +128,16 @@ module unload xalt
 # list currently loaded modules
 module list
 
-# set environment variables
+# set environment variables for library installs
 export BLAS_LIB="${OLCF_ESSL_ROOT}/lib64/libessl.so"
 export LAPACK_LIB="${OLCF_ESSL_ROOT}/lib64/libessl.so"
 
 export METIS_INC_DIR="${OLCF_METIS_ROOT}/include"
 export METIS_LIB="${OLCF_METIS_ROOT}/lib/libmetis.so"
 
-export KLU_ROOT="${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0-${bldtype}"
+export KLU_ROOT="${PROJHOME}/${COMPILERNAME}/suitesparse-5.8.1-${bldtype}"
 export KLU_INC_DIR="${KLU_ROOT}/include"
 export KLU_LIB_DIR="${KLU_ROOT}/lib"
 
-export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-dev-${bldtype}"
+export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-cuda-${cudaver}-${bldtype}"
+export RAJA_ROOT="${PROJHOME}/${COMPILERNAME}/raja-0.13.0-cuda-${cudaver}-${bldtype}"

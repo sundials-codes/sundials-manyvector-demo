@@ -16,33 +16,20 @@
 # --------------------------------------------------------------------------
 
 # check for correct number of inputs
-if [ "$#" -lt 3 ]; then
-    echo "ERROR: Three (3) inputs required:"
-    echo "  1) Path to SUNDIALS source"
-    echo "  2) SUNDIALS version"
-    echo "  3) Build type: opt or dbg"
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Path to source required"
     exit 1
 fi
-
-# path to SUNDIALS source and version name or number
 srcdir=$1
-srcver=$2
 
-# build type: opt (optimized) or dbg (debug)
-bldtype=$3
-case "$bldtype" in
-    opt|dbg) ;;
-    *)
-        echo "ERROR: Unknown build type: $bldtype"
-        exit 1
-        ;;
-esac
-
-# set install path
-installdir=${PROJHOME}/${COMPILERNAME}/sundials-${srcver}-${bldtype}
+# build threads
+bldthreads=12
+if [ "$#" -gt 1 ]; then
+    bldthreads=$2
+fi
 
 # -------------------------------------------------------------------------------
-# Setup Build
+# Setup
 # -------------------------------------------------------------------------------
 
 # return on any error
@@ -56,21 +43,15 @@ builddir=${srcdir}/build
 mkdir -p $builddir
 cd $builddir
 
-# optimized or debug flags
-if [ "$bldtype" == "opt" ]; then
-    export CFLAGS='-O3'
-    export CXXFLAGS='-O3'
-    export FCFLAGS='-O3'
-else
-    export CFLAGS='-O0 -g -Wall'
-    export CXXFLAGS='-O0 -g -Wall'
-    export FCFLAGS='-O0 -g'
-fi
-
 # --------------------------------------------------------------------------
 # Configure SUNDIALS
 # --------------------------------------------------------------------------
 cmake \
+    -D CMAKE_C_COMPILER=${CC} \
+    -D CMAKE_C_FLAGS="${OPTIMIZATION} ${CFLAGS}" \
+    -D CMAKE_CXX_COMPILER=${CXX} \
+    -D CMAKE_CXX_FLAGS="${OPTIMIZATION} ${CXXFLAGS}" \
+    \
     -D BUILD_ARKODE=ON \
     -D BUILD_CVODE=ON \
     -D BUILD_CVODES=OFF \
@@ -90,10 +71,17 @@ cmake \
     -D KLU_INCLUDE_DIR="${KLU_INC_DIR}" \
     -D KLU_LIBRARY_DIR="${KLU_LIB_DIR}" \
     \
+    -D ENABLE_CUDA=ON \
+    -D CMAKE_CUDA_ARCHITECTURES="70" \
+    \
+    -D ENABLE_RAJA=ON \
+    -D RAJA_DIR="${RAJA_ROOT}" \
+    -D SUNDIALS_RAJA_BACKENDS="CUDA" \
+    \
     -D BUILD_SHARED_LIBS=ON \
     -D BUILD_STATIC_LIBS=OFF \
     \
-    -D CMAKE_INSTALL_PREFIX=$installdir \
+    -D CMAKE_INSTALL_PREFIX=${SUNDIALS_ROOT} \
     \
     -D CMAKE_VERBOSE_MAKEFILE=OFF \
     \
@@ -107,7 +95,7 @@ if [ $rc -ne 0 ]; then exit 1; fi
 # --------------------------------------------------------------------------
 # Build SUNDIALS
 # --------------------------------------------------------------------------
-make -j12 2>&1 | tee make.log
+make -j $bldthreads 2>&1 | tee make.log
 
 # check return code
 rc=${PIPESTATUS[0]}
@@ -117,7 +105,7 @@ if [ $rc -ne 0 ]; then exit 1; fi
 # --------------------------------------------------------------------------
 # Install SUNDIALS
 # --------------------------------------------------------------------------
-make -j12 install 2>&1 | tee make.log
+make -j $bldthreads install 2>&1 | tee make.log
 
 # check return code
 rc=${PIPESTATUS[0]}
@@ -125,7 +113,7 @@ echo -e "\nmake install returned $rc\n" | tee -a install.log
 if [ $rc -ne 0 ]; then exit 1; fi
 
 # move log files
-cp *.log $installdir/.
+cp *.log ${SUNDIALS_ROOT}/.
 
 # done
 exit 0
