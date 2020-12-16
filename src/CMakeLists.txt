@@ -27,7 +27,8 @@ add_library(shared_obj OBJECT
   io.cpp
   utilities.cpp)
 target_include_directories(shared_obj
-  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(shared_obj
   PUBLIC
   MPI::MPI_CXX
@@ -41,10 +42,15 @@ target_link_libraries(shared_obj
 # add HDF5
 if(ENABLE_HDF5)
   target_include_directories(shared_obj
-    PUBLIC ${HDF5_INCLUDE_DIRS})
+    PUBLIC
+    ${HDF5_INCLUDE_DIRS})
   target_link_libraries(shared_obj
-    PUBLIC ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES})
-  target_compile_definitions(shared_obj PUBLIC USEHDF5)
+    PUBLIC
+    ${HDF5_LIBRARIES}
+    ${HDF5_HL_LIBRARIES})
+  target_compile_definitions(shared_obj
+    PUBLIC
+    USEHDF5)
 endif()
 
 # ------------------------------------------------------------------------------
