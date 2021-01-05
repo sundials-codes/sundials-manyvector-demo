@@ -111,14 +111,18 @@ else ifeq ($(HOST),summit)
   CXX = ${MPI_ROOT}/bin/mpic++ -std=c++11
 
   ifeq ($(LIBTYPE),OPT)
-    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-opt
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-cuda-11.1.1-opt
   else
-    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.0.0-dbg
+    SUNDIR = ${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-cuda-11.1.1-dbg
   endif
   SUNINCDIRS = -I${SUNDIR}/include
-  SUNLIBDIR = ${SUNDIR}/lib
+  SUNLIBDIR = ${SUNDIR}/lib64
 
-  KLUDIR = ${PROJHOME}/${COMPILERNAME}/suitesparse-5.4.0
+  ifeq ($(LIBTYPE),OPT)
+    KLUDIR = ${PROJHOME}/${COMPILERNAME}/suitesparse-5.8.1-opt
+  else
+    KLUDIR = ${PROJHOME}/${COMPILERNAME}/suitesparse-5.8.1-dbg
+  endif
   KLUINCDIRS = -I$(KLUDIR)/include/
   KLULIBDIR = $(KLUDIR)/lib
 
