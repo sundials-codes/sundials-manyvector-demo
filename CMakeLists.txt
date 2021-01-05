@@ -41,10 +41,16 @@ endforeach()
 set(CMAKE_C_STANDARD "99" CACHE STRING "C standard to use")
 set(CMAKE_CXX_STANDARD "11" CACHE STRING "C++ standard to use")
 
-# find MPI
+# ----
+# MPI
+# ----
+
 find_package(MPI REQUIRED)
 
-# find SUNDIALS
+# ---------
+# SUNDIALS
+# ---------
+
 set(SUNDIALS_ROOT "$ENV{SUNDIALS_ROOT}"
   CACHE PATH "Root directory of SUNDIALS install")
 
@@ -57,15 +63,25 @@ find_package(SUNDIALS REQUIRED
 
 mark_as_advanced(FORCE SUNDIALS_DIR)
 
-# find HDF5
+# -----
+# HDF5
+# -----
+
 option(ENABLE_HDF5 "Enable HDF5" OFF)
 
 if(ENABLE_HDF5)
   find_package(HDF5 REQUIRED COMPONENTS C HL)
 endif()
 
-# find RAJA
+# -----
+# RAJA
+# -----
+
 option(ENABLE_RAJA "Enable RAJA" OFF)
+
+set(RAJA_BACKEND "CUDA"
+  CACHE STRING "RAJA backend to use")
+set_property(CACHE RAJA_BACKEND PROPERTY STRINGS "CUDA;HIP")
 
 set(RAJA_ROOT "$ENV{RAJA_ROOT}"
   CACHE PATH "Root directory of RAJA install")
@@ -76,9 +92,14 @@ if(ENABLE_RAJA)
     "${RAJA_ROOT}/share/raja/cmake"
     "${RAJA_ROOT}"
     NO_DEFAULT_PATH)
+  # for some reason RAJA links to the Threads library
+  find_package(Threads REQUIRED)
 endif()
 
 mark_as_advanced(FORCE RAJA_DIR)
 
+# ---------------------
 # add source directory
+# ---------------------
+
 add_subdirectory(src)

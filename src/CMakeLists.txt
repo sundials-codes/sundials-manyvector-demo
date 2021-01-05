@@ -73,7 +73,17 @@ foreach(nvar ${_nvar_values})
   if(ENABLE_RAJA)
     target_link_libraries(${_shared_obj}
       PUBLIC
-      RAJA)
+      RAJA
+      Threads::Threads) # not sure why but Raja needs to link to Threads
+    if(RAJA_BACKEND MATCHES "CUDA")
+      target_link_libraries(${_shared_obj}
+        PUBLIC
+        SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
+    elseif(RAJA_BACKEND MATCHES "HIP")
+      target_link_libraries(${_shared_obj}
+        PUBLIC
+        SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
+    endif()
   endif()
 
 endforeach()
