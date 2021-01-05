@@ -13,16 +13,15 @@
 # directive. This number must be no smaller than 5 (rho, mx, my, mz, et); e.g.,
 # to add two tracers per spatial location add the preprocessor directive
 # "-DNVAR=7". To ensure that this value is consistent for an entire executable,
-# it must be supplied to the compilation of all object files -- this is handled
-# correctly in "compile_test.exe" below.
+# it must be supplied to the compilation of all object files.
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
 # create object library of common sources
 # ------------------------------------------------------------------------------
 
-# Create an object library for various NVAR values. Note 5 is the default if not
-# if NVAR is not set by a compile definition.
+# Create an object library for various NVAR values. Note the default NVAR value
+# is 5 if it is not set by a compile definition.
 set(_nvar_values 5 7 9 11 15)
 
 foreach(nvar ${_nvar_values})
