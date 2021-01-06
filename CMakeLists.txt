@@ -70,6 +70,7 @@ mark_as_advanced(FORCE SUNDIALS_DIR)
 option(ENABLE_HDF5 "Enable HDF5" OFF)
 
 if(ENABLE_HDF5)
+  set(HDF5_PREFER_PARALLEL TRUE)
   find_package(HDF5 REQUIRED COMPONENTS C HL)
 endif()
 
