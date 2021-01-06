@@ -87,6 +87,14 @@ foreach(nvar ${_nvar_values})
 
 endforeach()
 
+# set the filename for chemistry routines depending on RAJA usage
+if (ENABLE_RAJA)
+  set(_chem_solver raja_primordial_network.cpp)
+else()
+  set(_chem_solver dengo_primordial_network.cpp)
+endif()
+
+
 # ------------------------------------------------------------------------------
 # Executables
 # ------------------------------------------------------------------------------
@@ -205,7 +213,7 @@ target_compile_definitions(hurricane_zx_color.exe PRIVATE TEST_ZX NVAR=11)
 # primordial ode tests
 add_executable(primordial_ode.exe
   primordial_ode_main.cpp
-  dengo_primordial_network.cpp)
+  ${_chem_solver})
 target_link_libraries(primordial_ode.exe
   PRIVATE
   shared_obj_nvar_5
@@ -215,7 +223,7 @@ target_compile_definitions(primordial_ode.exe
 
 add_executable(primordial_ode_CVODE.exe
   primordial_ode_main.cpp
-  dengo_primordial_network.cpp)
+  ${_chem_solver})
 target_link_libraries(primordial_ode_CVODE.exe
   PRIVATE
   shared_obj_nvar_5
@@ -227,7 +235,7 @@ target_compile_definitions(primordial_ode_CVODE.exe
 add_executable(primordial_static_imex.exe
   primordial_static.cpp
   imex_chem_hydro_main.cpp
-  dengo_primordial_network.cpp)
+  ${_chem_solver})
 target_link_libraries(primordial_static_imex.exe
   PRIVATE
   shared_obj_nvar_15
@@ -238,7 +246,7 @@ target_compile_definitions(primordial_static_imex.exe
 add_executable(primordial_static_mr.exe
   primordial_static.cpp
   multirate_chem_hydro_main.cpp
-  dengo_primordial_network.cpp)
+  ${_chem_solver})
 target_link_libraries(primordial_static_mr.exe
   PRIVATE
   shared_obj_nvar_15
@@ -250,7 +258,7 @@ target_compile_definitions(primordial_static_mr.exe
 add_executable(primordial_blast_imex.exe
   primordial_blast.cpp
   multirate_chem_hydro_main.cpp
-  dengo_primordial_network.cpp)
+  ${_chem_solver})
 target_link_libraries(primordial_blast_imex.exe
   PRIVATE
   shared_obj_nvar_15
@@ -261,7 +269,7 @@ target_compile_definitions(primordial_blast_imex.exe
 add_executable(primordial_blast_mr.exe
   primordial_blast.cpp
   multirate_chem_hydro_main.cpp
-  dengo_primordial_network.cpp)
+  ${_chem_solver})
 target_link_libraries(primordial_blast_mr.exe
   PRIVATE
   shared_obj_nvar_15
