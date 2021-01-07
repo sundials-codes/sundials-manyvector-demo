@@ -143,3 +143,6 @@ export HDF5_ROOT="${OLCF_HDF5_ROOT}"
 
 export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-cuda-${cudaver}-${bldtype}"
 export RAJA_ROOT="${PROJHOME}/${COMPILERNAME}/raja-0.13.0-cuda-${cudaver}-${bldtype}"
+
+# user workspace for installing/running the demo
+export SUNDIALS_DEMO_WORKSPACE=${MEMBERWORK}/csc317/sundials-demo
