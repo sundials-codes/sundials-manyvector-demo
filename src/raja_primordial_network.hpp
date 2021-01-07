@@ -226,9 +226,9 @@ void cvklu_free_data(void*);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
-void cvklu_interpolate_rates(cvklu_data*, int);
+void cvklu_interpolate_rates(cvklu_data*, cell_rate_data&);
 void cvklu_interpolate_gamma(cvklu_data*, cell_rate_data&);
-int cvklu_calculate_temperature(cvklu_data*, double*, int);
+int cvklu_calculate_temperature(cvklu_data*, double*, cell_rate_data&);
 void setting_up_extra_variables(cvklu_data*, double*, int);
 
 int calculate_sparse_jacobian_cvklu( realtype t,
