@@ -28,15 +28,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   data->dengo_data_file = FileLocation;
 
   /* allocate reaction rate structures */
-  data->rate_data = (cell_rate_data *) malloc(ncells*sizeof(cell_rate_data));
-
-  /* allocate derived quantities */
-  data->Ts = (double *) malloc(ncells*sizeof(double));
-  data->dTs_ge = (double *) malloc(ncells*sizeof(double));
-  data->mdensity = (double *) malloc(ncells*sizeof(double));
-  data->inv_mdensity = (double *) malloc(ncells*sizeof(double));
-  data->cie_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
-  data->h2_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
+  data->cell_data = (cell_rate_data *) malloc(ncells*sizeof(cell_rate_data));
 
   /* allocate scaling arrays */
   data->scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
@@ -48,7 +40,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
 
   /*initialize temperature so it wont crash*/
   for ( i = 0; i < ncells; i++ ) {
-    data->Ts[i] = 1000.0;
+    (data->cell_data[i]).Ts = 1000.0;
   }
 
   /* Temperature-related pieces */
@@ -78,13 +70,7 @@ void cvklu_free_data(void *data)
   //-----------------------------------------------------
   cvklu_data *rxdata = (cvklu_data *) data;
 
-  free(rxdata->rate_data);
-  free(rxdata->Ts);
-  free(rxdata->dTs_ge);
-  free(rxdata->mdensity);
-  free(rxdata->inv_mdensity);
-  free(rxdata->cie_optical_depth_approx);
-  free(rxdata->h2_optical_depth_approx);
+  free(rxdata->cell_data);
   free(rxdata->scale);
   free(rxdata->inv_scale);
   free(rxdata);
@@ -249,8 +235,6 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
   int MAX_T_ITERATION = 100;
   int count = 0;
 
-
-
   /* Calculate total density */
   double H2_1;
   double H2_2;
@@ -306,7 +290,7 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
 
 
     // Initiate the "guess" temperature
-    T    = data->Ts[i];
+    T    = (data->cell_data[i]).Ts;
     Tnew = T*1.1;
 
     Tdiff = Tnew - T;
@@ -317,16 +301,16 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
       // We do Newton's Iteration to calculate the temperature
       // Since gammaH2 is dependent on the temperature too!
 
-      T = data->Ts[i];
+      T = (data->cell_data[i]).Ts;
 
       cvklu_interpolate_gamma(data, i);
 
-      gammaH2_1 = data->rate_data[i].gammaH2_1;
-      dgammaH2_1_dT = data->rate_data[i].dgammaH2_1_dT;
+      gammaH2_1 = (data->cell_data[i]).gammaH2_1;
+      dgammaH2_1_dT = (data->cell_data[i]).dgammaH2_1_dT;
       _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
 
-      gammaH2_2 = data->rate_data[i].gammaH2_2;
-      dgammaH2_2_dT = data->rate_data[i].dgammaH2_2_dT;
+      gammaH2_2 = (data->cell_data[i]).gammaH2_2;
+      dgammaH2_2_dT = (data->cell_data[i]).dgammaH2_2_dT;
       _gammaH2_2_m1 = 1.0 / (gammaH2_2 - 1.0);
 
       // update gammaH2
@@ -339,7 +323,7 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
       dge = T*kb*(H2_1*_gammaH2_1_m1 + H2_2*_gammaH2_2_m1 + H_1*_gamma_m1 + H_2*_gamma_m1 + H_m0*_gamma_m1 + He_1*_gamma_m1 + He_2*_gamma_m1 + He_3*_gamma_m1 + _gamma_m1*de)/(density*mh) - ge;
 
       Tnew = T - dge/dge_dT;
-      data->Ts[i] = Tnew;
+      (data->cell_data[i]).Ts = Tnew;
 
       Tdiff = fabs(T - Tnew);
       // fprintf(stderr, "T: %0.5g ; Tnew: %0.5g; dge_dT: %.5g, dge: %.5g, ge: %.5g \n", T,Tnew, dge_dT, dge, ge);
@@ -350,15 +334,15 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
       // }
     } // while loop
 
-    data->Ts[i] = Tnew;
+    (data->cell_data[i]).Ts = Tnew;
 
 
-    if (data->Ts[i] < data->bounds[0]) {
-      data->Ts[i] = data->bounds[0];
-    } else if (data->Ts[i] > data->bounds[1]) {
-      data->Ts[i] = data->bounds[1];
+    if ((data->cell_data[i]).Ts < data->bounds[0]) {
+      (data->cell_data[i]).Ts = data->bounds[0];
+    } else if ((data->cell_data[i]).Ts > data->bounds[1]) {
+      (data->cell_data[i]).Ts = data->bounds[1];
     }
-    data->dTs_ge[i] = 1.0 / dge_dT;
+    (data->cell_data[i]).dTs_ge = 1.0 / dge_dT;
 
   } // for i in nstrip loop
   return 0;
@@ -375,7 +359,7 @@ void cvklu_interpolate_rates(cvklu_data *data, int i)
 
   lb = log(data->bounds[0]);
 
-  bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
+  bin_id = (int) (data->idbin * (log((data->cell_data[i]).Ts) - lb));
   if (bin_id <= 0) {
     bin_id = 0;
   } else if (bin_id >= data->nbins) {
@@ -383,194 +367,194 @@ void cvklu_interpolate_rates(cvklu_data *data, int i)
   }
   t1 = (lb + (bin_id    ) * data->dbin);
   t2 = (lb + (bin_id + 1) * data->dbin);
-  Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+  Tdef = (log((data->cell_data[i]).Ts) - t1)/(t2 - t1);
   dT = (t2 - t1);
-  invTs = 1.0 / data->Ts[i];
+  invTs = 1.0 / (data->cell_data[i]).Ts;
   Tfactor = invTs/dT;
 
-  data->rate_data[i].rs_k01 = data->r_k01[bin_id] +
+  (data->cell_data[i]).rs_k01 = data->r_k01[bin_id] +
     Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
-  data->rate_data[i].drs_k01 = (data->r_k01[bin_id+1] - data->r_k01[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k01 = (data->r_k01[bin_id+1] - data->r_k01[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k02 = data->r_k02[bin_id] +
+  (data->cell_data[i]).rs_k02 = data->r_k02[bin_id] +
     Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
-  data->rate_data[i].drs_k02 = (data->r_k02[bin_id+1] - data->r_k02[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k02 = (data->r_k02[bin_id+1] - data->r_k02[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k03 = data->r_k03[bin_id] +
+  (data->cell_data[i]).rs_k03 = data->r_k03[bin_id] +
     Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
-  data->rate_data[i].drs_k03 = (data->r_k03[bin_id+1] - data->r_k03[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k03 = (data->r_k03[bin_id+1] - data->r_k03[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k04 = data->r_k04[bin_id] +
+  (data->cell_data[i]).rs_k04 = data->r_k04[bin_id] +
     Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
-  data->rate_data[i].drs_k04 = (data->r_k04[bin_id+1] - data->r_k04[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k04 = (data->r_k04[bin_id+1] - data->r_k04[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k05 = data->r_k05[bin_id] +
+  (data->cell_data[i]).rs_k05 = data->r_k05[bin_id] +
     Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
-  data->rate_data[i].drs_k05 = (data->r_k05[bin_id+1] - data->r_k05[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k05 = (data->r_k05[bin_id+1] - data->r_k05[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k06 = data->r_k06[bin_id] +
+  (data->cell_data[i]).rs_k06 = data->r_k06[bin_id] +
     Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
-  data->rate_data[i].drs_k06 = (data->r_k06[bin_id+1] - data->r_k06[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k06 = (data->r_k06[bin_id+1] - data->r_k06[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k07 = data->r_k07[bin_id] +
+  (data->cell_data[i]).rs_k07 = data->r_k07[bin_id] +
     Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
-  data->rate_data[i].drs_k07 = (data->r_k07[bin_id+1] - data->r_k07[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k07 = (data->r_k07[bin_id+1] - data->r_k07[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k08 = data->r_k08[bin_id] +
+  (data->cell_data[i]).rs_k08 = data->r_k08[bin_id] +
     Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
-  data->rate_data[i].drs_k08 = (data->r_k08[bin_id+1] - data->r_k08[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k08 = (data->r_k08[bin_id+1] - data->r_k08[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k09 = data->r_k09[bin_id] +
+  (data->cell_data[i]).rs_k09 = data->r_k09[bin_id] +
     Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
-  data->rate_data[i].drs_k09 = (data->r_k09[bin_id+1] - data->r_k09[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k09 = (data->r_k09[bin_id+1] - data->r_k09[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k10 = data->r_k10[bin_id] +
+  (data->cell_data[i]).rs_k10 = data->r_k10[bin_id] +
     Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
-  data->rate_data[i].drs_k10 = (data->r_k10[bin_id+1] - data->r_k10[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k10 = (data->r_k10[bin_id+1] - data->r_k10[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k11 = data->r_k11[bin_id] +
+  (data->cell_data[i]).rs_k11 = data->r_k11[bin_id] +
     Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
-  data->rate_data[i].drs_k11 = (data->r_k11[bin_id+1] - data->r_k11[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k11 = (data->r_k11[bin_id+1] - data->r_k11[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k12 = data->r_k12[bin_id] +
+  (data->cell_data[i]).rs_k12 = data->r_k12[bin_id] +
     Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
-  data->rate_data[i].drs_k12 = (data->r_k12[bin_id+1] - data->r_k12[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k12 = (data->r_k12[bin_id+1] - data->r_k12[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k13 = data->r_k13[bin_id] +
+  (data->cell_data[i]).rs_k13 = data->r_k13[bin_id] +
     Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
-  data->rate_data[i].drs_k13 = (data->r_k13[bin_id+1] - data->r_k13[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k13 = (data->r_k13[bin_id+1] - data->r_k13[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k14 = data->r_k14[bin_id] +
+  (data->cell_data[i]).rs_k14 = data->r_k14[bin_id] +
     Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
-  data->rate_data[i].drs_k14 = (data->r_k14[bin_id+1] - data->r_k14[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k14 = (data->r_k14[bin_id+1] - data->r_k14[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k15 = data->r_k15[bin_id] +
+  (data->cell_data[i]).rs_k15 = data->r_k15[bin_id] +
     Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
-  data->rate_data[i].drs_k15 = (data->r_k15[bin_id+1] - data->r_k15[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k15 = (data->r_k15[bin_id+1] - data->r_k15[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k16 = data->r_k16[bin_id] +
+  (data->cell_data[i]).rs_k16 = data->r_k16[bin_id] +
     Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
-  data->rate_data[i].drs_k16 = (data->r_k16[bin_id+1] - data->r_k16[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k16 = (data->r_k16[bin_id+1] - data->r_k16[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k17 = data->r_k17[bin_id] +
+  (data->cell_data[i]).rs_k17 = data->r_k17[bin_id] +
     Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
-  data->rate_data[i].drs_k17 = (data->r_k17[bin_id+1] - data->r_k17[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k17 = (data->r_k17[bin_id+1] - data->r_k17[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k18 = data->r_k18[bin_id] +
+  (data->cell_data[i]).rs_k18 = data->r_k18[bin_id] +
     Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
-  data->rate_data[i].drs_k18 = (data->r_k18[bin_id+1] - data->r_k18[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k18 = (data->r_k18[bin_id+1] - data->r_k18[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k19 = data->r_k19[bin_id] +
+  (data->cell_data[i]).rs_k19 = data->r_k19[bin_id] +
     Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
-  data->rate_data[i].drs_k19 = (data->r_k19[bin_id+1] - data->r_k19[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k19 = (data->r_k19[bin_id+1] - data->r_k19[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k21 = data->r_k21[bin_id] +
+  (data->cell_data[i]).rs_k21 = data->r_k21[bin_id] +
     Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
-  data->rate_data[i].drs_k21 = (data->r_k21[bin_id+1] - data->r_k21[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k21 = (data->r_k21[bin_id+1] - data->r_k21[bin_id])*Tfactor;
 
-  data->rate_data[i].rs_k22 = data->r_k22[bin_id] +
+  (data->cell_data[i]).rs_k22 = data->r_k22[bin_id] +
     Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
-  data->rate_data[i].drs_k22 = (data->r_k22[bin_id+1] - data->r_k22[bin_id])*Tfactor;
+  (data->cell_data[i]).drs_k22 = (data->r_k22[bin_id+1] - data->r_k22[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_brem_brem = data->c_brem_brem[bin_id] +
+  (data->cell_data[i]).cs_brem_brem = data->c_brem_brem[bin_id] +
     Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
-  data->rate_data[i].dcs_brem_brem = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_brem_brem = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ceHeI_ceHeI = data->c_ceHeI_ceHeI[bin_id] +
+  (data->cell_data[i]).cs_ceHeI_ceHeI = data->c_ceHeI_ceHeI[bin_id] +
     Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
-  data->rate_data[i].dcs_ceHeI_ceHeI = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ceHeI_ceHeI = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ceHeII_ceHeII = data->c_ceHeII_ceHeII[bin_id] +
+  (data->cell_data[i]).cs_ceHeII_ceHeII = data->c_ceHeII_ceHeII[bin_id] +
     Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
-  data->rate_data[i].dcs_ceHeII_ceHeII = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ceHeII_ceHeII = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ceHI_ceHI = data->c_ceHI_ceHI[bin_id] +
+  (data->cell_data[i]).cs_ceHI_ceHI = data->c_ceHI_ceHI[bin_id] +
     Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
-  data->rate_data[i].dcs_ceHI_ceHI = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ceHI_ceHI = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_cie_cooling_cieco = data->c_cie_cooling_cieco[bin_id] +
+  (data->cell_data[i]).cs_cie_cooling_cieco = data->c_cie_cooling_cieco[bin_id] +
     Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
-  data->rate_data[i].dcs_cie_cooling_cieco = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_cie_cooling_cieco = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ciHeI_ciHeI = data->c_ciHeI_ciHeI[bin_id] +
+  (data->cell_data[i]).cs_ciHeI_ciHeI = data->c_ciHeI_ciHeI[bin_id] +
     Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
-  data->rate_data[i].dcs_ciHeI_ciHeI = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ciHeI_ciHeI = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ciHeII_ciHeII = data->c_ciHeII_ciHeII[bin_id] +
+  (data->cell_data[i]).cs_ciHeII_ciHeII = data->c_ciHeII_ciHeII[bin_id] +
     Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
-  data->rate_data[i].dcs_ciHeII_ciHeII = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ciHeII_ciHeII = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ciHeIS_ciHeIS = data->c_ciHeIS_ciHeIS[bin_id] +
+  (data->cell_data[i]).cs_ciHeIS_ciHeIS = data->c_ciHeIS_ciHeIS[bin_id] +
     Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
-  data->rate_data[i].dcs_ciHeIS_ciHeIS = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ciHeIS_ciHeIS = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_ciHI_ciHI = data->c_ciHI_ciHI[bin_id] +
+  (data->cell_data[i]).cs_ciHI_ciHI = data->c_ciHI_ciHI[bin_id] +
     Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
-  data->rate_data[i].dcs_ciHI_ciHI = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_ciHI_ciHI = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_compton_comp_ = data->c_compton_comp_[bin_id] +
+  (data->cell_data[i]).cs_compton_comp_ = data->c_compton_comp_[bin_id] +
     Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
-  data->rate_data[i].dcs_compton_comp_ = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_compton_comp_ = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_gloverabel08_gael = data->c_gloverabel08_gael[bin_id] +
+  (data->cell_data[i]).cs_gloverabel08_gael = data->c_gloverabel08_gael[bin_id] +
     Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
-  data->rate_data[i].dcs_gloverabel08_gael = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_gloverabel08_gael = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_gloverabel08_gaH2 = data->c_gloverabel08_gaH2[bin_id] +
+  (data->cell_data[i]).cs_gloverabel08_gaH2 = data->c_gloverabel08_gaH2[bin_id] +
     Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
-  data->rate_data[i].dcs_gloverabel08_gaH2 = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_gloverabel08_gaH2 = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_gloverabel08_gaHe = data->c_gloverabel08_gaHe[bin_id] +
+  (data->cell_data[i]).cs_gloverabel08_gaHe = data->c_gloverabel08_gaHe[bin_id] +
     Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
-  data->rate_data[i].dcs_gloverabel08_gaHe = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_gloverabel08_gaHe = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_gloverabel08_gaHI = data->c_gloverabel08_gaHI[bin_id] +
+  (data->cell_data[i]).cs_gloverabel08_gaHI = data->c_gloverabel08_gaHI[bin_id] +
     Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
-  data->rate_data[i].dcs_gloverabel08_gaHI = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_gloverabel08_gaHI = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_gloverabel08_gaHp = data->c_gloverabel08_gaHp[bin_id] +
+  (data->cell_data[i]).cs_gloverabel08_gaHp = data->c_gloverabel08_gaHp[bin_id] +
     Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
-  data->rate_data[i].dcs_gloverabel08_gaHp = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_gloverabel08_gaHp = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_gloverabel08_h2lte = data->c_gloverabel08_h2lte[bin_id] +
+  (data->cell_data[i]).cs_gloverabel08_h2lte = data->c_gloverabel08_h2lte[bin_id] +
     Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
-  data->rate_data[i].dcs_gloverabel08_h2lte = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_gloverabel08_h2lte = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_h2formation_h2mcool = data->c_h2formation_h2mcool[bin_id] +
+  (data->cell_data[i]).cs_h2formation_h2mcool = data->c_h2formation_h2mcool[bin_id] +
     Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
-  data->rate_data[i].dcs_h2formation_h2mcool = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_h2formation_h2mcool = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_h2formation_h2mheat = data->c_h2formation_h2mheat[bin_id] +
+  (data->cell_data[i]).cs_h2formation_h2mheat = data->c_h2formation_h2mheat[bin_id] +
     Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
-  data->rate_data[i].dcs_h2formation_h2mheat = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_h2formation_h2mheat = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_h2formation_ncrd1 = data->c_h2formation_ncrd1[bin_id] +
+  (data->cell_data[i]).cs_h2formation_ncrd1 = data->c_h2formation_ncrd1[bin_id] +
     Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
-  data->rate_data[i].dcs_h2formation_ncrd1 = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_h2formation_ncrd1 = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_h2formation_ncrd2 = data->c_h2formation_ncrd2[bin_id] +
+  (data->cell_data[i]).cs_h2formation_ncrd2 = data->c_h2formation_ncrd2[bin_id] +
     Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
-  data->rate_data[i].dcs_h2formation_ncrd2 = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_h2formation_ncrd2 = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_h2formation_ncrn = data->c_h2formation_ncrn[bin_id] +
+  (data->cell_data[i]).cs_h2formation_ncrn = data->c_h2formation_ncrn[bin_id] +
     Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
-  data->rate_data[i].dcs_h2formation_ncrn = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_h2formation_ncrn = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_reHeII1_reHeII1 = data->c_reHeII1_reHeII1[bin_id] +
+  (data->cell_data[i]).cs_reHeII1_reHeII1 = data->c_reHeII1_reHeII1[bin_id] +
     Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
-  data->rate_data[i].dcs_reHeII1_reHeII1 = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_reHeII1_reHeII1 = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_reHeII2_reHeII2 = data->c_reHeII2_reHeII2[bin_id] +
+  (data->cell_data[i]).cs_reHeII2_reHeII2 = data->c_reHeII2_reHeII2[bin_id] +
     Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
-  data->rate_data[i].dcs_reHeII2_reHeII2 = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_reHeII2_reHeII2 = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_reHeIII_reHeIII = data->c_reHeIII_reHeIII[bin_id] +
+  (data->cell_data[i]).cs_reHeIII_reHeIII = data->c_reHeIII_reHeIII[bin_id] +
     Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
-  data->rate_data[i].dcs_reHeIII_reHeIII = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_reHeIII_reHeIII = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id])*Tfactor;
 
-  data->rate_data[i].cs_reHII_reHII = data->c_reHII_reHII[bin_id] +
+  (data->cell_data[i]).cs_reHII_reHII = data->c_reHII_reHII[bin_id] +
     Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
-  data->rate_data[i].dcs_reHII_reHII = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id])*Tfactor;
+  (data->cell_data[i]).dcs_reHII_reHII = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id])*Tfactor;
 
 
 }
@@ -584,7 +568,7 @@ void cvklu_interpolate_gamma(cvklu_data *data, int i)
   double lb, t1, t2, Tdef;
 
   lb = log(data->bounds[0]);
-  bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
+  bin_id = (int) (data->idbin * (log((data->cell_data[i]).Ts) - lb));
   if (bin_id <= 0) {
     bin_id = 0;
   } else if (bin_id >= data->nbins) {
@@ -592,21 +576,21 @@ void cvklu_interpolate_gamma(cvklu_data *data, int i)
   }
   t1 = (lb + (bin_id    ) * data->dbin);
   t2 = (lb + (bin_id + 1) * data->dbin);
-  Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+  Tdef = (log((data->cell_data[i]).Ts) - t1)/(t2 - t1);
 
 
-  data->rate_data[i].gammaH2_2 = data->g_gammaH2_2[bin_id] +
+  (data->cell_data[i]).gammaH2_2 = data->g_gammaH2_2[bin_id] +
     Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
 
-  data->rate_data[i].dgammaH2_2_dT = data->g_dgammaH2_2_dT[bin_id] +
+  (data->cell_data[i]).dgammaH2_2_dT = data->g_dgammaH2_2_dT[bin_id] +
     Tdef * (data->g_dgammaH2_2_dT[bin_id+1]
                      - data->g_dgammaH2_2_dT[bin_id]);
 
 
-  data->rate_data[i].gammaH2_1 = data->g_gammaH2_1[bin_id] +
+  (data->cell_data[i]).gammaH2_1 = data->g_gammaH2_1[bin_id] +
     Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
 
-  data->rate_data[i].dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
+  (data->cell_data[i]).dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
     Tdef * (data->g_dgammaH2_1_dT[bin_id+1]
                      - data->g_dgammaH2_1_dT[bin_id]);
 
@@ -691,58 +675,58 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
     cvklu_interpolate_rates(data, i);
 
     /* Now we set up some temporaries */
-    double T            = data->Ts[i];
+    double T            = (data->cell_data[i]).Ts;
     double z            = data->current_z;
-    double mdensity     = data->mdensity[i];
-    double inv_mdensity = data->inv_mdensity[i];
-    double k01 = data->rate_data[i].rs_k01;
-    double k02 = data->rate_data[i].rs_k02;
-    double k03 = data->rate_data[i].rs_k03;
-    double k04 = data->rate_data[i].rs_k04;
-    double k05 = data->rate_data[i].rs_k05;
-    double k06 = data->rate_data[i].rs_k06;
-    double k07 = data->rate_data[i].rs_k07;
-    double k08 = data->rate_data[i].rs_k08;
-    double k09 = data->rate_data[i].rs_k09;
-    double k10 = data->rate_data[i].rs_k10;
-    double k11 = data->rate_data[i].rs_k11;
-    double k12 = data->rate_data[i].rs_k12;
-    double k13 = data->rate_data[i].rs_k13;
-    double k14 = data->rate_data[i].rs_k14;
-    double k15 = data->rate_data[i].rs_k15;
-    double k16 = data->rate_data[i].rs_k16;
-    double k17 = data->rate_data[i].rs_k17;
-    double k18 = data->rate_data[i].rs_k18;
-    double k19 = data->rate_data[i].rs_k19;
-    double k21 = data->rate_data[i].rs_k21;
-    double k22 = data->rate_data[i].rs_k22;
-    double brem_brem = data->rate_data[i].cs_brem_brem;
-    double ceHeI_ceHeI = data->rate_data[i].cs_ceHeI_ceHeI;
-    double ceHeII_ceHeII = data->rate_data[i].cs_ceHeII_ceHeII;
-    double ceHI_ceHI = data->rate_data[i].cs_ceHI_ceHI;
-    double cie_cooling_cieco = data->rate_data[i].cs_cie_cooling_cieco;
-    double ciHeI_ciHeI = data->rate_data[i].cs_ciHeI_ciHeI;
-    double ciHeII_ciHeII = data->rate_data[i].cs_ciHeII_ciHeII;
-    double ciHeIS_ciHeIS = data->rate_data[i].cs_ciHeIS_ciHeIS;
-    double ciHI_ciHI = data->rate_data[i].cs_ciHI_ciHI;
-    double compton_comp_ = data->rate_data[i].cs_compton_comp_;
-    double gloverabel08_gael = data->rate_data[i].cs_gloverabel08_gael;
-    double gloverabel08_gaH2 = data->rate_data[i].cs_gloverabel08_gaH2;
-    double gloverabel08_gaHe = data->rate_data[i].cs_gloverabel08_gaHe;
-    double gloverabel08_gaHI = data->rate_data[i].cs_gloverabel08_gaHI;
-    double gloverabel08_gaHp = data->rate_data[i].cs_gloverabel08_gaHp;
-    double gloverabel08_h2lte = data->rate_data[i].cs_gloverabel08_h2lte;
-    double h2formation_h2mcool = data->rate_data[i].cs_h2formation_h2mcool;
-    double h2formation_h2mheat = data->rate_data[i].cs_h2formation_h2mheat;
-    double h2formation_ncrd1 = data->rate_data[i].cs_h2formation_ncrd1;
-    double h2formation_ncrd2 = data->rate_data[i].cs_h2formation_ncrd2;
-    double h2formation_ncrn = data->rate_data[i].cs_h2formation_ncrn;
-    double reHeII1_reHeII1 = data->rate_data[i].cs_reHeII1_reHeII1;
-    double reHeII2_reHeII2 = data->rate_data[i].cs_reHeII2_reHeII2;
-    double reHeIII_reHeIII = data->rate_data[i].cs_reHeIII_reHeIII;
-    double reHII_reHII = data->rate_data[i].cs_reHII_reHII;
-    double h2_optical_depth_approx = data->h2_optical_depth_approx[i];
-    double cie_optical_depth_approx = data->cie_optical_depth_approx[i];
+    double mdensity     = (data->cell_data[i]).mdensity;
+    double inv_mdensity = (data->cell_data[i]).inv_mdensity;
+    double k01 = (data->cell_data[i]).rs_k01;
+    double k02 = (data->cell_data[i]).rs_k02;
+    double k03 = (data->cell_data[i]).rs_k03;
+    double k04 = (data->cell_data[i]).rs_k04;
+    double k05 = (data->cell_data[i]).rs_k05;
+    double k06 = (data->cell_data[i]).rs_k06;
+    double k07 = (data->cell_data[i]).rs_k07;
+    double k08 = (data->cell_data[i]).rs_k08;
+    double k09 = (data->cell_data[i]).rs_k09;
+    double k10 = (data->cell_data[i]).rs_k10;
+    double k11 = (data->cell_data[i]).rs_k11;
+    double k12 = (data->cell_data[i]).rs_k12;
+    double k13 = (data->cell_data[i]).rs_k13;
+    double k14 = (data->cell_data[i]).rs_k14;
+    double k15 = (data->cell_data[i]).rs_k15;
+    double k16 = (data->cell_data[i]).rs_k16;
+    double k17 = (data->cell_data[i]).rs_k17;
+    double k18 = (data->cell_data[i]).rs_k18;
+    double k19 = (data->cell_data[i]).rs_k19;
+    double k21 = (data->cell_data[i]).rs_k21;
+    double k22 = (data->cell_data[i]).rs_k22;
+    double brem_brem = (data->cell_data[i]).cs_brem_brem;
+    double ceHeI_ceHeI = (data->cell_data[i]).cs_ceHeI_ceHeI;
+    double ceHeII_ceHeII = (data->cell_data[i]).cs_ceHeII_ceHeII;
+    double ceHI_ceHI = (data->cell_data[i]).cs_ceHI_ceHI;
+    double cie_cooling_cieco = (data->cell_data[i]).cs_cie_cooling_cieco;
+    double ciHeI_ciHeI = (data->cell_data[i]).cs_ciHeI_ciHeI;
+    double ciHeII_ciHeII = (data->cell_data[i]).cs_ciHeII_ciHeII;
+    double ciHeIS_ciHeIS = (data->cell_data[i]).cs_ciHeIS_ciHeIS;
+    double ciHI_ciHI = (data->cell_data[i]).cs_ciHI_ciHI;
+    double compton_comp_ = (data->cell_data[i]).cs_compton_comp_;
+    double gloverabel08_gael = (data->cell_data[i]).cs_gloverabel08_gael;
+    double gloverabel08_gaH2 = (data->cell_data[i]).cs_gloverabel08_gaH2;
+    double gloverabel08_gaHe = (data->cell_data[i]).cs_gloverabel08_gaHe;
+    double gloverabel08_gaHI = (data->cell_data[i]).cs_gloverabel08_gaHI;
+    double gloverabel08_gaHp = (data->cell_data[i]).cs_gloverabel08_gaHp;
+    double gloverabel08_h2lte = (data->cell_data[i]).cs_gloverabel08_h2lte;
+    double h2formation_h2mcool = (data->cell_data[i]).cs_h2formation_h2mcool;
+    double h2formation_h2mheat = (data->cell_data[i]).cs_h2formation_h2mheat;
+    double h2formation_ncrd1 = (data->cell_data[i]).cs_h2formation_ncrd1;
+    double h2formation_ncrd2 = (data->cell_data[i]).cs_h2formation_ncrd2;
+    double h2formation_ncrn = (data->cell_data[i]).cs_h2formation_ncrn;
+    double reHeII1_reHeII1 = (data->cell_data[i]).cs_reHeII1_reHeII1;
+    double reHeII2_reHeII2 = (data->cell_data[i]).cs_reHeII2_reHeII2;
+    double reHeIII_reHeIII = (data->cell_data[i]).cs_reHeIII_reHeIII;
+    double reHII_reHII = (data->cell_data[i]).cs_reHII_reHII;
+    double h2_optical_depth_approx = (data->cell_data[i]).h2_optical_depth_approx;
+    double cie_optical_depth_approx = (data->cell_data[i]).cie_optical_depth_approx;
 
 
     j = i * nchem;
@@ -919,99 +903,99 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
     cvklu_interpolate_rates(data, i);
 
-    double Tge = data->dTs_ge[i];
-    double k01 = data->rate_data[i].rs_k01;
-    double rk01= data->rate_data[i].drs_k01;
-    double k02 = data->rate_data[i].rs_k02;
-    double rk02= data->rate_data[i].drs_k02;
-    double k03 = data->rate_data[i].rs_k03;
-    double rk03= data->rate_data[i].drs_k03;
-    double k04 = data->rate_data[i].rs_k04;
-    double rk04= data->rate_data[i].drs_k04;
-    double k05 = data->rate_data[i].rs_k05;
-    double rk05= data->rate_data[i].drs_k05;
-    double k06 = data->rate_data[i].rs_k06;
-    double rk06= data->rate_data[i].drs_k06;
-    double k07 = data->rate_data[i].rs_k07;
-    double rk07= data->rate_data[i].drs_k07;
-    double k08 = data->rate_data[i].rs_k08;
-    double rk08= data->rate_data[i].drs_k08;
-    double k09 = data->rate_data[i].rs_k09;
-    double rk09= data->rate_data[i].drs_k09;
-    double k10 = data->rate_data[i].rs_k10;
-    double rk10= data->rate_data[i].drs_k10;
-    double k11 = data->rate_data[i].rs_k11;
-    double rk11= data->rate_data[i].drs_k11;
-    double k12 = data->rate_data[i].rs_k12;
-    double rk12= data->rate_data[i].drs_k12;
-    double k13 = data->rate_data[i].rs_k13;
-    double rk13= data->rate_data[i].drs_k13;
-    double k14 = data->rate_data[i].rs_k14;
-    double rk14= data->rate_data[i].drs_k14;
-    double k15 = data->rate_data[i].rs_k15;
-    double rk15= data->rate_data[i].drs_k15;
-    double k16 = data->rate_data[i].rs_k16;
-    double rk16= data->rate_data[i].drs_k16;
-    double k17 = data->rate_data[i].rs_k17;
-    double rk17= data->rate_data[i].drs_k17;
-    double k18 = data->rate_data[i].rs_k18;
-    double rk18= data->rate_data[i].drs_k18;
-    double k19 = data->rate_data[i].rs_k19;
-    double rk19= data->rate_data[i].drs_k19;
-    double k21 = data->rate_data[i].rs_k21;
-    double rk21= data->rate_data[i].drs_k21;
-    double k22 = data->rate_data[i].rs_k22;
-    double rk22= data->rate_data[i].drs_k22;
-    double brem_brem = data->rate_data[i].cs_brem_brem;
-    double rbrem_brem = data->rate_data[i].dcs_brem_brem;
-    double ceHeI_ceHeI = data->rate_data[i].cs_ceHeI_ceHeI;
-    double rceHeI_ceHeI = data->rate_data[i].dcs_ceHeI_ceHeI;
-    double ceHeII_ceHeII = data->rate_data[i].cs_ceHeII_ceHeII;
-    double rceHeII_ceHeII = data->rate_data[i].dcs_ceHeII_ceHeII;
-    double ceHI_ceHI = data->rate_data[i].cs_ceHI_ceHI;
-    double rceHI_ceHI = data->rate_data[i].dcs_ceHI_ceHI;
-    double cie_cooling_cieco = data->rate_data[i].cs_cie_cooling_cieco;
-    double rcie_cooling_cieco = data->rate_data[i].dcs_cie_cooling_cieco;
-    double ciHeI_ciHeI = data->rate_data[i].cs_ciHeI_ciHeI;
-    double rciHeI_ciHeI = data->rate_data[i].dcs_ciHeI_ciHeI;
-    double ciHeII_ciHeII = data->rate_data[i].cs_ciHeII_ciHeII;
-    double rciHeII_ciHeII = data->rate_data[i].dcs_ciHeII_ciHeII;
-    double ciHeIS_ciHeIS = data->rate_data[i].cs_ciHeIS_ciHeIS;
-    double rciHeIS_ciHeIS = data->rate_data[i].dcs_ciHeIS_ciHeIS;
-    double ciHI_ciHI = data->rate_data[i].cs_ciHI_ciHI;
-    double rciHI_ciHI = data->rate_data[i].dcs_ciHI_ciHI;
-    double compton_comp_ = data->rate_data[i].cs_compton_comp_;
-    double rcompton_comp_ = data->rate_data[i].dcs_compton_comp_;
-    double gloverabel08_gael = data->rate_data[i].cs_gloverabel08_gael;
-    double rgloverabel08_gael = data->rate_data[i].dcs_gloverabel08_gael;
-    double gloverabel08_gaH2 = data->rate_data[i].cs_gloverabel08_gaH2;
-    double rgloverabel08_gaH2 = data->rate_data[i].dcs_gloverabel08_gaH2;
-    double gloverabel08_gaHe = data->rate_data[i].cs_gloverabel08_gaHe;
-    double rgloverabel08_gaHe = data->rate_data[i].dcs_gloverabel08_gaHe;
-    double gloverabel08_gaHI = data->rate_data[i].cs_gloverabel08_gaHI;
-    double rgloverabel08_gaHI = data->rate_data[i].dcs_gloverabel08_gaHI;
-    double gloverabel08_gaHp = data->rate_data[i].cs_gloverabel08_gaHp;
-    double rgloverabel08_gaHp = data->rate_data[i].dcs_gloverabel08_gaHp;
-    double gloverabel08_h2lte = data->rate_data[i].cs_gloverabel08_h2lte;
-    double rgloverabel08_h2lte = data->rate_data[i].dcs_gloverabel08_h2lte;
-    double h2formation_h2mcool = data->rate_data[i].cs_h2formation_h2mcool;
-    double rh2formation_h2mcool = data->rate_data[i].dcs_h2formation_h2mcool;
-    double h2formation_h2mheat = data->rate_data[i].cs_h2formation_h2mheat;
-    double rh2formation_h2mheat = data->rate_data[i].dcs_h2formation_h2mheat;
-    double h2formation_ncrd1 = data->rate_data[i].cs_h2formation_ncrd1;
-    double rh2formation_ncrd1 = data->rate_data[i].dcs_h2formation_ncrd1;
-    double h2formation_ncrd2 = data->rate_data[i].cs_h2formation_ncrd2;
-    double rh2formation_ncrd2 = data->rate_data[i].dcs_h2formation_ncrd2;
-    double h2formation_ncrn = data->rate_data[i].cs_h2formation_ncrn;
-    double rh2formation_ncrn = data->rate_data[i].dcs_h2formation_ncrn;
-    double reHeII1_reHeII1 = data->rate_data[i].cs_reHeII1_reHeII1;
-    double rreHeII1_reHeII1 = data->rate_data[i].dcs_reHeII1_reHeII1;
-    double reHeII2_reHeII2 = data->rate_data[i].cs_reHeII2_reHeII2;
-    double rreHeII2_reHeII2 = data->rate_data[i].dcs_reHeII2_reHeII2;
-    double reHeIII_reHeIII = data->rate_data[i].cs_reHeIII_reHeIII;
-    double rreHeIII_reHeIII = data->rate_data[i].dcs_reHeIII_reHeIII;
-    double reHII_reHII = data->rate_data[i].cs_reHII_reHII;
-    double rreHII_reHII = data->rate_data[i].dcs_reHII_reHII;
+    double Tge = (data->cell_data[i]).dTs_ge;
+    double k01 = (data->cell_data[i]).rs_k01;
+    double rk01= (data->cell_data[i]).drs_k01;
+    double k02 = (data->cell_data[i]).rs_k02;
+    double rk02= (data->cell_data[i]).drs_k02;
+    double k03 = (data->cell_data[i]).rs_k03;
+    double rk03= (data->cell_data[i]).drs_k03;
+    double k04 = (data->cell_data[i]).rs_k04;
+    double rk04= (data->cell_data[i]).drs_k04;
+    double k05 = (data->cell_data[i]).rs_k05;
+    double rk05= (data->cell_data[i]).drs_k05;
+    double k06 = (data->cell_data[i]).rs_k06;
+    double rk06= (data->cell_data[i]).drs_k06;
+    double k07 = (data->cell_data[i]).rs_k07;
+    double rk07= (data->cell_data[i]).drs_k07;
+    double k08 = (data->cell_data[i]).rs_k08;
+    double rk08= (data->cell_data[i]).drs_k08;
+    double k09 = (data->cell_data[i]).rs_k09;
+    double rk09= (data->cell_data[i]).drs_k09;
+    double k10 = (data->cell_data[i]).rs_k10;
+    double rk10= (data->cell_data[i]).drs_k10;
+    double k11 = (data->cell_data[i]).rs_k11;
+    double rk11= (data->cell_data[i]).drs_k11;
+    double k12 = (data->cell_data[i]).rs_k12;
+    double rk12= (data->cell_data[i]).drs_k12;
+    double k13 = (data->cell_data[i]).rs_k13;
+    double rk13= (data->cell_data[i]).drs_k13;
+    double k14 = (data->cell_data[i]).rs_k14;
+    double rk14= (data->cell_data[i]).drs_k14;
+    double k15 = (data->cell_data[i]).rs_k15;
+    double rk15= (data->cell_data[i]).drs_k15;
+    double k16 = (data->cell_data[i]).rs_k16;
+    double rk16= (data->cell_data[i]).drs_k16;
+    double k17 = (data->cell_data[i]).rs_k17;
+    double rk17= (data->cell_data[i]).drs_k17;
+    double k18 = (data->cell_data[i]).rs_k18;
+    double rk18= (data->cell_data[i]).drs_k18;
+    double k19 = (data->cell_data[i]).rs_k19;
+    double rk19= (data->cell_data[i]).drs_k19;
+    double k21 = (data->cell_data[i]).rs_k21;
+    double rk21= (data->cell_data[i]).drs_k21;
+    double k22 = (data->cell_data[i]).rs_k22;
+    double rk22= (data->cell_data[i]).drs_k22;
+    double brem_brem = (data->cell_data[i]).cs_brem_brem;
+    double rbrem_brem = (data->cell_data[i]).dcs_brem_brem;
+    double ceHeI_ceHeI = (data->cell_data[i]).cs_ceHeI_ceHeI;
+    double rceHeI_ceHeI = (data->cell_data[i]).dcs_ceHeI_ceHeI;
+    double ceHeII_ceHeII = (data->cell_data[i]).cs_ceHeII_ceHeII;
+    double rceHeII_ceHeII = (data->cell_data[i]).dcs_ceHeII_ceHeII;
+    double ceHI_ceHI = (data->cell_data[i]).cs_ceHI_ceHI;
+    double rceHI_ceHI = (data->cell_data[i]).dcs_ceHI_ceHI;
+    double cie_cooling_cieco = (data->cell_data[i]).cs_cie_cooling_cieco;
+    double rcie_cooling_cieco = (data->cell_data[i]).dcs_cie_cooling_cieco;
+    double ciHeI_ciHeI = (data->cell_data[i]).cs_ciHeI_ciHeI;
+    double rciHeI_ciHeI = (data->cell_data[i]).dcs_ciHeI_ciHeI;
+    double ciHeII_ciHeII = (data->cell_data[i]).cs_ciHeII_ciHeII;
+    double rciHeII_ciHeII = (data->cell_data[i]).dcs_ciHeII_ciHeII;
+    double ciHeIS_ciHeIS = (data->cell_data[i]).cs_ciHeIS_ciHeIS;
+    double rciHeIS_ciHeIS = (data->cell_data[i]).dcs_ciHeIS_ciHeIS;
+    double ciHI_ciHI = (data->cell_data[i]).cs_ciHI_ciHI;
+    double rciHI_ciHI = (data->cell_data[i]).dcs_ciHI_ciHI;
+    double compton_comp_ = (data->cell_data[i]).cs_compton_comp_;
+    double rcompton_comp_ = (data->cell_data[i]).dcs_compton_comp_;
+    double gloverabel08_gael = (data->cell_data[i]).cs_gloverabel08_gael;
+    double rgloverabel08_gael = (data->cell_data[i]).dcs_gloverabel08_gael;
+    double gloverabel08_gaH2 = (data->cell_data[i]).cs_gloverabel08_gaH2;
+    double rgloverabel08_gaH2 = (data->cell_data[i]).dcs_gloverabel08_gaH2;
+    double gloverabel08_gaHe = (data->cell_data[i]).cs_gloverabel08_gaHe;
+    double rgloverabel08_gaHe = (data->cell_data[i]).dcs_gloverabel08_gaHe;
+    double gloverabel08_gaHI = (data->cell_data[i]).cs_gloverabel08_gaHI;
+    double rgloverabel08_gaHI = (data->cell_data[i]).dcs_gloverabel08_gaHI;
+    double gloverabel08_gaHp = (data->cell_data[i]).cs_gloverabel08_gaHp;
+    double rgloverabel08_gaHp = (data->cell_data[i]).dcs_gloverabel08_gaHp;
+    double gloverabel08_h2lte = (data->cell_data[i]).cs_gloverabel08_h2lte;
+    double rgloverabel08_h2lte = (data->cell_data[i]).dcs_gloverabel08_h2lte;
+    double h2formation_h2mcool = (data->cell_data[i]).cs_h2formation_h2mcool;
+    double rh2formation_h2mcool = (data->cell_data[i]).dcs_h2formation_h2mcool;
+    double h2formation_h2mheat = (data->cell_data[i]).cs_h2formation_h2mheat;
+    double rh2formation_h2mheat = (data->cell_data[i]).dcs_h2formation_h2mheat;
+    double h2formation_ncrd1 = (data->cell_data[i]).cs_h2formation_ncrd1;
+    double rh2formation_ncrd1 = (data->cell_data[i]).dcs_h2formation_ncrd1;
+    double h2formation_ncrd2 = (data->cell_data[i]).cs_h2formation_ncrd2;
+    double rh2formation_ncrd2 = (data->cell_data[i]).dcs_h2formation_ncrd2;
+    double h2formation_ncrn = (data->cell_data[i]).cs_h2formation_ncrn;
+    double rh2formation_ncrn = (data->cell_data[i]).dcs_h2formation_ncrn;
+    double reHeII1_reHeII1 = (data->cell_data[i]).cs_reHeII1_reHeII1;
+    double rreHeII1_reHeII1 = (data->cell_data[i]).dcs_reHeII1_reHeII1;
+    double reHeII2_reHeII2 = (data->cell_data[i]).cs_reHeII2_reHeII2;
+    double rreHeII2_reHeII2 = (data->cell_data[i]).dcs_reHeII2_reHeII2;
+    double reHeIII_reHeIII = (data->cell_data[i]).cs_reHeIII_reHeIII;
+    double rreHeIII_reHeIII = (data->cell_data[i]).dcs_reHeIII_reHeIII;
+    double reHII_reHII = (data->cell_data[i]).cs_reHII_reHII;
+    double rreHII_reHII = (data->cell_data[i]).dcs_reHII_reHII;
 
     j = i * nchem;
     H2_1 = ydata[j]*scale[j];
@@ -1045,14 +1029,14 @@ int calculate_sparse_jacobian_cvklu( realtype t,
     j++;
 
 
-    mdensity = data->mdensity[i];
+    mdensity = (data->cell_data[i]).mdensity;
     inv_mdensity = 1.0 / mdensity;
 
-    h2_optical_depth_approx = data->h2_optical_depth_approx[i];
+    h2_optical_depth_approx = (data->cell_data[i]).h2_optical_depth_approx;
 
 
 
-    cie_optical_depth_approx = data->cie_optical_depth_approx[i];
+    cie_optical_depth_approx = (data->cell_data[i]).cie_optical_depth_approx;
 
 
     j = i * NSPARSE;
@@ -1842,63 +1826,63 @@ void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip )
   int i, j;
   double mh = 1.67e-24;
   for ( i = 0; i < nstrip; i++){
-    data->mdensity[i] = 0;
+    (data->cell_data[i]).mdensity = 0;
     j = i * 10;
 
     // species: H2_1
-    data->mdensity[i] += input[j] * 2.0;
+    (data->cell_data[i]).mdensity += input[j] * 2.0;
     j ++;
 
     // species: H2_2
-    data->mdensity[i] += input[j] * 2.0;
+    (data->cell_data[i]).mdensity += input[j] * 2.0;
     j ++;
 
     // species: H_1
-    data->mdensity[i] += input[j] * 1.00794;
+    (data->cell_data[i]).mdensity += input[j] * 1.00794;
     j ++;
 
     // species: H_2
-    data->mdensity[i] += input[j] * 1.00794;
+    (data->cell_data[i]).mdensity += input[j] * 1.00794;
     j ++;
 
     // species: H_m0
-    data->mdensity[i] += input[j] * 1.00794;
+    (data->cell_data[i]).mdensity += input[j] * 1.00794;
     j ++;
 
     // species: He_1
-    data->mdensity[i] += input[j] * 4.002602;
+    (data->cell_data[i]).mdensity += input[j] * 4.002602;
     j ++;
 
     // species: He_2
-    data->mdensity[i] += input[j] * 4.002602;
+    (data->cell_data[i]).mdensity += input[j] * 4.002602;
     j ++;
 
     // species: He_3
-    data->mdensity[i] += input[j] * 4.002602;
+    (data->cell_data[i]).mdensity += input[j] * 4.002602;
     j ++;
 
     j ++;
 
     j ++;
 
-    data->mdensity[i] *= mh;
-    data->inv_mdensity[i] = 1.0 / data->mdensity[i];
+    (data->cell_data[i]).mdensity *= mh;
+    (data->cell_data[i]).inv_mdensity = 1.0 / (data->cell_data[i]).mdensity;
   }
 
 
   double mdensity, tau;
   for ( i = 0; i < nstrip; i++){
 
-    mdensity = data->mdensity[i];
+    mdensity = (data->cell_data[i]).mdensity;
     tau      = pow( (mdensity / 3.3e-8 ), 2.8);
     tau      = fmax( tau, 1.0e-5 );
-    data->cie_optical_depth_approx[i] = fmin( 1.0, (1.0 - exp(-tau) ) / tau );
+    (data->cell_data[i]).cie_optical_depth_approx = fmin( 1.0, (1.0 - exp(-tau) ) / tau );
   }
 
 
   for ( i = 0; i < nstrip; i++ ){
-    mdensity = data->mdensity[i];
-    data->h2_optical_depth_approx[i] = fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
+    mdensity = (data->cell_data[i]).mdensity;
+    (data->cell_data[i]).h2_optical_depth_approx = fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
   }
 
 

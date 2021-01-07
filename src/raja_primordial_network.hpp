@@ -35,6 +35,10 @@
 
 
 typedef struct cell_rate_data {
+  double Ts;
+  double dTs_ge;
+  double mdensity;
+  double inv_mdensity;
   double rs_k01;
   double drs_k01;
   double rs_k02;
@@ -131,6 +135,8 @@ typedef struct cell_rate_data {
   double dgammaH2_1_dT;
   double gammaH2_2;
   double dgammaH2_2_dT;
+  double cie_optical_depth_approx;
+  double h2_optical_depth_approx;
 } cell_rate_data;
 
 
@@ -144,16 +150,8 @@ typedef struct cvklu_data {
   /* For storing and passing around redshift information */
   double current_z;
 
-  /* Cell-specific derived quantities */
-  double *Ts;
-  double *dTs_ge;
-  double *mdensity;
-  double *inv_mdensity;
-  double *cie_optical_depth_approx;
-  double *h2_optical_depth_approx;
-
-  /* Cell-specific reaction rate information */
-  cell_rate_data *rate_data;
+  /* Cell-specific derived quantities reaction rate information */
+  cell_rate_data *cell_data;
 
   /* Cooling and chemical tables */
   double r_k01[1024];
