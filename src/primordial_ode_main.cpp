@@ -357,13 +357,22 @@ int main(int argc, char* argv[]) {
       for (i=0; i<udata.nxl; i++)
         for (l=0; l<udata.nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+#ifdef USERAJA
+          network_data->scale[idx] = wdata[idx];
+          network_data->inv_scale[idx] = ONE / wdata[idx];
+#else
           network_data->scale[0][idx] = wdata[idx];
           network_data->inv_scale[0][idx] = ONE / wdata[idx];
+#endif
           wdata[idx] = ONE;
         }
 
   // compute auxiliary values within network_data structure
+#ifdef USERAJA
+  setting_up_extra_variables(network_data, network_data->scale, nstrip);
+#else
   setting_up_extra_variables(network_data, network_data->scale[0], nstrip);
+#endif
 
   // initialize the integrator memory
 #ifdef USE_CVODE
@@ -602,6 +611,46 @@ int main(int argc, char* argv[]) {
       for (i=0; i<udata.nxl; i++) {
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
+#ifdef USERAJA
+        // H2I
+        wdata[idx] *= (network_data->scale[idx]) * H2I_weight;
+        idx++;
+
+        // H2II
+        wdata[idx] *= (network_data->scale[idx]) * H2II_weight;
+        idx++;
+
+        // HI
+        wdata[idx] *= (network_data->scale[idx]) * HI_weight;
+        idx++;
+
+        // HII
+        wdata[idx] *= (network_data->scale[idx]) * HII_weight;
+        idx++;
+
+        // HM
+        wdata[idx] *= (network_data->scale[idx]) * HM_weight;
+        idx++;
+
+        // HeI
+        wdata[idx] *= (network_data->scale[idx]) * HeI_weight;
+        idx++;
+
+        // HeII
+        wdata[idx] *= (network_data->scale[idx]) * HeII_weight;
+        idx++;
+
+        // HeIII
+        wdata[idx] *= (network_data->scale[idx]) * HeIII_weight;
+        idx++;
+
+        // de
+        wdata[idx] *= (network_data->scale[idx]) * m_amu;
+        idx++;
+
+        // ge
+        wdata[idx] *= (network_data->scale[idx]);
+#else
         // H2I
         wdata[idx] *= (network_data->scale[0][idx]) * H2I_weight;
         idx++;
@@ -640,6 +689,7 @@ int main(int argc, char* argv[]) {
 
         // ge
         wdata[idx] *= (network_data->scale[0][idx]);
+#endif
       }
 
   // compute simulation time
@@ -749,9 +799,15 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
       for (long int i=0; i<udata.nxl; i++)
         for (long int l=0; l<udata.nchem; l++) {
           long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+#ifdef USERAJA
+          cmean[l] += network_data->scale[idx]*wdata[idx];
+          cmax[l]  = max(cmax[l], network_data->scale[idx]*wdata[idx]);
+          cmin[l]  = min(cmin[l], network_data->scale[idx]*wdata[idx]);
+#else
           cmean[l] += network_data->scale[0][idx]*wdata[idx];
           cmax[l]  = max(cmax[l], network_data->scale[0][idx]*wdata[idx]);
           cmin[l]  = min(cmin[l], network_data->scale[0][idx]*wdata[idx]);
+#endif
         }
   for (long int l=0; l<udata.nchem; l++)
     cmean[l] /= (udata.nxl * udata.nyl * udata.nzl);

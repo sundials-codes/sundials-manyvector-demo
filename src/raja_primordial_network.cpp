@@ -10,23 +10,7 @@
  ---------------------------------------------------------------*/
 
 
-//---- beginning of Dengo implementation file contents ----//
-
-
-/* THIS FILE HAS BEEN AUTO-GENERATED.  DO NOT EDIT. */
-
-/* This is C++ code to read HDF5 files for
-   reaction rates, cooling rates, and initial
-   conditions for the chemical network defined
-   by the user.  In addition, this contains
-   code for calculating temperature from the
-   gas energy and computing the RHS and the
-   Jacobian of the system of equations which
-   will be fed into the solver.
-*/
-
-
-#include <dengo_primordial_network.hpp>
+#include <raja_primordial_network.hpp>
 
 
 cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, char ***FieldNames)
@@ -50,8 +34,8 @@ cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, cha
     data->nstrip = MAX_NCELLS;
     /*initialize temperature so it wont crash*/
     for ( i = 0; i < MAX_NCELLS; i++ ){
-        data->Ts[0][i]    = 1000.0;
-        data->logTs[0][i] = log(1000.0);
+        data->Ts[i]    = 1000.0;
+        data->logTs[i] = log(1000.0);
     }
 
     /* Temperature-related pieces */
@@ -296,7 +280,6 @@ int cvklu_calculate_temperature(cvklu_data *data,
 
 
     i = 0;
-    int threadID = 0;
 
     for ( i = 0; i < nstrip; i++ ){
         j = i * nchem;
@@ -338,7 +321,7 @@ int cvklu_calculate_temperature(cvklu_data *data,
 
 
         // Initiate the "guess" temperature
-        T    = data->Ts[threadID][i];
+        T    = data->Ts[i];
         Tnew = T*1.1;
 
         Tdiff = Tnew - T;
@@ -349,21 +332,17 @@ int cvklu_calculate_temperature(cvklu_data *data,
             // We do Newton's Iteration to calculate the temperature
             // Since gammaH2 is dependent on the temperature too!
 
-            T = data->Ts[threadID][i];
+            T = data->Ts[i];
 
             cvklu_interpolate_gamma(data, i);
 
-            gammaH2_1 = data->gammaH2_1[threadID][i];
-            dgammaH2_1_dT = data->dgammaH2_1_dT[threadID][i];
+            gammaH2_1 = data->gammaH2_1[i];
+            dgammaH2_1_dT = data->dgammaH2_1_dT[i];
             _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
-            // fprintf(stderr, ":gammaH2_1 %0.5g , dgammaH2_1_dT: %.5g \n", gammaH2_1, dgammaH2_1_dT  );
 
-            gammaH2_2 = data->gammaH2_2[threadID][i];
-            dgammaH2_2_dT = data->dgammaH2_2_dT[threadID][i];
+            gammaH2_2 = data->gammaH2_2[i];
+            dgammaH2_2_dT = data->dgammaH2_2_dT[i];
             _gammaH2_2_m1 = 1.0 / (gammaH2_2 - 1.0);
-            // fprintf(stderr, ":gammaH2_2 %0.5g , dgammaH2_2_dT: %.5g \n", gammaH2_2, dgammaH2_2_dT  );
-
-
 
             // update gammaH2
             // The derivatives of  sum (nkT/(gamma - 1)/mh/density) - ge
@@ -375,7 +354,7 @@ int cvklu_calculate_temperature(cvklu_data *data,
             dge = T*kb*(H2_1*_gammaH2_1_m1 + H2_2*_gammaH2_2_m1 + H_1*_gamma_m1 + H_2*_gamma_m1 + H_m0*_gamma_m1 + He_1*_gamma_m1 + He_2*_gamma_m1 + He_3*_gamma_m1 + _gamma_m1*de)/(density*mh) - ge;
 
             Tnew = T - dge/dge_dT;
-            data->Ts[threadID][i] = Tnew;
+            data->Ts[i] = Tnew;
 
             Tdiff = fabs(T - Tnew);
             // fprintf(stderr, "T: %0.5g ; Tnew: %0.5g; dge_dT: %.5g, dge: %.5g, ge: %.5g \n", T,Tnew, dge_dT, dge, ge);
@@ -386,7 +365,7 @@ int cvklu_calculate_temperature(cvklu_data *data,
             // }
         } // while loop
 
-        data->Ts[threadID][i] = Tnew;
+        data->Ts[i] = Tnew;
 
 
         // fprintf(stderr,"T : %0.5g, density : %0.5g, d_gammaH2: %0.5g \n", Tnew, density, gammaH2 - 7./5.);
@@ -394,14 +373,14 @@ int cvklu_calculate_temperature(cvklu_data *data,
 
 
 
-        if (data->Ts[threadID][i] < data->bounds[0]) {
-            data->Ts[threadID][i] = data->bounds[0];
-        } else if (data->Ts[threadID][i] > data->bounds[1]) {
-            data->Ts[threadID][i] = data->bounds[1];
+        if (data->Ts[i] < data->bounds[0]) {
+            data->Ts[i] = data->bounds[0];
+        } else if (data->Ts[i] > data->bounds[1]) {
+            data->Ts[i] = data->bounds[1];
         }
-        data->logTs[threadID][i] = log(data->Ts[threadID][i]);
-        data->invTs[threadID][i] = 1.0 / data->Ts[threadID][i];
-	    data->dTs_ge[threadID][i] = 1.0 / dge_dT;
+        data->logTs[i] = log(data->Ts[i]);
+        data->invTs[i] = 1.0 / data->Ts[i];
+	    data->dTs_ge[i] = 1.0 / dge_dT;
 
     } // for i in nstrip loop
     return 0;
@@ -429,22 +408,18 @@ void cvklu_interpolate_rates(cvklu_data *data,
     lbz = log(data->z_bounds[0] + 1.0);
 
     i = 0;
-    int threadID = 0;
 
     for ( i = 0; i < nstrip; i++ ){
-        data->bin_id[threadID][i] = bin_id = (int) (data->idbin * (data->logTs[threadID][i] - lb));
-        if (data->bin_id[threadID][i] <= 0) {
-            data->bin_id[threadID][i] = 0;
-        } else if (data->bin_id[threadID][i] >= data->nbins) {
-            data->bin_id[threadID][i] = data->nbins - 1;
+        data->bin_id[i] = bin_id = (int) (data->idbin * (data->logTs[i] - lb));
+        if (data->bin_id[i] <= 0) {
+            data->bin_id[i] = 0;
+        } else if (data->bin_id[i] >= data->nbins) {
+            data->bin_id[i] = data->nbins - 1;
         }
         t1 = (lb + (bin_id    ) * data->dbin);
         t2 = (lb + (bin_id + 1) * data->dbin);
-        data->Tdef[threadID][i] = (data->logTs[threadID][i] - t1)/(t2 - t1);
-        data->dT[threadID][i] = (t2 - t1);
-        /*fprintf(stderr, "INTERP: %d, bin_id = %d, dT = % 0.16g, T = % 0.16g, logT = % 0.16g\n",
-                i, data->bin_id[i], data->dT[i], data->Ts[i],
-                data->logTs[i]);*/
+        data->Tdef[i] = (data->logTs[i] - t1)/(t2 - t1);
+        data->dT[i] = (t2 - t1);
 
     if ((data->current_z >= data->z_bounds[0]) && (data->current_z < data->z_bounds[1])) {
         zbin_id = (int) (data->id_zbin * (log(data->current_z + 1.0) - lbz));
@@ -467,523 +442,523 @@ void cvklu_interpolate_rates(cvklu_data *data,
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k01[threadID][i] = data->r_k01[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k01[i] = data->r_k01[bin_id] +
             Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
-        data->drs_k01[threadID][i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
-        data->drs_k01[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k01[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k01[i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
+        data->drs_k01[i] /= data->dT[i];
+	    data->drs_k01[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k02[threadID][i] = data->r_k02[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k02[i] = data->r_k02[bin_id] +
             Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
-        data->drs_k02[threadID][i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
-        data->drs_k02[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k02[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k02[i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
+        data->drs_k02[i] /= data->dT[i];
+	    data->drs_k02[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k03[threadID][i] = data->r_k03[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k03[i] = data->r_k03[bin_id] +
             Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
-        data->drs_k03[threadID][i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
-        data->drs_k03[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k03[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k03[i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
+        data->drs_k03[i] /= data->dT[i];
+	    data->drs_k03[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k04[threadID][i] = data->r_k04[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k04[i] = data->r_k04[bin_id] +
             Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
-        data->drs_k04[threadID][i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
-        data->drs_k04[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k04[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k04[i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
+        data->drs_k04[i] /= data->dT[i];
+	    data->drs_k04[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k05[threadID][i] = data->r_k05[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k05[i] = data->r_k05[bin_id] +
             Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
-        data->drs_k05[threadID][i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
-        data->drs_k05[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k05[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k05[i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
+        data->drs_k05[i] /= data->dT[i];
+	    data->drs_k05[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k06[threadID][i] = data->r_k06[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k06[i] = data->r_k06[bin_id] +
             Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
-        data->drs_k06[threadID][i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
-        data->drs_k06[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k06[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k06[i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
+        data->drs_k06[i] /= data->dT[i];
+	    data->drs_k06[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k07[threadID][i] = data->r_k07[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k07[i] = data->r_k07[bin_id] +
             Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
-        data->drs_k07[threadID][i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
-        data->drs_k07[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k07[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k07[i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
+        data->drs_k07[i] /= data->dT[i];
+	    data->drs_k07[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k08[threadID][i] = data->r_k08[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k08[i] = data->r_k08[bin_id] +
             Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
-        data->drs_k08[threadID][i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
-        data->drs_k08[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k08[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k08[i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
+        data->drs_k08[i] /= data->dT[i];
+	    data->drs_k08[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k09[threadID][i] = data->r_k09[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k09[i] = data->r_k09[bin_id] +
             Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
-        data->drs_k09[threadID][i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
-        data->drs_k09[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k09[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k09[i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
+        data->drs_k09[i] /= data->dT[i];
+	    data->drs_k09[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k10[threadID][i] = data->r_k10[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k10[i] = data->r_k10[bin_id] +
             Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
-        data->drs_k10[threadID][i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
-        data->drs_k10[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k10[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k10[i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
+        data->drs_k10[i] /= data->dT[i];
+	    data->drs_k10[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k11[threadID][i] = data->r_k11[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k11[i] = data->r_k11[bin_id] +
             Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
-        data->drs_k11[threadID][i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
-        data->drs_k11[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k11[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k11[i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
+        data->drs_k11[i] /= data->dT[i];
+	    data->drs_k11[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k12[threadID][i] = data->r_k12[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k12[i] = data->r_k12[bin_id] +
             Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
-        data->drs_k12[threadID][i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
-        data->drs_k12[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k12[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k12[i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
+        data->drs_k12[i] /= data->dT[i];
+	    data->drs_k12[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k13[threadID][i] = data->r_k13[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k13[i] = data->r_k13[bin_id] +
             Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
-        data->drs_k13[threadID][i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
-        data->drs_k13[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k13[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k13[i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
+        data->drs_k13[i] /= data->dT[i];
+	    data->drs_k13[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k14[threadID][i] = data->r_k14[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k14[i] = data->r_k14[bin_id] +
             Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
-        data->drs_k14[threadID][i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
-        data->drs_k14[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k14[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k14[i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
+        data->drs_k14[i] /= data->dT[i];
+	    data->drs_k14[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k15[threadID][i] = data->r_k15[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k15[i] = data->r_k15[bin_id] +
             Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
-        data->drs_k15[threadID][i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
-        data->drs_k15[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k15[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k15[i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
+        data->drs_k15[i] /= data->dT[i];
+	    data->drs_k15[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k16[threadID][i] = data->r_k16[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k16[i] = data->r_k16[bin_id] +
             Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
-        data->drs_k16[threadID][i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
-        data->drs_k16[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k16[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k16[i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
+        data->drs_k16[i] /= data->dT[i];
+	    data->drs_k16[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k17[threadID][i] = data->r_k17[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k17[i] = data->r_k17[bin_id] +
             Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
-        data->drs_k17[threadID][i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
-        data->drs_k17[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k17[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k17[i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
+        data->drs_k17[i] /= data->dT[i];
+	    data->drs_k17[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k18[threadID][i] = data->r_k18[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k18[i] = data->r_k18[bin_id] +
             Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
-        data->drs_k18[threadID][i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
-        data->drs_k18[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k18[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k18[i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
+        data->drs_k18[i] /= data->dT[i];
+	    data->drs_k18[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k19[threadID][i] = data->r_k19[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k19[i] = data->r_k19[bin_id] +
             Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
-        data->drs_k19[threadID][i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
-        data->drs_k19[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k19[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k19[i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
+        data->drs_k19[i] /= data->dT[i];
+	    data->drs_k19[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k21[threadID][i] = data->r_k21[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k21[i] = data->r_k21[bin_id] +
             Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
-        data->drs_k21[threadID][i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
-        data->drs_k21[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k21[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k21[i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
+        data->drs_k21[i] /= data->dT[i];
+	    data->drs_k21[i] *= data->invTs[i];
 
     }
 
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->rs_k22[threadID][i] = data->r_k22[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->rs_k22[i] = data->r_k22[bin_id] +
             Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
-        data->drs_k22[threadID][i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
-        data->drs_k22[threadID][i] /= data->dT[threadID][i];
-	    data->drs_k22[threadID][i] *= data->invTs[threadID][i];
+        data->drs_k22[i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
+        data->drs_k22[i] /= data->dT[i];
+	    data->drs_k22[i] *= data->invTs[i];
 
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_brem_brem[threadID][i] = data->c_brem_brem[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_brem_brem[i] = data->c_brem_brem[bin_id] +
             Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
-        data->dcs_brem_brem[threadID][i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
-        data->dcs_brem_brem[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_brem_brem[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_brem_brem[i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
+        data->dcs_brem_brem[i] /= data->dT[i];
+	    data->dcs_brem_brem[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ceHeI_ceHeI[threadID][i] = data->c_ceHeI_ceHeI[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ceHeI_ceHeI[i] = data->c_ceHeI_ceHeI[bin_id] +
             Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
-        data->dcs_ceHeI_ceHeI[threadID][i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
-        data->dcs_ceHeI_ceHeI[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ceHeI_ceHeI[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ceHeI_ceHeI[i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
+        data->dcs_ceHeI_ceHeI[i] /= data->dT[i];
+	    data->dcs_ceHeI_ceHeI[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ceHeII_ceHeII[threadID][i] = data->c_ceHeII_ceHeII[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ceHeII_ceHeII[i] = data->c_ceHeII_ceHeII[bin_id] +
             Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
-        data->dcs_ceHeII_ceHeII[threadID][i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
-        data->dcs_ceHeII_ceHeII[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ceHeII_ceHeII[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ceHeII_ceHeII[i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
+        data->dcs_ceHeII_ceHeII[i] /= data->dT[i];
+	    data->dcs_ceHeII_ceHeII[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ceHI_ceHI[threadID][i] = data->c_ceHI_ceHI[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ceHI_ceHI[i] = data->c_ceHI_ceHI[bin_id] +
             Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
-        data->dcs_ceHI_ceHI[threadID][i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
-        data->dcs_ceHI_ceHI[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ceHI_ceHI[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ceHI_ceHI[i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
+        data->dcs_ceHI_ceHI[i] /= data->dT[i];
+	    data->dcs_ceHI_ceHI[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_cie_cooling_cieco[threadID][i] = data->c_cie_cooling_cieco[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_cie_cooling_cieco[i] = data->c_cie_cooling_cieco[bin_id] +
             Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
-        data->dcs_cie_cooling_cieco[threadID][i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
-        data->dcs_cie_cooling_cieco[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_cie_cooling_cieco[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_cie_cooling_cieco[i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
+        data->dcs_cie_cooling_cieco[i] /= data->dT[i];
+	    data->dcs_cie_cooling_cieco[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ciHeI_ciHeI[threadID][i] = data->c_ciHeI_ciHeI[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ciHeI_ciHeI[i] = data->c_ciHeI_ciHeI[bin_id] +
             Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
-        data->dcs_ciHeI_ciHeI[threadID][i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
-        data->dcs_ciHeI_ciHeI[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ciHeI_ciHeI[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ciHeI_ciHeI[i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
+        data->dcs_ciHeI_ciHeI[i] /= data->dT[i];
+	    data->dcs_ciHeI_ciHeI[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ciHeII_ciHeII[threadID][i] = data->c_ciHeII_ciHeII[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ciHeII_ciHeII[i] = data->c_ciHeII_ciHeII[bin_id] +
             Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
-        data->dcs_ciHeII_ciHeII[threadID][i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
-        data->dcs_ciHeII_ciHeII[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ciHeII_ciHeII[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ciHeII_ciHeII[i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
+        data->dcs_ciHeII_ciHeII[i] /= data->dT[i];
+	    data->dcs_ciHeII_ciHeII[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ciHeIS_ciHeIS[threadID][i] = data->c_ciHeIS_ciHeIS[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ciHeIS_ciHeIS[i] = data->c_ciHeIS_ciHeIS[bin_id] +
             Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
-        data->dcs_ciHeIS_ciHeIS[threadID][i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
-        data->dcs_ciHeIS_ciHeIS[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ciHeIS_ciHeIS[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ciHeIS_ciHeIS[i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
+        data->dcs_ciHeIS_ciHeIS[i] /= data->dT[i];
+	    data->dcs_ciHeIS_ciHeIS[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_ciHI_ciHI[threadID][i] = data->c_ciHI_ciHI[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_ciHI_ciHI[i] = data->c_ciHI_ciHI[bin_id] +
             Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
-        data->dcs_ciHI_ciHI[threadID][i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
-        data->dcs_ciHI_ciHI[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_ciHI_ciHI[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_ciHI_ciHI[i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
+        data->dcs_ciHI_ciHI[i] /= data->dT[i];
+	    data->dcs_ciHI_ciHI[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_compton_comp_[threadID][i] = data->c_compton_comp_[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_compton_comp_[i] = data->c_compton_comp_[bin_id] +
             Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
-        data->dcs_compton_comp_[threadID][i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
-        data->dcs_compton_comp_[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_compton_comp_[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_compton_comp_[i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
+        data->dcs_compton_comp_[i] /= data->dT[i];
+	    data->dcs_compton_comp_[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gammah_gammah[threadID][i] = data->c_gammah_gammah[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gammah_gammah[i] = data->c_gammah_gammah[bin_id] +
             Tdef * (data->c_gammah_gammah[bin_id+1] - data->c_gammah_gammah[bin_id]);
-        data->dcs_gammah_gammah[threadID][i] = (data->c_gammah_gammah[bin_id+1] - data->c_gammah_gammah[bin_id]);
-        data->dcs_gammah_gammah[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gammah_gammah[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gammah_gammah[i] = (data->c_gammah_gammah[bin_id+1] - data->c_gammah_gammah[bin_id]);
+        data->dcs_gammah_gammah[i] /= data->dT[i];
+	    data->dcs_gammah_gammah[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gael[threadID][i] = data->c_gloverabel08_gael[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gael[i] = data->c_gloverabel08_gael[bin_id] +
             Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
-        data->dcs_gloverabel08_gael[threadID][i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
-        data->dcs_gloverabel08_gael[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gael[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gael[i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
+        data->dcs_gloverabel08_gael[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gael[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gaH2[threadID][i] = data->c_gloverabel08_gaH2[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gaH2[i] = data->c_gloverabel08_gaH2[bin_id] +
             Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
-        data->dcs_gloverabel08_gaH2[threadID][i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
-        data->dcs_gloverabel08_gaH2[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gaH2[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gaH2[i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
+        data->dcs_gloverabel08_gaH2[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gaH2[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gaHe[threadID][i] = data->c_gloverabel08_gaHe[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gaHe[i] = data->c_gloverabel08_gaHe[bin_id] +
             Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
-        data->dcs_gloverabel08_gaHe[threadID][i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
-        data->dcs_gloverabel08_gaHe[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gaHe[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gaHe[i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
+        data->dcs_gloverabel08_gaHe[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gaHe[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gaHI[threadID][i] = data->c_gloverabel08_gaHI[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gaHI[i] = data->c_gloverabel08_gaHI[bin_id] +
             Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
-        data->dcs_gloverabel08_gaHI[threadID][i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
-        data->dcs_gloverabel08_gaHI[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gaHI[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gaHI[i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
+        data->dcs_gloverabel08_gaHI[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gaHI[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gaHp[threadID][i] = data->c_gloverabel08_gaHp[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gaHp[i] = data->c_gloverabel08_gaHp[bin_id] +
             Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
-        data->dcs_gloverabel08_gaHp[threadID][i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
-        data->dcs_gloverabel08_gaHp[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gaHp[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gaHp[i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
+        data->dcs_gloverabel08_gaHp[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gaHp[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gphdl[threadID][i] = data->c_gloverabel08_gphdl[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gphdl[i] = data->c_gloverabel08_gphdl[bin_id] +
             Tdef * (data->c_gloverabel08_gphdl[bin_id+1] - data->c_gloverabel08_gphdl[bin_id]);
-        data->dcs_gloverabel08_gphdl[threadID][i] = (data->c_gloverabel08_gphdl[bin_id+1] - data->c_gloverabel08_gphdl[bin_id]);
-        data->dcs_gloverabel08_gphdl[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gphdl[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gphdl[i] = (data->c_gloverabel08_gphdl[bin_id+1] - data->c_gloverabel08_gphdl[bin_id]);
+        data->dcs_gloverabel08_gphdl[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gphdl[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_gpldl[threadID][i] = data->c_gloverabel08_gpldl[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_gpldl[i] = data->c_gloverabel08_gpldl[bin_id] +
             Tdef * (data->c_gloverabel08_gpldl[bin_id+1] - data->c_gloverabel08_gpldl[bin_id]);
-        data->dcs_gloverabel08_gpldl[threadID][i] = (data->c_gloverabel08_gpldl[bin_id+1] - data->c_gloverabel08_gpldl[bin_id]);
-        data->dcs_gloverabel08_gpldl[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_gpldl[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_gpldl[i] = (data->c_gloverabel08_gpldl[bin_id+1] - data->c_gloverabel08_gpldl[bin_id]);
+        data->dcs_gloverabel08_gpldl[i] /= data->dT[i];
+	    data->dcs_gloverabel08_gpldl[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_gloverabel08_h2lte[threadID][i] = data->c_gloverabel08_h2lte[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_gloverabel08_h2lte[i] = data->c_gloverabel08_h2lte[bin_id] +
             Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
-        data->dcs_gloverabel08_h2lte[threadID][i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
-        data->dcs_gloverabel08_h2lte[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_gloverabel08_h2lte[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_gloverabel08_h2lte[i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
+        data->dcs_gloverabel08_h2lte[i] /= data->dT[i];
+	    data->dcs_gloverabel08_h2lte[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_h2formation_h2mcool[threadID][i] = data->c_h2formation_h2mcool[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_h2formation_h2mcool[i] = data->c_h2formation_h2mcool[bin_id] +
             Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
-        data->dcs_h2formation_h2mcool[threadID][i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
-        data->dcs_h2formation_h2mcool[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_h2formation_h2mcool[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_h2formation_h2mcool[i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
+        data->dcs_h2formation_h2mcool[i] /= data->dT[i];
+	    data->dcs_h2formation_h2mcool[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_h2formation_h2mheat[threadID][i] = data->c_h2formation_h2mheat[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_h2formation_h2mheat[i] = data->c_h2formation_h2mheat[bin_id] +
             Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
-        data->dcs_h2formation_h2mheat[threadID][i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
-        data->dcs_h2formation_h2mheat[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_h2formation_h2mheat[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_h2formation_h2mheat[i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
+        data->dcs_h2formation_h2mheat[i] /= data->dT[i];
+	    data->dcs_h2formation_h2mheat[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_h2formation_ncrd1[threadID][i] = data->c_h2formation_ncrd1[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_h2formation_ncrd1[i] = data->c_h2formation_ncrd1[bin_id] +
             Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
-        data->dcs_h2formation_ncrd1[threadID][i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
-        data->dcs_h2formation_ncrd1[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_h2formation_ncrd1[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_h2formation_ncrd1[i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
+        data->dcs_h2formation_ncrd1[i] /= data->dT[i];
+	    data->dcs_h2formation_ncrd1[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_h2formation_ncrd2[threadID][i] = data->c_h2formation_ncrd2[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_h2formation_ncrd2[i] = data->c_h2formation_ncrd2[bin_id] +
             Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
-        data->dcs_h2formation_ncrd2[threadID][i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
-        data->dcs_h2formation_ncrd2[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_h2formation_ncrd2[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_h2formation_ncrd2[i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
+        data->dcs_h2formation_ncrd2[i] /= data->dT[i];
+	    data->dcs_h2formation_ncrd2[i] *= data->invTs[i];
     }
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_h2formation_ncrn[threadID][i] = data->c_h2formation_ncrn[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_h2formation_ncrn[i] = data->c_h2formation_ncrn[bin_id] +
             Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
-        data->dcs_h2formation_ncrn[threadID][i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
-        data->dcs_h2formation_ncrn[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_h2formation_ncrn[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_h2formation_ncrn[i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
+        data->dcs_h2formation_ncrn[i] /= data->dT[i];
+	    data->dcs_h2formation_ncrn[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_reHeII1_reHeII1[threadID][i] = data->c_reHeII1_reHeII1[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_reHeII1_reHeII1[i] = data->c_reHeII1_reHeII1[bin_id] +
             Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
-        data->dcs_reHeII1_reHeII1[threadID][i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
-        data->dcs_reHeII1_reHeII1[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_reHeII1_reHeII1[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_reHeII1_reHeII1[i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
+        data->dcs_reHeII1_reHeII1[i] /= data->dT[i];
+	    data->dcs_reHeII1_reHeII1[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_reHeII2_reHeII2[threadID][i] = data->c_reHeII2_reHeII2[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_reHeII2_reHeII2[i] = data->c_reHeII2_reHeII2[bin_id] +
             Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
-        data->dcs_reHeII2_reHeII2[threadID][i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
-        data->dcs_reHeII2_reHeII2[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_reHeII2_reHeII2[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_reHeII2_reHeII2[i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
+        data->dcs_reHeII2_reHeII2[i] /= data->dT[i];
+	    data->dcs_reHeII2_reHeII2[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_reHeIII_reHeIII[threadID][i] = data->c_reHeIII_reHeIII[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_reHeIII_reHeIII[i] = data->c_reHeIII_reHeIII[bin_id] +
             Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
-        data->dcs_reHeIII_reHeIII[threadID][i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
-        data->dcs_reHeIII_reHeIII[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_reHeIII_reHeIII[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_reHeIII_reHeIII[i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
+        data->dcs_reHeIII_reHeIII[i] /= data->dT[i];
+	    data->dcs_reHeIII_reHeIII[i] *= data->invTs[i];
     }
 
     for ( i = 0; i < nstrip; i++ ){
-        bin_id = data->bin_id[threadID][i];
-        Tdef   = data->Tdef[threadID][i];
-        data->cs_reHII_reHII[threadID][i] = data->c_reHII_reHII[bin_id] +
+        bin_id = data->bin_id[i];
+        Tdef   = data->Tdef[i];
+        data->cs_reHII_reHII[i] = data->c_reHII_reHII[bin_id] +
             Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
-        data->dcs_reHII_reHII[threadID][i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
-        data->dcs_reHII_reHII[threadID][i] /= data->dT[threadID][i];
-	    data->dcs_reHII_reHII[threadID][i] *= data->invTs[threadID][i];
+        data->dcs_reHII_reHII[i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
+        data->dcs_reHII_reHII[i] /= data->dT[i];
+	    data->dcs_reHII_reHII[i] *= data->invTs[i];
     }
 
 
@@ -1007,36 +982,34 @@ void cvklu_interpolate_gamma(cvklu_data *data,
     lb = log(data->bounds[0]);
     lbz = log(data->z_bounds[0] + 1.0);
 
-    int threadID = 0;
-
-    data->bin_id[threadID][i] = bin_id = (int) (data->idbin * (data->logTs[threadID][i] - lb));
-    if (data->bin_id[threadID][i] <= 0) {
-        data->bin_id[threadID][i] = 0;
-    } else if (data->bin_id[threadID][i] >= data->nbins) {
-        data->bin_id[threadID][i] = data->nbins - 1;
+    data->bin_id[i] = bin_id = (int) (data->idbin * (data->logTs[i] - lb));
+    if (data->bin_id[i] <= 0) {
+        data->bin_id[i] = 0;
+    } else if (data->bin_id[i] >= data->nbins) {
+        data->bin_id[i] = data->nbins - 1;
     }
     t1 = (lb + (bin_id    ) * data->dbin);
     t2 = (lb + (bin_id + 1) * data->dbin);
-    data->Tdef[threadID][i] = (data->logTs[threadID][i] - t1)/(t2 - t1);
-    data->dT[threadID][i] = (t2 - t1);
+    data->Tdef[i] = (data->logTs[i] - t1)/(t2 - t1);
+    data->dT[i] = (t2 - t1);
 
 
 
-    bin_id = data->bin_id[threadID][i];
-    data->gammaH2_2[threadID][i] = data->g_gammaH2_2[bin_id] +
-        data->Tdef[threadID][i] * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
+    bin_id = data->bin_id[i];
+    data->gammaH2_2[i] = data->g_gammaH2_2[bin_id] +
+        data->Tdef[i] * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
 
-    data->dgammaH2_2_dT[threadID][i] = data->g_dgammaH2_2_dT[bin_id] +
-        data->Tdef[threadID][i] * (data->g_dgammaH2_2_dT[bin_id+1]
+    data->dgammaH2_2_dT[i] = data->g_dgammaH2_2_dT[bin_id] +
+        data->Tdef[i] * (data->g_dgammaH2_2_dT[bin_id+1]
         - data->g_dgammaH2_2_dT[bin_id]);
 
 
-    bin_id = data->bin_id[threadID][i];
-    data->gammaH2_1[threadID][i] = data->g_gammaH2_1[bin_id] +
-        data->Tdef[threadID][i] * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+    bin_id = data->bin_id[i];
+    data->gammaH2_1[i] = data->g_gammaH2_1[bin_id] +
+        data->Tdef[i] * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
 
-    data->dgammaH2_1_dT[threadID][i] = data->g_dgammaH2_1_dT[bin_id] +
-        data->Tdef[threadID][i] * (data->g_dgammaH2_1_dT[bin_id+1]
+    data->dgammaH2_1_dT[i] = data->g_dgammaH2_1_dT[bin_id] +
+        data->Tdef[i] * (data->g_dgammaH2_1_dT[bin_id+1]
         - data->g_dgammaH2_1_dT[bin_id]);
 
 
@@ -1168,9 +1141,8 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
     double ge;
 
 
-    int threadID = 0;
-    double *scale     = data->scale[threadID];
-    double *inv_scale = data->inv_scale[threadID];
+    double *scale     = data->scale;
+    double *inv_scale = data->inv_scale;
     double *ydata     = N_VGetArrayPointer(y);
 
     for ( i = 0; i < nstrip; i++ ){
@@ -1207,55 +1179,55 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
 
     /* Now we set up some temporaries */
-    double *k01 = data->rs_k01[threadID];
-    double *k02 = data->rs_k02[threadID];
-    double *k03 = data->rs_k03[threadID];
-    double *k04 = data->rs_k04[threadID];
-    double *k05 = data->rs_k05[threadID];
-    double *k06 = data->rs_k06[threadID];
-    double *k07 = data->rs_k07[threadID];
-    double *k08 = data->rs_k08[threadID];
-    double *k09 = data->rs_k09[threadID];
-    double *k10 = data->rs_k10[threadID];
-    double *k11 = data->rs_k11[threadID];
-    double *k12 = data->rs_k12[threadID];
-    double *k13 = data->rs_k13[threadID];
-    double *k14 = data->rs_k14[threadID];
-    double *k15 = data->rs_k15[threadID];
-    double *k16 = data->rs_k16[threadID];
-    double *k17 = data->rs_k17[threadID];
-    double *k18 = data->rs_k18[threadID];
-    double *k19 = data->rs_k19[threadID];
-    double *k21 = data->rs_k21[threadID];
-    double *k22 = data->rs_k22[threadID];
-    double *brem_brem = data->cs_brem_brem[threadID];
-    double *ceHeI_ceHeI = data->cs_ceHeI_ceHeI[threadID];
-    double *ceHeII_ceHeII = data->cs_ceHeII_ceHeII[threadID];
-    double *ceHI_ceHI = data->cs_ceHI_ceHI[threadID];
-    double *cie_cooling_cieco = data->cs_cie_cooling_cieco[threadID];
-    double *ciHeI_ciHeI = data->cs_ciHeI_ciHeI[threadID];
-    double *ciHeII_ciHeII = data->cs_ciHeII_ciHeII[threadID];
-    double *ciHeIS_ciHeIS = data->cs_ciHeIS_ciHeIS[threadID];
-    double *ciHI_ciHI = data->cs_ciHI_ciHI[threadID];
-    double *compton_comp_ = data->cs_compton_comp_[threadID];
-    double *gammah_gammah = data->cs_gammah_gammah[threadID];
-    double *gloverabel08_gael = data->cs_gloverabel08_gael[threadID];
-    double *gloverabel08_gaH2 = data->cs_gloverabel08_gaH2[threadID];
-    double *gloverabel08_gaHe = data->cs_gloverabel08_gaHe[threadID];
-    double *gloverabel08_gaHI = data->cs_gloverabel08_gaHI[threadID];
-    double *gloverabel08_gaHp = data->cs_gloverabel08_gaHp[threadID];
-    double *gloverabel08_gphdl = data->cs_gloverabel08_gphdl[threadID];
-    double *gloverabel08_gpldl = data->cs_gloverabel08_gpldl[threadID];
-    double *gloverabel08_h2lte = data->cs_gloverabel08_h2lte[threadID];
-    double *h2formation_h2mcool = data->cs_h2formation_h2mcool[threadID];
-    double *h2formation_h2mheat = data->cs_h2formation_h2mheat[threadID];
-    double *h2formation_ncrd1 = data->cs_h2formation_ncrd1[threadID];
-    double *h2formation_ncrd2 = data->cs_h2formation_ncrd2[threadID];
-    double *h2formation_ncrn = data->cs_h2formation_ncrn[threadID];
-    double *reHeII1_reHeII1 = data->cs_reHeII1_reHeII1[threadID];
-    double *reHeII2_reHeII2 = data->cs_reHeII2_reHeII2[threadID];
-    double *reHeIII_reHeIII = data->cs_reHeIII_reHeIII[threadID];
-    double *reHII_reHII = data->cs_reHII_reHII[threadID];
+    double *k01 = data->rs_k01;
+    double *k02 = data->rs_k02;
+    double *k03 = data->rs_k03;
+    double *k04 = data->rs_k04;
+    double *k05 = data->rs_k05;
+    double *k06 = data->rs_k06;
+    double *k07 = data->rs_k07;
+    double *k08 = data->rs_k08;
+    double *k09 = data->rs_k09;
+    double *k10 = data->rs_k10;
+    double *k11 = data->rs_k11;
+    double *k12 = data->rs_k12;
+    double *k13 = data->rs_k13;
+    double *k14 = data->rs_k14;
+    double *k15 = data->rs_k15;
+    double *k16 = data->rs_k16;
+    double *k17 = data->rs_k17;
+    double *k18 = data->rs_k18;
+    double *k19 = data->rs_k19;
+    double *k21 = data->rs_k21;
+    double *k22 = data->rs_k22;
+    double *brem_brem = data->cs_brem_brem;
+    double *ceHeI_ceHeI = data->cs_ceHeI_ceHeI;
+    double *ceHeII_ceHeII = data->cs_ceHeII_ceHeII;
+    double *ceHI_ceHI = data->cs_ceHI_ceHI;
+    double *cie_cooling_cieco = data->cs_cie_cooling_cieco;
+    double *ciHeI_ciHeI = data->cs_ciHeI_ciHeI;
+    double *ciHeII_ciHeII = data->cs_ciHeII_ciHeII;
+    double *ciHeIS_ciHeIS = data->cs_ciHeIS_ciHeIS;
+    double *ciHI_ciHI = data->cs_ciHI_ciHI;
+    double *compton_comp_ = data->cs_compton_comp_;
+    double *gammah_gammah = data->cs_gammah_gammah;
+    double *gloverabel08_gael = data->cs_gloverabel08_gael;
+    double *gloverabel08_gaH2 = data->cs_gloverabel08_gaH2;
+    double *gloverabel08_gaHe = data->cs_gloverabel08_gaHe;
+    double *gloverabel08_gaHI = data->cs_gloverabel08_gaHI;
+    double *gloverabel08_gaHp = data->cs_gloverabel08_gaHp;
+    double *gloverabel08_gphdl = data->cs_gloverabel08_gphdl;
+    double *gloverabel08_gpldl = data->cs_gloverabel08_gpldl;
+    double *gloverabel08_h2lte = data->cs_gloverabel08_h2lte;
+    double *h2formation_h2mcool = data->cs_h2formation_h2mcool;
+    double *h2formation_h2mheat = data->cs_h2formation_h2mheat;
+    double *h2formation_ncrd1 = data->cs_h2formation_ncrd1;
+    double *h2formation_ncrd2 = data->cs_h2formation_ncrd2;
+    double *h2formation_ncrn = data->cs_h2formation_ncrn;
+    double *reHeII1_reHeII1 = data->cs_reHeII1_reHeII1;
+    double *reHeII2_reHeII2 = data->cs_reHeII2_reHeII2;
+    double *reHeIII_reHeIII = data->cs_reHeIII_reHeIII;
+    double *reHII_reHII = data->cs_reHII_reHII;
 
 
     double h2_optical_depth_approx;
@@ -1274,15 +1246,15 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
     for ( i = 0; i < nstrip; i++ ){
 
-        T            = data->Ts[threadID][i];
+        T            = data->Ts[i];
         z            = data->current_z;
-        mdensity     = data->mdensity[threadID][i];
-        inv_mdensity = data->inv_mdensity[threadID][i];
+        mdensity     = data->mdensity[i];
+        inv_mdensity = data->inv_mdensity[i];
 
-        h2_optical_depth_approx = data->h2_optical_depth_approx[threadID][i];
+        h2_optical_depth_approx = data->h2_optical_depth_approx[i];
 
 
-        cie_optical_depth_approx = data->cie_optical_depth_approx[threadID][i];
+        cie_optical_depth_approx = data->cie_optical_depth_approx[i];
 
 
         j = i * nchem;
@@ -1414,12 +1386,10 @@ int calculate_sparse_jacobian_cvklu( realtype t,
     int i, j;
     int NSPARSE = 64;
 
-    int threadID = 0;
-
     /* change N_Vector back to an array */
     double y_arr[ 10 * nstrip ];
-    double *scale     = data->scale[threadID];
-    double *inv_scale = data->inv_scale[threadID];
+    double *scale     = data->scale;
+    double *inv_scale = data->inv_scale;
 
     double h2_optical_depth_approx;
 
@@ -1436,105 +1406,105 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
     SUNMatZero(J);
 
-    double *Tge = data->dTs_ge[threadID];
-    double *k01 = data->rs_k01[threadID];
-    double *rk01= data->drs_k01[threadID];
-    double *k02 = data->rs_k02[threadID];
-    double *rk02= data->drs_k02[threadID];
-    double *k03 = data->rs_k03[threadID];
-    double *rk03= data->drs_k03[threadID];
-    double *k04 = data->rs_k04[threadID];
-    double *rk04= data->drs_k04[threadID];
-    double *k05 = data->rs_k05[threadID];
-    double *rk05= data->drs_k05[threadID];
-    double *k06 = data->rs_k06[threadID];
-    double *rk06= data->drs_k06[threadID];
-    double *k07 = data->rs_k07[threadID];
-    double *rk07= data->drs_k07[threadID];
-    double *k08 = data->rs_k08[threadID];
-    double *rk08= data->drs_k08[threadID];
-    double *k09 = data->rs_k09[threadID];
-    double *rk09= data->drs_k09[threadID];
-    double *k10 = data->rs_k10[threadID];
-    double *rk10= data->drs_k10[threadID];
-    double *k11 = data->rs_k11[threadID];
-    double *rk11= data->drs_k11[threadID];
-    double *k12 = data->rs_k12[threadID];
-    double *rk12= data->drs_k12[threadID];
-    double *k13 = data->rs_k13[threadID];
-    double *rk13= data->drs_k13[threadID];
-    double *k14 = data->rs_k14[threadID];
-    double *rk14= data->drs_k14[threadID];
-    double *k15 = data->rs_k15[threadID];
-    double *rk15= data->drs_k15[threadID];
-    double *k16 = data->rs_k16[threadID];
-    double *rk16= data->drs_k16[threadID];
-    double *k17 = data->rs_k17[threadID];
-    double *rk17= data->drs_k17[threadID];
-    double *k18 = data->rs_k18[threadID];
-    double *rk18= data->drs_k18[threadID];
-    double *k19 = data->rs_k19[threadID];
-    double *rk19= data->drs_k19[threadID];
-    double *k21 = data->rs_k21[threadID];
-    double *rk21= data->drs_k21[threadID];
-    double *k22 = data->rs_k22[threadID];
-    double *rk22= data->drs_k22[threadID];
-    double *brem_brem = data->cs_brem_brem[threadID];
-    double *rbrem_brem = data->dcs_brem_brem[threadID];
-    double *ceHeI_ceHeI = data->cs_ceHeI_ceHeI[threadID];
-    double *rceHeI_ceHeI = data->dcs_ceHeI_ceHeI[threadID];
-    double *ceHeII_ceHeII = data->cs_ceHeII_ceHeII[threadID];
-    double *rceHeII_ceHeII = data->dcs_ceHeII_ceHeII[threadID];
-    double *ceHI_ceHI = data->cs_ceHI_ceHI[threadID];
-    double *rceHI_ceHI = data->dcs_ceHI_ceHI[threadID];
-    double *cie_cooling_cieco = data->cs_cie_cooling_cieco[threadID];
-    double *rcie_cooling_cieco = data->dcs_cie_cooling_cieco[threadID];
-    double *ciHeI_ciHeI = data->cs_ciHeI_ciHeI[threadID];
-    double *rciHeI_ciHeI = data->dcs_ciHeI_ciHeI[threadID];
-    double *ciHeII_ciHeII = data->cs_ciHeII_ciHeII[threadID];
-    double *rciHeII_ciHeII = data->dcs_ciHeII_ciHeII[threadID];
-    double *ciHeIS_ciHeIS = data->cs_ciHeIS_ciHeIS[threadID];
-    double *rciHeIS_ciHeIS = data->dcs_ciHeIS_ciHeIS[threadID];
-    double *ciHI_ciHI = data->cs_ciHI_ciHI[threadID];
-    double *rciHI_ciHI = data->dcs_ciHI_ciHI[threadID];
-    double *compton_comp_ = data->cs_compton_comp_[threadID];
-    double *rcompton_comp_ = data->dcs_compton_comp_[threadID];
-    double *gammah_gammah = data->cs_gammah_gammah[threadID];
-    double *rgammah_gammah = data->dcs_gammah_gammah[threadID];
-    double *gloverabel08_gael = data->cs_gloverabel08_gael[threadID];
-    double *rgloverabel08_gael = data->dcs_gloverabel08_gael[threadID];
-    double *gloverabel08_gaH2 = data->cs_gloverabel08_gaH2[threadID];
-    double *rgloverabel08_gaH2 = data->dcs_gloverabel08_gaH2[threadID];
-    double *gloverabel08_gaHe = data->cs_gloverabel08_gaHe[threadID];
-    double *rgloverabel08_gaHe = data->dcs_gloverabel08_gaHe[threadID];
-    double *gloverabel08_gaHI = data->cs_gloverabel08_gaHI[threadID];
-    double *rgloverabel08_gaHI = data->dcs_gloverabel08_gaHI[threadID];
-    double *gloverabel08_gaHp = data->cs_gloverabel08_gaHp[threadID];
-    double *rgloverabel08_gaHp = data->dcs_gloverabel08_gaHp[threadID];
-    double *gloverabel08_gphdl = data->cs_gloverabel08_gphdl[threadID];
-    double *rgloverabel08_gphdl = data->dcs_gloverabel08_gphdl[threadID];
-    double *gloverabel08_gpldl = data->cs_gloverabel08_gpldl[threadID];
-    double *rgloverabel08_gpldl = data->dcs_gloverabel08_gpldl[threadID];
-    double *gloverabel08_h2lte = data->cs_gloverabel08_h2lte[threadID];
-    double *rgloverabel08_h2lte = data->dcs_gloverabel08_h2lte[threadID];
-    double *h2formation_h2mcool = data->cs_h2formation_h2mcool[threadID];
-    double *rh2formation_h2mcool = data->dcs_h2formation_h2mcool[threadID];
-    double *h2formation_h2mheat = data->cs_h2formation_h2mheat[threadID];
-    double *rh2formation_h2mheat = data->dcs_h2formation_h2mheat[threadID];
-    double *h2formation_ncrd1 = data->cs_h2formation_ncrd1[threadID];
-    double *rh2formation_ncrd1 = data->dcs_h2formation_ncrd1[threadID];
-    double *h2formation_ncrd2 = data->cs_h2formation_ncrd2[threadID];
-    double *rh2formation_ncrd2 = data->dcs_h2formation_ncrd2[threadID];
-    double *h2formation_ncrn = data->cs_h2formation_ncrn[threadID];
-    double *rh2formation_ncrn = data->dcs_h2formation_ncrn[threadID];
-    double *reHeII1_reHeII1 = data->cs_reHeII1_reHeII1[threadID];
-    double *rreHeII1_reHeII1 = data->dcs_reHeII1_reHeII1[threadID];
-    double *reHeII2_reHeII2 = data->cs_reHeII2_reHeII2[threadID];
-    double *rreHeII2_reHeII2 = data->dcs_reHeII2_reHeII2[threadID];
-    double *reHeIII_reHeIII = data->cs_reHeIII_reHeIII[threadID];
-    double *rreHeIII_reHeIII = data->dcs_reHeIII_reHeIII[threadID];
-    double *reHII_reHII = data->cs_reHII_reHII[threadID];
-    double *rreHII_reHII = data->dcs_reHII_reHII[threadID];
+    double *Tge = data->dTs_ge;
+    double *k01 = data->rs_k01;
+    double *rk01= data->drs_k01;
+    double *k02 = data->rs_k02;
+    double *rk02= data->drs_k02;
+    double *k03 = data->rs_k03;
+    double *rk03= data->drs_k03;
+    double *k04 = data->rs_k04;
+    double *rk04= data->drs_k04;
+    double *k05 = data->rs_k05;
+    double *rk05= data->drs_k05;
+    double *k06 = data->rs_k06;
+    double *rk06= data->drs_k06;
+    double *k07 = data->rs_k07;
+    double *rk07= data->drs_k07;
+    double *k08 = data->rs_k08;
+    double *rk08= data->drs_k08;
+    double *k09 = data->rs_k09;
+    double *rk09= data->drs_k09;
+    double *k10 = data->rs_k10;
+    double *rk10= data->drs_k10;
+    double *k11 = data->rs_k11;
+    double *rk11= data->drs_k11;
+    double *k12 = data->rs_k12;
+    double *rk12= data->drs_k12;
+    double *k13 = data->rs_k13;
+    double *rk13= data->drs_k13;
+    double *k14 = data->rs_k14;
+    double *rk14= data->drs_k14;
+    double *k15 = data->rs_k15;
+    double *rk15= data->drs_k15;
+    double *k16 = data->rs_k16;
+    double *rk16= data->drs_k16;
+    double *k17 = data->rs_k17;
+    double *rk17= data->drs_k17;
+    double *k18 = data->rs_k18;
+    double *rk18= data->drs_k18;
+    double *k19 = data->rs_k19;
+    double *rk19= data->drs_k19;
+    double *k21 = data->rs_k21;
+    double *rk21= data->drs_k21;
+    double *k22 = data->rs_k22;
+    double *rk22= data->drs_k22;
+    double *brem_brem = data->cs_brem_brem;
+    double *rbrem_brem = data->dcs_brem_brem;
+    double *ceHeI_ceHeI = data->cs_ceHeI_ceHeI;
+    double *rceHeI_ceHeI = data->dcs_ceHeI_ceHeI;
+    double *ceHeII_ceHeII = data->cs_ceHeII_ceHeII;
+    double *rceHeII_ceHeII = data->dcs_ceHeII_ceHeII;
+    double *ceHI_ceHI = data->cs_ceHI_ceHI;
+    double *rceHI_ceHI = data->dcs_ceHI_ceHI;
+    double *cie_cooling_cieco = data->cs_cie_cooling_cieco;
+    double *rcie_cooling_cieco = data->dcs_cie_cooling_cieco;
+    double *ciHeI_ciHeI = data->cs_ciHeI_ciHeI;
+    double *rciHeI_ciHeI = data->dcs_ciHeI_ciHeI;
+    double *ciHeII_ciHeII = data->cs_ciHeII_ciHeII;
+    double *rciHeII_ciHeII = data->dcs_ciHeII_ciHeII;
+    double *ciHeIS_ciHeIS = data->cs_ciHeIS_ciHeIS;
+    double *rciHeIS_ciHeIS = data->dcs_ciHeIS_ciHeIS;
+    double *ciHI_ciHI = data->cs_ciHI_ciHI;
+    double *rciHI_ciHI = data->dcs_ciHI_ciHI;
+    double *compton_comp_ = data->cs_compton_comp_;
+    double *rcompton_comp_ = data->dcs_compton_comp_;
+    double *gammah_gammah = data->cs_gammah_gammah;
+    double *rgammah_gammah = data->dcs_gammah_gammah;
+    double *gloverabel08_gael = data->cs_gloverabel08_gael;
+    double *rgloverabel08_gael = data->dcs_gloverabel08_gael;
+    double *gloverabel08_gaH2 = data->cs_gloverabel08_gaH2;
+    double *rgloverabel08_gaH2 = data->dcs_gloverabel08_gaH2;
+    double *gloverabel08_gaHe = data->cs_gloverabel08_gaHe;
+    double *rgloverabel08_gaHe = data->dcs_gloverabel08_gaHe;
+    double *gloverabel08_gaHI = data->cs_gloverabel08_gaHI;
+    double *rgloverabel08_gaHI = data->dcs_gloverabel08_gaHI;
+    double *gloverabel08_gaHp = data->cs_gloverabel08_gaHp;
+    double *rgloverabel08_gaHp = data->dcs_gloverabel08_gaHp;
+    double *gloverabel08_gphdl = data->cs_gloverabel08_gphdl;
+    double *rgloverabel08_gphdl = data->dcs_gloverabel08_gphdl;
+    double *gloverabel08_gpldl = data->cs_gloverabel08_gpldl;
+    double *rgloverabel08_gpldl = data->dcs_gloverabel08_gpldl;
+    double *gloverabel08_h2lte = data->cs_gloverabel08_h2lte;
+    double *rgloverabel08_h2lte = data->dcs_gloverabel08_h2lte;
+    double *h2formation_h2mcool = data->cs_h2formation_h2mcool;
+    double *rh2formation_h2mcool = data->dcs_h2formation_h2mcool;
+    double *h2formation_h2mheat = data->cs_h2formation_h2mheat;
+    double *rh2formation_h2mheat = data->dcs_h2formation_h2mheat;
+    double *h2formation_ncrd1 = data->cs_h2formation_ncrd1;
+    double *rh2formation_ncrd1 = data->dcs_h2formation_ncrd1;
+    double *h2formation_ncrd2 = data->cs_h2formation_ncrd2;
+    double *rh2formation_ncrd2 = data->dcs_h2formation_ncrd2;
+    double *h2formation_ncrn = data->cs_h2formation_ncrn;
+    double *rh2formation_ncrn = data->dcs_h2formation_ncrn;
+    double *reHeII1_reHeII1 = data->cs_reHeII1_reHeII1;
+    double *rreHeII1_reHeII1 = data->dcs_reHeII1_reHeII1;
+    double *reHeII2_reHeII2 = data->cs_reHeII2_reHeII2;
+    double *rreHeII2_reHeII2 = data->dcs_reHeII2_reHeII2;
+    double *reHeIII_reHeIII = data->cs_reHeIII_reHeIII;
+    double *rreHeIII_reHeIII = data->dcs_reHeIII_reHeIII;
+    double *reHII_reHII = data->cs_reHII_reHII;
+    double *rreHII_reHII = data->dcs_reHII_reHII;
     double H2_1;
     double H2_2;
     double H_1;
@@ -1592,14 +1562,14 @@ int calculate_sparse_jacobian_cvklu( realtype t,
         j++;
 
 
-        mdensity = data->mdensity[threadID][i];
+        mdensity = data->mdensity[i];
         inv_mdensity = 1.0 / mdensity;
 
-        h2_optical_depth_approx = data->h2_optical_depth_approx[threadID][i];
+        h2_optical_depth_approx = data->h2_optical_depth_approx[i];
 
 
 
-        cie_optical_depth_approx = data->cie_optical_depth_approx[threadID][i];
+        cie_optical_depth_approx = data->cie_optical_depth_approx[i];
 
 
         j = i * NSPARSE;
@@ -2386,58 +2356,56 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip ){
 
-    int threadID = 0;
-
     int i, j;
     double mh = 1.67e-24;
     for ( i = 0; i < nstrip; i++){
-        data->mdensity[threadID][i] = 0;
+        data->mdensity[i] = 0;
         j = i * 10;
 
         // species: H2_1
-        data->mdensity[threadID][i] += input[j] * 2.0;
+        data->mdensity[i] += input[j] * 2.0;
 
         j ++;
 
 
         // species: H2_2
-        data->mdensity[threadID][i] += input[j] * 2.0;
+        data->mdensity[i] += input[j] * 2.0;
 
         j ++;
 
 
         // species: H_1
-        data->mdensity[threadID][i] += input[j] * 1.00794;
+        data->mdensity[i] += input[j] * 1.00794;
 
         j ++;
 
 
         // species: H_2
-        data->mdensity[threadID][i] += input[j] * 1.00794;
+        data->mdensity[i] += input[j] * 1.00794;
 
         j ++;
 
 
         // species: H_m0
-        data->mdensity[threadID][i] += input[j] * 1.00794;
+        data->mdensity[i] += input[j] * 1.00794;
 
         j ++;
 
 
         // species: He_1
-        data->mdensity[threadID][i] += input[j] * 4.002602;
+        data->mdensity[i] += input[j] * 4.002602;
 
         j ++;
 
 
         // species: He_2
-        data->mdensity[threadID][i] += input[j] * 4.002602;
+        data->mdensity[i] += input[j] * 4.002602;
 
         j ++;
 
 
         // species: He_3
-        data->mdensity[threadID][i] += input[j] * 4.002602;
+        data->mdensity[i] += input[j] * 4.002602;
 
         j ++;
 
@@ -2447,18 +2415,18 @@ void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip )
 
         j ++;
 
-        data->mdensity[threadID][i] *= mh;
-        data->inv_mdensity[threadID][i] = 1.0 / data->mdensity[threadID][i];
+        data->mdensity[i] *= mh;
+        data->inv_mdensity[i] = 1.0 / data->mdensity[i];
     }
 
 
     double mdensity, tau;
     for ( i = 0; i < nstrip; i++){
 
-        mdensity = data->mdensity[threadID][i];
+        mdensity = data->mdensity[i];
         tau      = pow( (mdensity / 3.3e-8 ), 2.8);
         tau      = fmax( tau, 1.0e-5 );
-        data->cie_optical_depth_approx[threadID][i] =
+        data->cie_optical_depth_approx[i] =
             fmin( 1.0, (1.0 - exp(-tau) ) / tau );
     }
 
@@ -2466,8 +2434,8 @@ void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip )
 
 
     for ( i = 0; i < nstrip; i++ ){
-        mdensity = data->mdensity[threadID][i];
-        data->h2_optical_depth_approx[threadID][i] =  fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
+        mdensity = data->mdensity[i];
+        data->h2_optical_depth_approx[i] =  fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
     }
 
 

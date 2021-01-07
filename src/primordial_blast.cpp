@@ -316,8 +316,13 @@ int initialize_Dengo_structures(EulerData& udata) {
 
   // initialize 'scale' and 'inv_scale' to valid values
   for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
+#ifdef USERAJA
+    network_data->scale[i] = ONE;
+    network_data->inv_scale[i] = ONE;
+#else
     network_data->scale[0][i] = ONE;
     network_data->inv_scale[0][i] = ONE;
+#endif
   }
 
   // set redshift value for non-cosmological run
@@ -348,13 +353,22 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
       for (i=0; i<udata.nxl; i++)
         for (l=0; l<udata.nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+#ifdef USERAJA
+          network_data->scale[idx] = chem[idx];
+          network_data->inv_scale[idx] = ONE / chem[idx];
+#else
           network_data->scale[0][idx] = chem[idx];
           network_data->inv_scale[0][idx] = ONE / chem[idx];
+#endif
           chem[idx] = ONE;
         }
 
   // compute auxiliary values within network_data structure
+#ifdef USERAJA
+  setting_up_extra_variables( network_data, network_data->scale, udata.nxl*udata.nyl*udata.nzl );
+#else
   setting_up_extra_variables( network_data, network_data->scale[0], udata.nxl*udata.nyl*udata.nzl );
+#endif
 
   return(0);
 }
@@ -378,7 +392,11 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
       for (i=0; i<udata.nxl; i++)
         for (l=0; l<udata.nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+#ifdef USERAJA
+          chem[idx] *= network_data->scale[idx];
+#else
           chem[idx] *= network_data->scale[0][idx];
+#endif
         }
 
   return(0);
@@ -403,7 +421,11 @@ int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
       for (i=0; i<udata.nxl; i++)
         for (l=0; l<udata.nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+#ifdef USERAJA
+          chem[idx] /= network_data->scale[idx];
+#else
           chem[idx] /= network_data->scale[0][idx];
+#endif
         }
 
   return(0);
