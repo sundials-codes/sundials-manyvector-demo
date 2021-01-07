@@ -173,11 +173,6 @@ typedef struct cvklu_data {
   double *cs_compton_comp_;
   double *dcs_compton_comp_;
 
-  /* REMOVE THESE */
-  double c_gammah_gammah[1024];
-  double c_gloverabel08_gphdl[1024];
-  double c_gloverabel08_gpldl[1024];
-
   double c_gloverabel08_gael[1024];
   double *cs_gloverabel08_gael;
   double *dcs_gloverabel08_gael;

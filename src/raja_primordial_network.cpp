@@ -225,8 +225,6 @@ void cvklu_read_cooling_tables(cvklu_data *data)
                           data->c_ciHI_ciHI);
   H5LTread_dataset_double(file_id, "/compton_comp_",
                           data->c_compton_comp_);
-  H5LTread_dataset_double(file_id, "/gammah_gammah",
-                          data->c_gammah_gammah);
   H5LTread_dataset_double(file_id, "/gloverabel08_gael",
                           data->c_gloverabel08_gael);
   H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",
@@ -237,10 +235,6 @@ void cvklu_read_cooling_tables(cvklu_data *data)
                           data->c_gloverabel08_gaHI);
   H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",
                           data->c_gloverabel08_gaHp);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gphdl",
-                          data->c_gloverabel08_gphdl);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gpldl",
-                          data->c_gloverabel08_gpldl);
   H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",
                           data->c_gloverabel08_h2lte);
   H5LTread_dataset_double(file_id, "/h2formation_h2mcool",
@@ -956,10 +950,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
   double *inv_scale = data->inv_scale;
 
   double h2_optical_depth_approx;
-
-
   double cie_optical_depth_approx;
-
 
   /* Now We set up some temporaries */
 
@@ -998,7 +989,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
     cvklu_interpolate_rates(data, i);
 
-    double *Tge = data->dTs_ge;
+    double Tge = data->dTs_ge[i];
     double k01 = data->rs_k01[i];
     double rk01= data->drs_k01[i];
     double k02 = data->rs_k02[i];
@@ -1184,7 +1175,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 6] *= Tge[i];
+    matrix_data[ j + 6] *= Tge;
 
 
     // H2_2 by H2_1
@@ -1235,7 +1226,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 13] *= Tge[i];
+    matrix_data[ j + 13] *= Tge;
 
 
     // H_1 by H2_1
@@ -1286,7 +1277,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 20] *= Tge[i];
+    matrix_data[ j + 20] *= Tge;
 
 
     // H_2 by H2_1
@@ -1337,7 +1328,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 27] *= Tge[i];
+    matrix_data[ j + 27] *= Tge;
 
 
     // H_m0 by H2_2
@@ -1381,7 +1372,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 33] *= Tge[i];
+    matrix_data[ j + 33] *= Tge;
 
 
     // He_1 by He_1
@@ -1411,7 +1402,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 37] *= Tge[i];
+    matrix_data[ j + 37] *= Tge;
 
 
     // He_2 by He_1
@@ -1448,7 +1439,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 42] *= Tge[i];
+    matrix_data[ j + 42] *= Tge;
 
 
     // He_3 by He_2
@@ -1478,7 +1469,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 46] *= Tge[i];
+    matrix_data[ j + 46] *= Tge;
 
 
     // de by H2_2
@@ -1543,7 +1534,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
 
 
 
-    matrix_data[ j + 55] *= Tge[i];
+    matrix_data[ j + 55] *= Tge;
 
 
     // ge by H2_1
@@ -1621,7 +1612,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
     matrix_data[j + 63] *= inv_mdensity;
 
 
-    matrix_data[ j + 63] *= Tge[i];
+    matrix_data[ j + 63] *= Tge;
 
 
 
