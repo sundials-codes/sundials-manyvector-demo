@@ -125,12 +125,14 @@ int main(int argc, char* argv[]) {
   // set nstrip value to all cells on this process
   nstrip = udata.nxl * udata.nyl * udata.nzl;
 
+#ifndef USERAJA
   // ensure that nxl*nyl*nzl (inputs) <= MAX_NCELLS (dengo preprocessor value)
   if (nstrip > MAX_NCELLS) {
     cerr << "primordial_ode error: total spatial subdomain size (" <<
       nstrip << ") exceeds maximum (" << MAX_NCELLS << ")\n";
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
+#endif
 
   // Output problem setup information
   bool outproc = (udata.myid == 0);
@@ -151,7 +153,11 @@ int main(int argc, char* argv[]) {
   }
 
   // initialize primordial rate tables, etc
+#ifdef USERAJA
+  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", nstrip);
+#else
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
+#endif
   //    overwrite internal strip size
   network_data->nstrip = nstrip;
   //    set redshift value for non-cosmological run

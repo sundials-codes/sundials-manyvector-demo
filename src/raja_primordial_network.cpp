@@ -12,7 +12,7 @@
 #include <raja_primordial_network.hpp>
 
 
-cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, char ***FieldNames)
+cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
 {
 
   //-----------------------------------------------------
@@ -28,11 +28,126 @@ cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, cha
   data->dengo_data_file = FileLocation;
 
   /* allocate space for the scale related pieces */
+  data->Ts = (double *) malloc(ncells*sizeof(double));
+  data->Tdef = (double *) malloc(ncells*sizeof(double));
+  data->dT = (double *) malloc(ncells*sizeof(double));
+  data->logTs = (double *) malloc(ncells*sizeof(double));
+  data->invTs = (double *) malloc(ncells*sizeof(double));
+  data->dTs_ge = (double *) malloc(ncells*sizeof(double));
+  data->rs_k01 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k01 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k02 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k02 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k03 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k03 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k04 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k04 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k05 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k05 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k06 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k06 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k07 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k07 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k08 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k08 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k09 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k09 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k10 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k10 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k11 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k11 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k12 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k12 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k13 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k13 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k14 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k14 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k15 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k15 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k16 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k16 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k17 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k17 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k18 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k18 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k19 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k19 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k21 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k21 = (double *) malloc(ncells*sizeof(double));
+  data->rs_k22 = (double *) malloc(ncells*sizeof(double));
+  data->drs_k22 = (double *) malloc(ncells*sizeof(double));
+  data->cs_brem_brem = (double *) malloc(ncells*sizeof(double));
+  data->dcs_brem_brem = (double *) malloc(ncells*sizeof(double));
+  data->cs_ceHeI_ceHeI = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ceHeI_ceHeI = (double *) malloc(ncells*sizeof(double));
+  data->cs_ceHeII_ceHeII = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ceHeII_ceHeII = (double *) malloc(ncells*sizeof(double));
+  data->cs_ceHI_ceHI = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ceHI_ceHI = (double *) malloc(ncells*sizeof(double));
+  data->cs_cie_cooling_cieco = (double *) malloc(ncells*sizeof(double));
+  data->dcs_cie_cooling_cieco = (double *) malloc(ncells*sizeof(double));
+  data->cs_ciHeI_ciHeI = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ciHeI_ciHeI = (double *) malloc(ncells*sizeof(double));
+  data->cs_ciHeII_ciHeII = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ciHeII_ciHeII = (double *) malloc(ncells*sizeof(double));
+  data->cs_ciHeIS_ciHeIS = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ciHeIS_ciHeIS = (double *) malloc(ncells*sizeof(double));
+  data->cs_ciHI_ciHI = (double *) malloc(ncells*sizeof(double));
+  data->dcs_ciHI_ciHI = (double *) malloc(ncells*sizeof(double));
+  data->cs_compton_comp_ = (double *) malloc(ncells*sizeof(double));
+  data->dcs_compton_comp_ = (double *) malloc(ncells*sizeof(double));
+  data->cs_gammah_gammah = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gammah_gammah = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gael = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gael = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gaH2 = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gaH2 = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gaHe = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gaHe = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gaHI = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gaHI = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gaHp = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gaHp = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gphdl = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gphdl = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_gpldl = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_gpldl = (double *) malloc(ncells*sizeof(double));
+  data->cs_gloverabel08_h2lte = (double *) malloc(ncells*sizeof(double));
+  data->dcs_gloverabel08_h2lte = (double *) malloc(ncells*sizeof(double));
+  data->cs_h2formation_h2mcool = (double *) malloc(ncells*sizeof(double));
+  data->dcs_h2formation_h2mcool = (double *) malloc(ncells*sizeof(double));
+  data->cs_h2formation_h2mheat = (double *) malloc(ncells*sizeof(double));
+  data->dcs_h2formation_h2mheat = (double *) malloc(ncells*sizeof(double));
+  data->cs_h2formation_ncrd1 = (double *) malloc(ncells*sizeof(double));
+  data->dcs_h2formation_ncrd1 = (double *) malloc(ncells*sizeof(double));
+  data->cs_h2formation_ncrd2 = (double *) malloc(ncells*sizeof(double));
+  data->dcs_h2formation_ncrd2 = (double *) malloc(ncells*sizeof(double));
+  data->cs_h2formation_ncrn = (double *) malloc(ncells*sizeof(double));
+  data->dcs_h2formation_ncrn = (double *) malloc(ncells*sizeof(double));
+  data->cs_reHeII1_reHeII1 = (double *) malloc(ncells*sizeof(double));
+  data->dcs_reHeII1_reHeII1 = (double *) malloc(ncells*sizeof(double));
+  data->cs_reHeII2_reHeII2 = (double *) malloc(ncells*sizeof(double));
+  data->dcs_reHeII2_reHeII2 = (double *) malloc(ncells*sizeof(double));
+  data->cs_reHeIII_reHeIII = (double *) malloc(ncells*sizeof(double));
+  data->dcs_reHeIII_reHeIII = (double *) malloc(ncells*sizeof(double));
+  data->cs_reHII_reHII = (double *) malloc(ncells*sizeof(double));
+  data->dcs_reHII_reHII = (double *) malloc(ncells*sizeof(double));
+  data->gammaH2_1 = (double *) malloc(ncells*sizeof(double));
+  data->dgammaH2_1_dT = (double *) malloc(ncells*sizeof(double));
+  data->gammaH2_2 = (double *) malloc(ncells*sizeof(double));
+  data->dgammaH2_2_dT = (double *) malloc(ncells*sizeof(double));
+  data->mdensity = (double *) malloc(ncells*sizeof(double));
+  data->inv_mdensity = (double *) malloc(ncells*sizeof(double));
+  data->cie_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
+  data->h2_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
+  data->scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
+  data->inv_scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
+  data->bin_id = (int *) malloc(ncells*sizeof(int));
 
   // Number of cells to be solved in a batch
-  data->nstrip = MAX_NCELLS;
+  data->nstrip = ncells;
   /*initialize temperature so it wont crash*/
-  for ( i = 0; i < MAX_NCELLS; i++ ){
+  for ( i = 0; i < ncells; i++ ){
     data->Ts[i]    = 1000.0;
     data->logTs[i] = log(1000.0);
   }
@@ -52,40 +167,8 @@ cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, cha
   data->id_zbin = (data->d_zbin != 0) ? 1.0L / data->d_zbin : 1.0;
 
   cvklu_read_rate_tables(data);
-  //fprintf(stderr, "Successfully read in rate tables.\n");
-
   cvklu_read_cooling_tables(data);
-  //fprintf(stderr, "Successfully read in cooling rate tables.\n");
-
   cvklu_read_gamma(data);
-  //fprintf(stderr, "Successfully read in gamma tables. \n");
-
-  if (FieldNames != NULL && NumberOfFields != NULL) {
-    NumberOfFields[0] = 10;
-    FieldNames[0] = new char*[10];
-    i = 0;
-
-    FieldNames[0][i++] = strdup("H2_1");
-
-    FieldNames[0][i++] = strdup("H2_2");
-
-    FieldNames[0][i++] = strdup("H_1");
-
-    FieldNames[0][i++] = strdup("H_2");
-
-    FieldNames[0][i++] = strdup("H_m0");
-
-    FieldNames[0][i++] = strdup("He_1");
-
-    FieldNames[0][i++] = strdup("He_2");
-
-    FieldNames[0][i++] = strdup("He_3");
-
-    FieldNames[0][i++] = strdup("de");
-
-    FieldNames[0][i++] = strdup("ge");
-
-  }
 
   data->dengo_data_file = NULL;
 
@@ -367,11 +450,6 @@ int cvklu_calculate_temperature(cvklu_data *data,
     data->Ts[i] = Tnew;
 
 
-    // fprintf(stderr,"T : %0.5g, density : %0.5g, d_gammaH2: %0.5g \n", Tnew, density, gammaH2 - 7./5.);
-
-
-
-
     if (data->Ts[i] < data->bounds[0]) {
       data->Ts[i] = data->bounds[0];
     } else if (data->Ts[i] > data->bounds[1]) {
@@ -388,20 +466,11 @@ int cvklu_calculate_temperature(cvklu_data *data,
 
 
 
-/*
-  This setup may be different than the user may anticipate, as a result
-  of the lockstep timestep we use for a pencil beam through the grid.
-  As such, it accepts the number of things to interpolate and makes
-  assumptions about the sizes of the rates.
-*/
-
-/* This also requires no templating other than for the solver name...*/
-void cvklu_interpolate_rates(cvklu_data *data,
-                             int nstrip)
+void cvklu_interpolate_rates(cvklu_data *data, int nstrip)
 {
   int i, bin_id, zbin_id;
   double lb, t1, t2;
-  double lbz, z1, z2, Tdef, zdef;
+  double lbz, z1, z2, Tdef;
   int no_photo = 0;
   lb = log(data->bounds[0]);
   lbz = log(data->z_bounds[0] + 1.0);
@@ -435,8 +504,6 @@ void cvklu_interpolate_rates(cvklu_data *data,
       no_photo = 1;
     }
   }
-
-  zdef   = data->zdef;
 
 
 

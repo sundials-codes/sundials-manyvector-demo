@@ -79,12 +79,14 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     return -1;
   }
 
+#ifndef USERAJA
   // ensure that local subdomain size does not exceed dengo 'MAX_NCELLS' preprocessor value
   if (udata.nxl * udata.nyl * udata.nzl > MAX_NCELLS) {
     cerr << "\nTotal spatial subdomain size (" <<
       udata.nxl * udata.nyl * udata.nzl << ") exceeds dengo maximum (" << MAX_NCELLS << ")\n";
     return -1;
   }
+#endif
 
   // initial condition values -- essentially-neutral primordial gas
   realtype Tmean = 2000.0;  // mean temperature in K
@@ -181,7 +183,11 @@ int initialize_Dengo_structures(EulerData& udata) {
 
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
+#ifdef USERAJA
+  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl);
+#else
   network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
+#endif
   if (network_data == NULL)  return(1);
 
   // overwrite internal strip size

@@ -31,11 +31,6 @@
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
 
-
-#ifndef MAX_NCELLS
-#define MAX_NCELLS 1024
-#endif
-
 #define NSPECIES 10
 
 
@@ -52,244 +47,243 @@ typedef struct cvklu_data {
   double z_bounds[2];
   int n_zbins;
 
-  /* For storing and passing around
-     redshift information */
+  /* For storing and passing around redshift information */
   double current_z;
   double zdef;
   double dz;
 
-  double Ts[MAX_NCELLS];
-  double Tdef[MAX_NCELLS]; /* t1, t2, tdef */
-  double dT[MAX_NCELLS]; /* t1, t2, tdef */
-  double logTs[MAX_NCELLS];
-  double invTs[MAX_NCELLS];
-  double dTs_ge[MAX_NCELLS];
+  /* Temperature-related bin information */
+  double *Ts;
+  double *Tdef;
+  double *dT;
+  double *logTs;
+  double *invTs;
+  double *dTs_ge;
 
   /* Now we do all of our cooling and chemical tables */
   double r_k01[1024];
-  double rs_k01[MAX_NCELLS];
-  double drs_k01[MAX_NCELLS];
+  double *rs_k01;
+  double *drs_k01;
 
   double r_k02[1024];
-  double rs_k02[MAX_NCELLS];
-  double drs_k02[MAX_NCELLS];
+  double *rs_k02;
+  double *drs_k02;
 
   double r_k03[1024];
-  double rs_k03[MAX_NCELLS];
-  double drs_k03[MAX_NCELLS];
+  double *rs_k03;
+  double *drs_k03;
 
   double r_k04[1024];
-  double rs_k04[MAX_NCELLS];
-  double drs_k04[MAX_NCELLS];
+  double *rs_k04;
+  double *drs_k04;
 
   double r_k05[1024];
-  double rs_k05[MAX_NCELLS];
-  double drs_k05[MAX_NCELLS];
+  double *rs_k05;
+  double *drs_k05;
 
   double r_k06[1024];
-  double rs_k06[MAX_NCELLS];
-  double drs_k06[MAX_NCELLS];
+  double *rs_k06;
+  double *drs_k06;
 
   double r_k07[1024];
-  double rs_k07[MAX_NCELLS];
-  double drs_k07[MAX_NCELLS];
+  double *rs_k07;
+  double *drs_k07;
 
   double r_k08[1024];
-  double rs_k08[MAX_NCELLS];
-  double drs_k08[MAX_NCELLS];
+  double *rs_k08;
+  double *drs_k08;
 
   double r_k09[1024];
-  double rs_k09[MAX_NCELLS];
-  double drs_k09[MAX_NCELLS];
+  double *rs_k09;
+  double *drs_k09;
 
   double r_k10[1024];
-  double rs_k10[MAX_NCELLS];
-  double drs_k10[MAX_NCELLS];
+  double *rs_k10;
+  double *drs_k10;
 
   double r_k11[1024];
-  double rs_k11[MAX_NCELLS];
-  double drs_k11[MAX_NCELLS];
+  double *rs_k11;
+  double *drs_k11;
 
   double r_k12[1024];
-  double rs_k12[MAX_NCELLS];
-  double drs_k12[MAX_NCELLS];
+  double *rs_k12;
+  double *drs_k12;
 
   double r_k13[1024];
-  double rs_k13[MAX_NCELLS];
-  double drs_k13[MAX_NCELLS];
+  double *rs_k13;
+  double *drs_k13;
 
   double r_k14[1024];
-  double rs_k14[MAX_NCELLS];
-  double drs_k14[MAX_NCELLS];
+  double *rs_k14;
+  double *drs_k14;
 
   double r_k15[1024];
-  double rs_k15[MAX_NCELLS];
-  double drs_k15[MAX_NCELLS];
+  double *rs_k15;
+  double *drs_k15;
 
   double r_k16[1024];
-  double rs_k16[MAX_NCELLS];
-  double drs_k16[MAX_NCELLS];
+  double *rs_k16;
+  double *drs_k16;
 
   double r_k17[1024];
-  double rs_k17[MAX_NCELLS];
-  double drs_k17[MAX_NCELLS];
+  double *rs_k17;
+  double *drs_k17;
 
   double r_k18[1024];
-  double rs_k18[MAX_NCELLS];
-  double drs_k18[MAX_NCELLS];
+  double *rs_k18;
+  double *drs_k18;
 
   double r_k19[1024];
-  double rs_k19[MAX_NCELLS];
-  double drs_k19[MAX_NCELLS];
+  double *rs_k19;
+  double *drs_k19;
 
   double r_k21[1024];
-  double rs_k21[MAX_NCELLS];
-  double drs_k21[MAX_NCELLS];
+  double *rs_k21;
+  double *drs_k21;
 
   double r_k22[1024];
-  double rs_k22[MAX_NCELLS];
-  double drs_k22[MAX_NCELLS];
+  double *rs_k22;
+  double *drs_k22;
 
   double c_brem_brem[1024];
-  double cs_brem_brem[MAX_NCELLS];
-  double dcs_brem_brem[MAX_NCELLS];
+  double *cs_brem_brem;
+  double *dcs_brem_brem;
 
   double c_ceHeI_ceHeI[1024];
-  double cs_ceHeI_ceHeI[MAX_NCELLS];
-  double dcs_ceHeI_ceHeI[MAX_NCELLS];
+  double *cs_ceHeI_ceHeI;
+  double *dcs_ceHeI_ceHeI;
 
   double c_ceHeII_ceHeII[1024];
-  double cs_ceHeII_ceHeII[MAX_NCELLS];
-  double dcs_ceHeII_ceHeII[MAX_NCELLS];
+  double *cs_ceHeII_ceHeII;
+  double *dcs_ceHeII_ceHeII;
 
   double c_ceHI_ceHI[1024];
-  double cs_ceHI_ceHI[MAX_NCELLS];
-  double dcs_ceHI_ceHI[MAX_NCELLS];
+  double *cs_ceHI_ceHI;
+  double *dcs_ceHI_ceHI;
 
   double c_cie_cooling_cieco[1024];
-  double cs_cie_cooling_cieco[MAX_NCELLS];
-  double dcs_cie_cooling_cieco[MAX_NCELLS];
+  double *cs_cie_cooling_cieco;
+  double *dcs_cie_cooling_cieco;
 
   double c_ciHeI_ciHeI[1024];
-  double cs_ciHeI_ciHeI[MAX_NCELLS];
-  double dcs_ciHeI_ciHeI[MAX_NCELLS];
+  double *cs_ciHeI_ciHeI;
+  double *dcs_ciHeI_ciHeI;
 
   double c_ciHeII_ciHeII[1024];
-  double cs_ciHeII_ciHeII[MAX_NCELLS];
-  double dcs_ciHeII_ciHeII[MAX_NCELLS];
+  double *cs_ciHeII_ciHeII;
+  double *dcs_ciHeII_ciHeII;
 
   double c_ciHeIS_ciHeIS[1024];
-  double cs_ciHeIS_ciHeIS[MAX_NCELLS];
-  double dcs_ciHeIS_ciHeIS[MAX_NCELLS];
+  double *cs_ciHeIS_ciHeIS;
+  double *dcs_ciHeIS_ciHeIS;
 
   double c_ciHI_ciHI[1024];
-  double cs_ciHI_ciHI[MAX_NCELLS];
-  double dcs_ciHI_ciHI[MAX_NCELLS];
+  double *cs_ciHI_ciHI;
+  double *dcs_ciHI_ciHI;
 
   double c_compton_comp_[1024];
-  double cs_compton_comp_[MAX_NCELLS];
-  double dcs_compton_comp_[MAX_NCELLS];
+  double *cs_compton_comp_;
+  double *dcs_compton_comp_;
 
   double c_gammah_gammah[1024];
-  double cs_gammah_gammah[MAX_NCELLS];
-  double dcs_gammah_gammah[MAX_NCELLS];
+  double *cs_gammah_gammah;
+  double *dcs_gammah_gammah;
 
   double c_gloverabel08_gael[1024];
-  double cs_gloverabel08_gael[MAX_NCELLS];
-  double dcs_gloverabel08_gael[MAX_NCELLS];
+  double *cs_gloverabel08_gael;
+  double *dcs_gloverabel08_gael;
 
   double c_gloverabel08_gaH2[1024];
-  double cs_gloverabel08_gaH2[MAX_NCELLS];
-  double dcs_gloverabel08_gaH2[MAX_NCELLS];
+  double *cs_gloverabel08_gaH2;
+  double *dcs_gloverabel08_gaH2;
 
   double c_gloverabel08_gaHe[1024];
-  double cs_gloverabel08_gaHe[MAX_NCELLS];
-  double dcs_gloverabel08_gaHe[MAX_NCELLS];
+  double *cs_gloverabel08_gaHe;
+  double *dcs_gloverabel08_gaHe;
 
   double c_gloverabel08_gaHI[1024];
-  double cs_gloverabel08_gaHI[MAX_NCELLS];
-  double dcs_gloverabel08_gaHI[MAX_NCELLS];
+  double *cs_gloverabel08_gaHI;
+  double *dcs_gloverabel08_gaHI;
 
   double c_gloverabel08_gaHp[1024];
-  double cs_gloverabel08_gaHp[MAX_NCELLS];
-  double dcs_gloverabel08_gaHp[MAX_NCELLS];
+  double *cs_gloverabel08_gaHp;
+  double *dcs_gloverabel08_gaHp;
 
   double c_gloverabel08_gphdl[1024];
-  double cs_gloverabel08_gphdl[MAX_NCELLS];
-  double dcs_gloverabel08_gphdl[MAX_NCELLS];
+  double *cs_gloverabel08_gphdl;
+  double *dcs_gloverabel08_gphdl;
 
   double c_gloverabel08_gpldl[1024];
-  double cs_gloverabel08_gpldl[MAX_NCELLS];
-  double dcs_gloverabel08_gpldl[MAX_NCELLS];
+  double *cs_gloverabel08_gpldl;
+  double *dcs_gloverabel08_gpldl;
 
   double c_gloverabel08_h2lte[1024];
-  double cs_gloverabel08_h2lte[MAX_NCELLS];
-  double dcs_gloverabel08_h2lte[MAX_NCELLS];
+  double *cs_gloverabel08_h2lte;
+  double *dcs_gloverabel08_h2lte;
 
   double c_h2formation_h2mcool[1024];
-  double cs_h2formation_h2mcool[MAX_NCELLS];
-  double dcs_h2formation_h2mcool[MAX_NCELLS];
+  double *cs_h2formation_h2mcool;
+  double *dcs_h2formation_h2mcool;
 
   double c_h2formation_h2mheat[1024];
-  double cs_h2formation_h2mheat[MAX_NCELLS];
-  double dcs_h2formation_h2mheat[MAX_NCELLS];
+  double *cs_h2formation_h2mheat;
+  double *dcs_h2formation_h2mheat;
 
   double c_h2formation_ncrd1[1024];
-  double cs_h2formation_ncrd1[MAX_NCELLS];
-  double dcs_h2formation_ncrd1[MAX_NCELLS];
+  double *cs_h2formation_ncrd1;
+  double *dcs_h2formation_ncrd1;
 
   double c_h2formation_ncrd2[1024];
-  double cs_h2formation_ncrd2[MAX_NCELLS];
-  double dcs_h2formation_ncrd2[MAX_NCELLS];
+  double *cs_h2formation_ncrd2;
+  double *dcs_h2formation_ncrd2;
 
   double c_h2formation_ncrn[1024];
-  double cs_h2formation_ncrn[MAX_NCELLS];
-  double dcs_h2formation_ncrn[MAX_NCELLS];
+  double *cs_h2formation_ncrn;
+  double *dcs_h2formation_ncrn;
 
   double c_reHeII1_reHeII1[1024];
-  double cs_reHeII1_reHeII1[MAX_NCELLS];
-  double dcs_reHeII1_reHeII1[MAX_NCELLS];
+  double *cs_reHeII1_reHeII1;
+  double *dcs_reHeII1_reHeII1;
 
   double c_reHeII2_reHeII2[1024];
-  double cs_reHeII2_reHeII2[MAX_NCELLS];
-  double dcs_reHeII2_reHeII2[MAX_NCELLS];
+  double *cs_reHeII2_reHeII2;
+  double *dcs_reHeII2_reHeII2;
 
   double c_reHeIII_reHeIII[1024];
-  double cs_reHeIII_reHeIII[MAX_NCELLS];
-  double dcs_reHeIII_reHeIII[MAX_NCELLS];
+  double *cs_reHeIII_reHeIII;
+  double *dcs_reHeIII_reHeIII;
 
   double c_reHII_reHII[1024];
-  double cs_reHII_reHII[MAX_NCELLS];
-  double dcs_reHII_reHII[MAX_NCELLS];
+  double *cs_reHII_reHII;
+  double *dcs_reHII_reHII;
 
-  int bin_id[MAX_NCELLS];
-  int ncells;
+  int *bin_id;
 
   // gamma as a function of temperature
   double g_gammaH2_1[1024];
   double g_dgammaH2_1_dT[1024];
 
   // store the gamma for that particular step
-  double gammaH2_1[MAX_NCELLS];
-  double dgammaH2_1_dT[MAX_NCELLS];
+  double *gammaH2_1;
+  double *dgammaH2_1_dT;
 
   double g_gammaH2_2[1024];
   double g_dgammaH2_2_dT[1024];
 
   // store the gamma for that particular step
-  double gammaH2_2[MAX_NCELLS];
-  double dgammaH2_2_dT[MAX_NCELLS];
+  double *gammaH2_2;
+  double *dgammaH2_2_dT;
 
   // scaling factors
-  double scale[10 * MAX_NCELLS ];
-  double inv_scale[10 * MAX_NCELLS];
+  double *scale;
+  double *inv_scale;
 
   int nstrip;
-  double mdensity[MAX_NCELLS];
-  double inv_mdensity[MAX_NCELLS];
+  double *mdensity;
+  double *inv_mdensity;
 
-  double cie_optical_depth_approx[MAX_NCELLS];
-  double h2_optical_depth_approx[MAX_NCELLS];
+  double *cie_optical_depth_approx;
+  double *h2_optical_depth_approx;
 
   const char *dengo_data_file;
 } cvklu_data;
@@ -299,7 +293,7 @@ typedef struct cvklu_data {
 typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix , void *, N_Vector, N_Vector, N_Vector);
 
-cvklu_data *cvklu_setup_data(const char *, int *, char***);
+cvklu_data *cvklu_setup_data(const char *, int ncells);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
@@ -313,47 +307,6 @@ int calculate_sparse_jacobian_cvklu( realtype t,
                                      N_Vector tmp1, N_Vector tmp2,
                                      N_Vector tmp3);
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data);
-
-
-
-
-typedef struct dengo_field_data
-{
-
-  unsigned long int nstrip;
-  unsigned long int ncells;
-  double *density;
-  double *H2_1_density;
-  double *H2_2_density;
-  double *H_1_density;
-  double *H_2_density;
-  double *H_m0_density;
-  double *He_1_density;
-  double *He_2_density;
-  double *He_3_density;
-  double *de_density;
-  double *ge_density;
-
-  double *CoolingTime;
-  double *MolecularWeight;
-  double *temperature;
-  double *Gamma;
-
-  const char *dengo_data_file;
-} dengo_field_data;
-
-typedef struct code_units
-{
-
-  int comoving_coordinates;
-  double density_units;
-  double length_units;
-  double time_units;
-  double velocity_units;
-  double a_units;
-  double a_value;
-
-} code_units;
 
 
 #endif
