@@ -114,3 +114,16 @@ mark_as_advanced(FORCE RAJA_DIR)
 # ---------------------
 
 add_subdirectory(src)
+
+# -------------------
+# install test files
+# -------------------
+
+# Install all text files, input data files, and job scripts from the tests
+# directory (and subdirectories) excluding any results files or directories.
+install(DIRECTORY tests DESTINATION ${CMAKE_INSTALL_PREFIX}
+  FILES_MATCHING
+  PATTERN "*.txt"
+  PATTERN "*.h5"
+  PATTERN "*.lsf"
+  PATTERN "*results*" EXCLUDE)
