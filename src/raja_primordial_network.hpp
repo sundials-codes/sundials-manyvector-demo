@@ -41,22 +41,11 @@ typedef struct cvklu_data {
   double bounds[2];
   int nbins;
 
-  /* These will be for bins in redshift space */
-  double d_zbin;
-  double id_zbin;
-  double z_bounds[2];
-  int n_zbins;
-
   /* For storing and passing around redshift information */
   double current_z;
-  double zdef;
-  double dz;
 
   /* Temperature-related bin information */
   double *Ts;
-  double *dT;
-  double *logTs;
-  double *invTs;
   double *dTs_ge;
 
   /* Now we do all of our cooling and chemical tables */
