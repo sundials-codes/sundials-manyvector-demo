@@ -173,9 +173,10 @@ typedef struct cvklu_data {
   double *cs_compton_comp_;
   double *dcs_compton_comp_;
 
+  /* REMOVE THESE */
   double c_gammah_gammah[1024];
-  double *cs_gammah_gammah;
-  double *dcs_gammah_gammah;
+  double c_gloverabel08_gphdl[1024];
+  double c_gloverabel08_gpldl[1024];
 
   double c_gloverabel08_gael[1024];
   double *cs_gloverabel08_gael;
@@ -196,14 +197,6 @@ typedef struct cvklu_data {
   double c_gloverabel08_gaHp[1024];
   double *cs_gloverabel08_gaHp;
   double *dcs_gloverabel08_gaHp;
-
-  double c_gloverabel08_gphdl[1024];
-  double *cs_gloverabel08_gphdl;
-  double *dcs_gloverabel08_gphdl;
-
-  double c_gloverabel08_gpldl[1024];
-  double *cs_gloverabel08_gpldl;
-  double *dcs_gloverabel08_gpldl;
 
   double c_gloverabel08_h2lte[1024];
   double *cs_gloverabel08_h2lte;
@@ -279,13 +272,14 @@ typedef struct cvklu_data {
 typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix , void *, N_Vector, N_Vector, N_Vector);
 
-cvklu_data *cvklu_setup_data(const char *, int ncells);
+cvklu_data *cvklu_setup_data(const char *, int);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
-void cvklu_interpolate_gamma(cvklu_data*, int );
-int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int nchem);
-void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip );
+void cvklu_interpolate_rates(cvklu_data*, int);
+void cvklu_interpolate_gamma(cvklu_data*, int);
+int cvklu_calculate_temperature(cvklu_data*, double*, int, int);
+void setting_up_extra_variables(cvklu_data*, double*, int);
 
 int calculate_sparse_jacobian_cvklu( realtype t,
                                      N_Vector y, N_Vector fy,
