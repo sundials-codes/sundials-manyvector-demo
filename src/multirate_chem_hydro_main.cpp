@@ -44,7 +44,11 @@
 
 // Header files
 #include <euler3D.hpp>
+#ifdef USERAJA
+#include <raja_primordial_network.hpp>
+#else
 #include <dengo_primordial_network.hpp>
+#endif
 #include <arkode/arkode_mristep.h>
 #include <arkode/arkode_arkstep.h>
 #include <sunmatrix/sunmatrix_sparse.h>

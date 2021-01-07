@@ -25,25 +25,29 @@
  parameters CLUMPS_PER_PROC, MIN_CLUMP_RADIUS, MAX_CLUMP_RADIUS
  and MAX_CLUMP_STRENGTH are #defined below.
 
- The background temperature is held at a fixed constant, T0, and 
- the fluid is initially at rest (all initial velocities are 
- identically zero).  The value of T0 is similarly specified by 
+ The background temperature is held at a fixed constant, T0, and
+ the fluid is initially at rest (all initial velocities are
+ identically zero).  The value of T0 is similarly specified by
  a #define below.
 
- On top of this background state, we add another Gaussian bump 
+ On top of this background state, we add another Gaussian bump
  to both density **and Temperature**:
 
     rho_S(X) = rho0*B_DENSITY*exp(-2*(||X-B_CENTER||/B_RADIUS)^2)),
     T_S(X)   = T0*B_TEMPERATURE*exp(-2*(||X-B_CENTER||/B_RADIUS)^2)),
 
- It is this higher-pressure region that initiates the "blast" 
- through the domain.  The values of B_DENSITY, B_TEMPERATURE, 
+ It is this higher-pressure region that initiates the "blast"
+ through the domain.  The values of B_DENSITY, B_TEMPERATURE,
  B_RADIUS and B_CENTER are all #defined below.
  ---------------------------------------------------------------*/
 
 // Header files
 #include <euler3D.hpp>
+#ifdef USERAJA
+#include <raja_primordial_network.hpp>
+#else
 #include <dengo_primordial_network.hpp>
+#endif
 #include <random>
 
 // basic problem definitions
@@ -219,7 +223,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         zdist = abs(zloc-cz);
         rsq = xdist*xdist + ydist*ydist + zdist*zdist;
         density += cs*exp(-2.0*rsq/cr/cr);
-        
+
         // set location-dependent temperature
         T = T0;
         cs = T0*(BLAST_TEMPERATURE-ONE);
@@ -262,7 +266,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // convert temperature to gas energy
         ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
-        
+
         // insert chemical fields into initial condition vector,
         // converting to 'dimensionless' electron number density
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);

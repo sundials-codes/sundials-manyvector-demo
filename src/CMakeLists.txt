@@ -74,6 +74,9 @@ foreach(nvar ${_nvar_values})
       PUBLIC
       RAJA
       Threads::Threads) # not sure why but Raja needs to link to Threads
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      USERAJA)
     if(RAJA_BACKEND MATCHES "CUDA")
       target_link_libraries(${_shared_obj}
         PUBLIC
