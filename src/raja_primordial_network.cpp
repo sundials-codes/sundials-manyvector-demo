@@ -122,8 +122,6 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   data->dcs_reHeIII_reHeIII = (double *) malloc(ncells*sizeof(double));
   data->cs_reHII_reHII = (double *) malloc(ncells*sizeof(double));
   data->dcs_reHII_reHII = (double *) malloc(ncells*sizeof(double));
-  data->gammaH2_1 = (double *) malloc(ncells*sizeof(double));
-  data->dgammaH2_1_dT = (double *) malloc(ncells*sizeof(double));
   data->gammaH2_2 = (double *) malloc(ncells*sizeof(double));
   data->dgammaH2_2_dT = (double *) malloc(ncells*sizeof(double));
   data->mdensity = (double *) malloc(ncells*sizeof(double));
@@ -400,8 +398,8 @@ int cvklu_calculate_temperature(cvklu_data *data,
 
       cvklu_interpolate_gamma(data, i);
 
-      gammaH2_1 = data->gammaH2_1[i];
-      dgammaH2_1_dT = data->dgammaH2_1_dT[i];
+      gammaH2_1 = data->gammaH2_1;
+      dgammaH2_1_dT = data->dgammaH2_1_dT;
       _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
 
       gammaH2_2 = data->gammaH2_2[i];
@@ -681,10 +679,10 @@ void cvklu_interpolate_gamma(cvklu_data *data, int i)
                      - data->g_dgammaH2_2_dT[bin_id]);
 
 
-  data->gammaH2_1[i] = data->g_gammaH2_1[bin_id] +
+  data->gammaH2_1 = data->g_gammaH2_1[bin_id] +
     Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
 
-  data->dgammaH2_1_dT[i] = data->g_dgammaH2_1_dT[bin_id] +
+  data->dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
     Tdef * (data->g_dgammaH2_1_dT[bin_id+1]
                      - data->g_dgammaH2_1_dT[bin_id]);
 

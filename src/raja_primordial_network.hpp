@@ -243,8 +243,8 @@ typedef struct cvklu_data {
   double g_dgammaH2_1_dT[1024];
 
   // store the gamma for that particular step
-  double *gammaH2_1;
-  double *dgammaH2_1_dT;
+  double gammaH2_1;
+  double dgammaH2_1_dT;
 
   double g_gammaH2_2[1024];
   double g_dgammaH2_2_dT[1024];
