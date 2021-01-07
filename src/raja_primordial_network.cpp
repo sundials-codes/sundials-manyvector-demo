@@ -20,7 +20,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   // Description: Initialize a data object that stores the reaction/ cooling rate data
   //-----------------------------------------------------
 
-  int i, n;
+  int i;
 
   cvklu_data *data = (cvklu_data *) malloc(sizeof(cvklu_data));
 
@@ -44,7 +44,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   }
 
   /* Temperature-related pieces */
-   data->bounds[0] = 1.0;
+  data->bounds[0] = 1.0;
   data->bounds[1] = 100000.0;
   data->nbins = 1024 - 1;
   data->dbin = (log(data->bounds[1]) - log(data->bounds[0])) / data->nbins;
@@ -209,109 +209,54 @@ void cvklu_read_gamma(cvklu_data *data)
 
 
 
-int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int nchem)
+int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip)
 {
-  int i, j;
-  double density, T, Tnew;
-  double kb = 1.3806504e-16; // Boltzmann constant [erg/K]
-  double mh = 1.67e-24;
-  double gamma = 5.e0/3.e0;
-  double _gamma_m1 = 1.0 / (gamma - 1);
+  const double kb = 1.3806504e-16; // Boltzmann constant [erg/K]
+  const double mh = 1.67e-24;
+  const double gamma = 5.e0/3.e0;
+  const double _gamma_m1 = 1.0 / (gamma - 1);
+  const double gammaH2 = 7.e0/5.e0;
+  const int MAX_T_ITERATION = 100;
 
-  double gammaH2 = 7.e0/5.e0; // Should be a function of temperature
-  // this is a temporary solution
-  double dge_dT;
-  double dge;
+  // loop over strip
+  for (int i = 0; i < nstrip; i++ ){
 
-  double gammaH2_1;
-  double dgammaH2_1_dT;
-  double _gammaH2_1_m1;
-
-  double gammaH2_2;
-  double dgammaH2_2_dT;
-  double _gammaH2_2_m1;
-
-  double Tdiff = 1.0;
-  int MAX_T_ITERATION = 100;
-  int count = 0;
-
-  /* Calculate total density */
-  double H2_1;
-  double H2_2;
-  double H_1;
-  double H_2;
-  double H_m0;
-  double He_1;
-  double He_2;
-  double He_3;
-  double de;
-  double ge;
-
-
-  i = 0;
-
-  for ( i = 0; i < nstrip; i++ ){
-    j = i * nchem;
-    H2_1 = input[j];
-    j++;
-
-    H2_2 = input[j];
-    j++;
-
-    H_1 = input[j];
-    j++;
-
-    H_2 = input[j];
-    j++;
-
-    H_m0 = input[j];
-    j++;
-
-    He_1 = input[j];
-    j++;
-
-    He_2 = input[j];
-    j++;
-
-    He_3 = input[j];
-    j++;
-
-    de = input[j];
-    j++;
-
-    ge = input[j];
-    j++;
-
-
-
-    density = 2.0*H2_1 + 2.0*H2_2 + 1.0079400000000001*H_1 + 1.0079400000000001*H_2 + 1.0079400000000001*H_m0 + 4.0026020000000004*He_1 + 4.0026020000000004*He_2 + 4.0026020000000004*He_3;
-
-
+    // Calculate total density
+    double H2_1 = input[i * NSPECIES];
+    double H2_2 = input[i * NSPECIES + 1];
+    double H_1 = input[i * NSPECIES + 2];
+    double H_2 = input[i * NSPECIES + 3];
+    double H_m0 = input[i * NSPECIES + 4];
+    double He_1 = input[i * NSPECIES + 5];
+    double He_2 = input[i * NSPECIES + 6];
+    double He_3 = input[i * NSPECIES + 7];
+    double de = input[i * NSPECIES + 8];
+    double ge = input[i * NSPECIES + 9];
+    double density = 2.0*H2_1 + 2.0*H2_2 + 1.0079400000000001*H_1 + 1.0079400000000001*H_2 + 1.0079400000000001*H_m0 + 4.0026020000000004*He_1 + 4.0026020000000004*He_2 + 4.0026020000000004*He_3;
 
 
     // Initiate the "guess" temperature
-    T    = (data->cell_data[i]).Ts;
-    Tnew = T*1.1;
+    double T    = (data->cell_data[i]).Ts;
+    double Tnew = T*1.1;
+    double Tdiff = Tnew - T;
+    double dge_dT;
+    int count = 0;
 
-    Tdiff = Tnew - T;
-    count = 0;
-
+    // We do Newton's Iteration to calculate the temperature
+    // Since gammaH2 is dependent on the temperature too!
     //        while ( Tdiff/ Tnew > 0.001 ){
-    for (j=0; j<10; j++){
-      // We do Newton's Iteration to calculate the temperature
-      // Since gammaH2 is dependent on the temperature too!
+    for (int j=0; j<10; j++){
 
       T = (data->cell_data[i]).Ts;
+      cvklu_interpolate_gamma(data, data->cell_data[i]);
 
-      cvklu_interpolate_gamma(data, i);
+      double gammaH2_1 = (data->cell_data[i]).gammaH2_1;
+      double dgammaH2_1_dT = (data->cell_data[i]).dgammaH2_1_dT;
+      double _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
 
-      gammaH2_1 = (data->cell_data[i]).gammaH2_1;
-      dgammaH2_1_dT = (data->cell_data[i]).dgammaH2_1_dT;
-      _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
-
-      gammaH2_2 = (data->cell_data[i]).gammaH2_2;
-      dgammaH2_2_dT = (data->cell_data[i]).dgammaH2_2_dT;
-      _gammaH2_2_m1 = 1.0 / (gammaH2_2 - 1.0);
+      double gammaH2_2 = (data->cell_data[i]).gammaH2_2;
+      double dgammaH2_2_dT = (data->cell_data[i]).dgammaH2_2_dT;
+      double _gammaH2_2_m1 = 1.0 / (gammaH2_2 - 1.0);
 
       // update gammaH2
       // The derivatives of  sum (nkT/(gamma - 1)/mh/density) - ge
@@ -320,7 +265,7 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
       dge_dT = T*kb*(-H2_1*_gammaH2_1_m1*_gammaH2_1_m1*dgammaH2_1_dT - H2_2*_gammaH2_2_m1*_gammaH2_2_m1*dgammaH2_2_dT)/(density*mh) + kb*(H2_1*_gammaH2_1_m1 + H2_2*_gammaH2_2_m1 + H_1*_gamma_m1 + H_2*_gamma_m1 + H_m0*_gamma_m1 + He_1*_gamma_m1 + He_2*_gamma_m1 + He_3*_gamma_m1 + _gamma_m1*de)/(density*mh);
 
       //This is the change in ge for each iteration
-      dge = T*kb*(H2_1*_gammaH2_1_m1 + H2_2*_gammaH2_2_m1 + H_1*_gamma_m1 + H_2*_gamma_m1 + H_m0*_gamma_m1 + He_1*_gamma_m1 + He_2*_gamma_m1 + He_3*_gamma_m1 + _gamma_m1*de)/(density*mh) - ge;
+      double dge = T*kb*(H2_1*_gammaH2_1_m1 + H2_2*_gammaH2_2_m1 + H_1*_gamma_m1 + H_2*_gamma_m1 + H_m0*_gamma_m1 + He_1*_gamma_m1 + He_2*_gamma_m1 + He_3*_gamma_m1 + _gamma_m1*de)/(density*mh) - ge;
 
       Tnew = T - dge/dge_dT;
       (data->cell_data[i]).Ts = Tnew;
@@ -335,7 +280,6 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, int nstrip, int
     } // while loop
 
     (data->cell_data[i]).Ts = Tnew;
-
 
     if ((data->cell_data[i]).Ts < data->bounds[0]) {
       (data->cell_data[i]).Ts = data->bounds[0];
@@ -561,14 +505,14 @@ void cvklu_interpolate_rates(cvklu_data *data, int i)
 
 
 
-void cvklu_interpolate_gamma(cvklu_data *data, int i)
+void cvklu_interpolate_gamma(cvklu_data *data, cell_rate_data &rdata)
 {
 
   int bin_id, zbin_id;
   double lb, t1, t2, Tdef;
 
   lb = log(data->bounds[0]);
-  bin_id = (int) (data->idbin * (log((data->cell_data[i]).Ts) - lb));
+  bin_id = (int) (data->idbin * (log(rdata.Ts) - lb));
   if (bin_id <= 0) {
     bin_id = 0;
   } else if (bin_id >= data->nbins) {
@@ -576,21 +520,21 @@ void cvklu_interpolate_gamma(cvklu_data *data, int i)
   }
   t1 = (lb + (bin_id    ) * data->dbin);
   t2 = (lb + (bin_id + 1) * data->dbin);
-  Tdef = (log((data->cell_data[i]).Ts) - t1)/(t2 - t1);
+  Tdef = (log(rdata.Ts) - t1)/(t2 - t1);
 
 
-  (data->cell_data[i]).gammaH2_2 = data->g_gammaH2_2[bin_id] +
+  rdata.gammaH2_2 = data->g_gammaH2_2[bin_id] +
     Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
 
-  (data->cell_data[i]).dgammaH2_2_dT = data->g_dgammaH2_2_dT[bin_id] +
+  rdata.dgammaH2_2_dT = data->g_dgammaH2_2_dT[bin_id] +
     Tdef * (data->g_dgammaH2_2_dT[bin_id+1]
                      - data->g_dgammaH2_2_dT[bin_id]);
 
 
-  (data->cell_data[i]).gammaH2_1 = data->g_gammaH2_1[bin_id] +
+  rdata.gammaH2_1 = data->g_gammaH2_1[bin_id] +
     Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
 
-  (data->cell_data[i]).dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
+  rdata.dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
     Tdef * (data->g_dgammaH2_1_dT[bin_id+1]
                      - data->g_dgammaH2_1_dT[bin_id]);
 
@@ -661,7 +605,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
   }
 
   int flag;
-  flag = cvklu_calculate_temperature(data, y_arr , nstrip, nchem );
+  flag = cvklu_calculate_temperature(data, y_arr, nstrip);
   if (flag > 0){
     // check if the temperature failed to converged
     return -1;
