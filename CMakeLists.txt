@@ -41,6 +41,12 @@ endforeach()
 set(CMAKE_C_STANDARD "99" CACHE STRING "C standard to use")
 set(CMAKE_CXX_STANDARD "11" CACHE STRING "C++ standard to use")
 
+# Append to the runtime search path (rpath) of installed binaries any
+# directories outside the project that are in the linker search path or contain
+# linked library files.
+option(CMAKE_INSTALL_RPATH_USE_LINK_PATH "Set rpath" ON)
+mark_as_advanced(FORCE CMAKE_INSTALL_RPATH_USE_LINK_PATH)
+
 # ----
 # MPI
 # ----
