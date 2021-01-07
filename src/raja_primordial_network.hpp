@@ -54,7 +54,6 @@ typedef struct cvklu_data {
 
   /* Temperature-related bin information */
   double *Ts;
-  double *Tdef;
   double *dT;
   double *logTs;
   double *invTs;
@@ -256,8 +255,6 @@ typedef struct cvklu_data {
   double c_reHII_reHII[1024];
   double *cs_reHII_reHII;
   double *dcs_reHII_reHII;
-
-  int *bin_id;
 
   // gamma as a function of temperature
   double g_gammaH2_1[1024];

@@ -29,7 +29,6 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
 
   /* allocate space for the scale related pieces */
   data->Ts = (double *) malloc(ncells*sizeof(double));
-  data->Tdef = (double *) malloc(ncells*sizeof(double));
   data->dT = (double *) malloc(ncells*sizeof(double));
   data->logTs = (double *) malloc(ncells*sizeof(double));
   data->invTs = (double *) malloc(ncells*sizeof(double));
@@ -142,7 +141,6 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   data->h2_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
   data->scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
   data->inv_scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
-  data->bin_id = (int *) malloc(ncells*sizeof(int));
 
   // Number of cells to be solved in a batch
   data->nstrip = ncells;
@@ -478,15 +476,15 @@ void cvklu_interpolate_rates(cvklu_data *data, int nstrip)
   i = 0;
 
   for ( i = 0; i < nstrip; i++ ){
-    data->bin_id[i] = bin_id = (int) (data->idbin * (data->logTs[i] - lb));
-    if (data->bin_id[i] <= 0) {
-      data->bin_id[i] = 0;
-    } else if (data->bin_id[i] >= data->nbins) {
-      data->bin_id[i] = data->nbins - 1;
+    bin_id = (int) (data->idbin * (data->logTs[i] - lb));
+    if (bin_id <= 0) {
+      bin_id = 0;
+    } else if (bin_id >= data->nbins) {
+      bin_id = data->nbins - 1;
     }
     t1 = (lb + (bin_id    ) * data->dbin);
     t2 = (lb + (bin_id + 1) * data->dbin);
-    data->Tdef[i] = (data->logTs[i] - t1)/(t2 - t1);
+    Tdef = (data->logTs[i] - t1)/(t2 - t1);
     data->dT[i] = (t2 - t1);
 
     if ((data->current_z >= data->z_bounds[0]) && (data->current_z < data->z_bounds[1])) {
@@ -503,523 +501,295 @@ void cvklu_interpolate_rates(cvklu_data *data, int nstrip)
     } else {
       no_photo = 1;
     }
-  }
 
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k01[i] = data->r_k01[bin_id] +
       Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
     data->drs_k01[i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
     data->drs_k01[i] /= data->dT[i];
     data->drs_k01[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k02[i] = data->r_k02[bin_id] +
       Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
     data->drs_k02[i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
     data->drs_k02[i] /= data->dT[i];
     data->drs_k02[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k03[i] = data->r_k03[bin_id] +
       Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
     data->drs_k03[i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
     data->drs_k03[i] /= data->dT[i];
     data->drs_k03[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k04[i] = data->r_k04[bin_id] +
       Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
     data->drs_k04[i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
     data->drs_k04[i] /= data->dT[i];
     data->drs_k04[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k05[i] = data->r_k05[bin_id] +
       Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
     data->drs_k05[i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
     data->drs_k05[i] /= data->dT[i];
     data->drs_k05[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k06[i] = data->r_k06[bin_id] +
       Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
     data->drs_k06[i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
     data->drs_k06[i] /= data->dT[i];
     data->drs_k06[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k07[i] = data->r_k07[bin_id] +
       Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
     data->drs_k07[i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
     data->drs_k07[i] /= data->dT[i];
     data->drs_k07[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k08[i] = data->r_k08[bin_id] +
       Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
     data->drs_k08[i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
     data->drs_k08[i] /= data->dT[i];
     data->drs_k08[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k09[i] = data->r_k09[bin_id] +
       Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
     data->drs_k09[i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
     data->drs_k09[i] /= data->dT[i];
     data->drs_k09[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k10[i] = data->r_k10[bin_id] +
       Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
     data->drs_k10[i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
     data->drs_k10[i] /= data->dT[i];
     data->drs_k10[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k11[i] = data->r_k11[bin_id] +
       Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
     data->drs_k11[i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
     data->drs_k11[i] /= data->dT[i];
     data->drs_k11[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k12[i] = data->r_k12[bin_id] +
       Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
     data->drs_k12[i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
     data->drs_k12[i] /= data->dT[i];
     data->drs_k12[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k13[i] = data->r_k13[bin_id] +
       Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
     data->drs_k13[i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
     data->drs_k13[i] /= data->dT[i];
     data->drs_k13[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k14[i] = data->r_k14[bin_id] +
       Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
     data->drs_k14[i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
     data->drs_k14[i] /= data->dT[i];
     data->drs_k14[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k15[i] = data->r_k15[bin_id] +
       Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
     data->drs_k15[i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
     data->drs_k15[i] /= data->dT[i];
     data->drs_k15[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k16[i] = data->r_k16[bin_id] +
       Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
     data->drs_k16[i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
     data->drs_k16[i] /= data->dT[i];
     data->drs_k16[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k17[i] = data->r_k17[bin_id] +
       Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
     data->drs_k17[i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
     data->drs_k17[i] /= data->dT[i];
     data->drs_k17[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k18[i] = data->r_k18[bin_id] +
       Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
     data->drs_k18[i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
     data->drs_k18[i] /= data->dT[i];
     data->drs_k18[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k19[i] = data->r_k19[bin_id] +
       Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
     data->drs_k19[i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
     data->drs_k19[i] /= data->dT[i];
     data->drs_k19[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k21[i] = data->r_k21[bin_id] +
       Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
     data->drs_k21[i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
     data->drs_k21[i] /= data->dT[i];
     data->drs_k21[i] *= data->invTs[i];
 
-  }
-
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->rs_k22[i] = data->r_k22[bin_id] +
       Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
     data->drs_k22[i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
     data->drs_k22[i] /= data->dT[i];
     data->drs_k22[i] *= data->invTs[i];
 
-  }
-
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_brem_brem[i] = data->c_brem_brem[bin_id] +
       Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
     data->dcs_brem_brem[i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
     data->dcs_brem_brem[i] /= data->dT[i];
     data->dcs_brem_brem[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ceHeI_ceHeI[i] = data->c_ceHeI_ceHeI[bin_id] +
       Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
     data->dcs_ceHeI_ceHeI[i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
     data->dcs_ceHeI_ceHeI[i] /= data->dT[i];
     data->dcs_ceHeI_ceHeI[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ceHeII_ceHeII[i] = data->c_ceHeII_ceHeII[bin_id] +
       Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
     data->dcs_ceHeII_ceHeII[i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
     data->dcs_ceHeII_ceHeII[i] /= data->dT[i];
     data->dcs_ceHeII_ceHeII[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ceHI_ceHI[i] = data->c_ceHI_ceHI[bin_id] +
       Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
     data->dcs_ceHI_ceHI[i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
     data->dcs_ceHI_ceHI[i] /= data->dT[i];
     data->dcs_ceHI_ceHI[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_cie_cooling_cieco[i] = data->c_cie_cooling_cieco[bin_id] +
       Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
     data->dcs_cie_cooling_cieco[i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
     data->dcs_cie_cooling_cieco[i] /= data->dT[i];
     data->dcs_cie_cooling_cieco[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ciHeI_ciHeI[i] = data->c_ciHeI_ciHeI[bin_id] +
       Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
     data->dcs_ciHeI_ciHeI[i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
     data->dcs_ciHeI_ciHeI[i] /= data->dT[i];
     data->dcs_ciHeI_ciHeI[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ciHeII_ciHeII[i] = data->c_ciHeII_ciHeII[bin_id] +
       Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
     data->dcs_ciHeII_ciHeII[i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
     data->dcs_ciHeII_ciHeII[i] /= data->dT[i];
     data->dcs_ciHeII_ciHeII[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ciHeIS_ciHeIS[i] = data->c_ciHeIS_ciHeIS[bin_id] +
       Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
     data->dcs_ciHeIS_ciHeIS[i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
     data->dcs_ciHeIS_ciHeIS[i] /= data->dT[i];
     data->dcs_ciHeIS_ciHeIS[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_ciHI_ciHI[i] = data->c_ciHI_ciHI[bin_id] +
       Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
     data->dcs_ciHI_ciHI[i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
     data->dcs_ciHI_ciHI[i] /= data->dT[i];
     data->dcs_ciHI_ciHI[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_compton_comp_[i] = data->c_compton_comp_[bin_id] +
       Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
     data->dcs_compton_comp_[i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
     data->dcs_compton_comp_[i] /= data->dT[i];
     data->dcs_compton_comp_[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_gammah_gammah[i] = data->c_gammah_gammah[bin_id] +
       Tdef * (data->c_gammah_gammah[bin_id+1] - data->c_gammah_gammah[bin_id]);
     data->dcs_gammah_gammah[i] = (data->c_gammah_gammah[bin_id+1] - data->c_gammah_gammah[bin_id]);
     data->dcs_gammah_gammah[i] /= data->dT[i];
     data->dcs_gammah_gammah[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_gloverabel08_gael[i] = data->c_gloverabel08_gael[bin_id] +
       Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
     data->dcs_gloverabel08_gael[i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
     data->dcs_gloverabel08_gael[i] /= data->dT[i];
     data->dcs_gloverabel08_gael[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_gaH2[i] = data->c_gloverabel08_gaH2[bin_id] +
       Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
     data->dcs_gloverabel08_gaH2[i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
     data->dcs_gloverabel08_gaH2[i] /= data->dT[i];
     data->dcs_gloverabel08_gaH2[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_gaHe[i] = data->c_gloverabel08_gaHe[bin_id] +
       Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
     data->dcs_gloverabel08_gaHe[i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
     data->dcs_gloverabel08_gaHe[i] /= data->dT[i];
     data->dcs_gloverabel08_gaHe[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_gaHI[i] = data->c_gloverabel08_gaHI[bin_id] +
       Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
     data->dcs_gloverabel08_gaHI[i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
     data->dcs_gloverabel08_gaHI[i] /= data->dT[i];
     data->dcs_gloverabel08_gaHI[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_gaHp[i] = data->c_gloverabel08_gaHp[bin_id] +
       Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
     data->dcs_gloverabel08_gaHp[i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
     data->dcs_gloverabel08_gaHp[i] /= data->dT[i];
     data->dcs_gloverabel08_gaHp[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_gphdl[i] = data->c_gloverabel08_gphdl[bin_id] +
       Tdef * (data->c_gloverabel08_gphdl[bin_id+1] - data->c_gloverabel08_gphdl[bin_id]);
     data->dcs_gloverabel08_gphdl[i] = (data->c_gloverabel08_gphdl[bin_id+1] - data->c_gloverabel08_gphdl[bin_id]);
     data->dcs_gloverabel08_gphdl[i] /= data->dT[i];
     data->dcs_gloverabel08_gphdl[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_gpldl[i] = data->c_gloverabel08_gpldl[bin_id] +
       Tdef * (data->c_gloverabel08_gpldl[bin_id+1] - data->c_gloverabel08_gpldl[bin_id]);
     data->dcs_gloverabel08_gpldl[i] = (data->c_gloverabel08_gpldl[bin_id+1] - data->c_gloverabel08_gpldl[bin_id]);
     data->dcs_gloverabel08_gpldl[i] /= data->dT[i];
     data->dcs_gloverabel08_gpldl[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_gloverabel08_h2lte[i] = data->c_gloverabel08_h2lte[bin_id] +
       Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
     data->dcs_gloverabel08_h2lte[i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
     data->dcs_gloverabel08_h2lte[i] /= data->dT[i];
     data->dcs_gloverabel08_h2lte[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_h2formation_h2mcool[i] = data->c_h2formation_h2mcool[bin_id] +
       Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
     data->dcs_h2formation_h2mcool[i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
     data->dcs_h2formation_h2mcool[i] /= data->dT[i];
     data->dcs_h2formation_h2mcool[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_h2formation_h2mheat[i] = data->c_h2formation_h2mheat[bin_id] +
       Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
     data->dcs_h2formation_h2mheat[i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
     data->dcs_h2formation_h2mheat[i] /= data->dT[i];
     data->dcs_h2formation_h2mheat[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_h2formation_ncrd1[i] = data->c_h2formation_ncrd1[bin_id] +
       Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
     data->dcs_h2formation_ncrd1[i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
     data->dcs_h2formation_ncrd1[i] /= data->dT[i];
     data->dcs_h2formation_ncrd1[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_h2formation_ncrd2[i] = data->c_h2formation_ncrd2[bin_id] +
       Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
     data->dcs_h2formation_ncrd2[i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
     data->dcs_h2formation_ncrd2[i] /= data->dT[i];
     data->dcs_h2formation_ncrd2[i] *= data->invTs[i];
-  }
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
+
     data->cs_h2formation_ncrn[i] = data->c_h2formation_ncrn[bin_id] +
       Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
     data->dcs_h2formation_ncrn[i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
     data->dcs_h2formation_ncrn[i] /= data->dT[i];
     data->dcs_h2formation_ncrn[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_reHeII1_reHeII1[i] = data->c_reHeII1_reHeII1[bin_id] +
       Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
     data->dcs_reHeII1_reHeII1[i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
     data->dcs_reHeII1_reHeII1[i] /= data->dT[i];
     data->dcs_reHeII1_reHeII1[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_reHeII2_reHeII2[i] = data->c_reHeII2_reHeII2[bin_id] +
       Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
     data->dcs_reHeII2_reHeII2[i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
     data->dcs_reHeII2_reHeII2[i] /= data->dT[i];
     data->dcs_reHeII2_reHeII2[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_reHeIII_reHeIII[i] = data->c_reHeIII_reHeIII[bin_id] +
       Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
     data->dcs_reHeIII_reHeIII[i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
     data->dcs_reHeIII_reHeIII[i] /= data->dT[i];
     data->dcs_reHeIII_reHeIII[i] *= data->invTs[i];
-  }
 
-  for ( i = 0; i < nstrip; i++ ){
-    bin_id = data->bin_id[i];
-    Tdef   = data->Tdef[i];
     data->cs_reHII_reHII[i] = data->c_reHII_reHII[bin_id] +
       Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
     data->dcs_reHII_reHII[i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
@@ -1042,40 +812,36 @@ void cvklu_interpolate_gamma(cvklu_data *data,
    */
 
   int bin_id, zbin_id;
-  double lb, t1, t2;
+  double lb, t1, t2, Tdef;
   double lbz, z1, z2;
   int no_photo = 0;
   lb = log(data->bounds[0]);
   lbz = log(data->z_bounds[0] + 1.0);
 
-  data->bin_id[i] = bin_id = (int) (data->idbin * (data->logTs[i] - lb));
-  if (data->bin_id[i] <= 0) {
-    data->bin_id[i] = 0;
-  } else if (data->bin_id[i] >= data->nbins) {
-    data->bin_id[i] = data->nbins - 1;
+  bin_id = (int) (data->idbin * (data->logTs[i] - lb));
+  if (bin_id <= 0) {
+    bin_id = 0;
+  } else if (bin_id >= data->nbins) {
+    bin_id = data->nbins - 1;
   }
   t1 = (lb + (bin_id    ) * data->dbin);
   t2 = (lb + (bin_id + 1) * data->dbin);
-  data->Tdef[i] = (data->logTs[i] - t1)/(t2 - t1);
-  data->dT[i] = (t2 - t1);
+  Tdef = (data->logTs[i] - t1)/(t2 - t1);
 
 
-
-  bin_id = data->bin_id[i];
   data->gammaH2_2[i] = data->g_gammaH2_2[bin_id] +
-    data->Tdef[i] * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
+    Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
 
   data->dgammaH2_2_dT[i] = data->g_dgammaH2_2_dT[bin_id] +
-    data->Tdef[i] * (data->g_dgammaH2_2_dT[bin_id+1]
+    Tdef * (data->g_dgammaH2_2_dT[bin_id+1]
                      - data->g_dgammaH2_2_dT[bin_id]);
 
 
-  bin_id = data->bin_id[i];
   data->gammaH2_1[i] = data->g_gammaH2_1[bin_id] +
-    data->Tdef[i] * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+    Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
 
   data->dgammaH2_1_dT[i] = data->g_dgammaH2_1_dT[bin_id] +
-    data->Tdef[i] * (data->g_dgammaH2_1_dT[bin_id+1]
+    Tdef * (data->g_dgammaH2_1_dT[bin_id+1]
                      - data->g_dgammaH2_1_dT[bin_id]);
 
 
