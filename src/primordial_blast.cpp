@@ -305,7 +305,7 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
   return 0;
 }
 
-// Utility routine to initialize global Dengo data structures
+// Utility routine to initialize Dengo data structures
 int initialize_Dengo_structures(EulerData& udata) {
 
   // initialize primordial rate tables, etc
@@ -337,6 +337,14 @@ int initialize_Dengo_structures(EulerData& udata) {
   // store pointer to network_data in udata, and return
   udata.RxNetData = (void*) network_data;
   return(0);
+}
+
+
+// Utility routine to free Dengo data structures
+void free_Dengo_structures(EulerData& udata) {
+  // call utility routine to free contents of Dengo_data structure
+  cvklu_free_data(udata.RxNetData);
+  udata.RxNetData = NULL;
 }
 
 

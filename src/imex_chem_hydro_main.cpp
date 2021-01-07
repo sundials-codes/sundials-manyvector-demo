@@ -64,6 +64,7 @@
 // Initialization and preparation routines for Dengo data structure
 // (provided in specific test problem initializer)
 int initialize_Dengo_structures(EulerData& udata);
+void free_Dengo_structures(EulerData& udata);
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata);
 int apply_Dengo_scaling(N_Vector w, EulerData& udata);
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata);
@@ -77,7 +78,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 static int PostprocessStep(realtype t, N_Vector y, void* user_data);
 
 // utility routines
-void cleanup(void **arkode_mem,
+void cleanup(void **arkode_mem, EulerData& udata,
              SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
              N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
 
@@ -534,7 +535,7 @@ int main(int argc, char* argv[]) {
     retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);
     if (retval < 0) {    // unsuccessful solve: break
       if (outproc)  cerr << "Solver failure, stopping integration\n";
-      cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+      cleanup(&arkode_mem, udata, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
       return(1);
     }
 
@@ -653,7 +654,7 @@ int main(int argc, char* argv[]) {
       tout = min(tout+dTout, udata.tf);
     } else {                                   // unsuccessful solve: break
       if (outproc)  cerr << "Solver failure, stopping integration\n";
-      cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+      cleanup(&arkode_mem, udata, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
       return(1);
     }
 
@@ -764,7 +765,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up, finalize MPI, and return with successful completion
-  cleanup(&arkode_mem, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+  cleanup(&arkode_mem, udata, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   MPI_Finalize();                  // Finalize MPI
@@ -989,8 +990,9 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 
 //---- utility routines ----
 
-void cleanup(void **arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
-             N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs)
+void cleanup(void **arkode_mem, EulerData& udata, SUNLinearSolver BLS,
+             SUNLinearSolver LS, SUNMatrix A, N_Vector w,
+             N_Vector atols, N_Vector *wsubvecs, int Nsubvecs)
 {
   ARKStepFree(arkode_mem);         // Free integrator memory
   SUNLinSolFree(BLS);              // Free matrix and linear solvers
@@ -1001,6 +1003,7 @@ void cleanup(void **arkode_mem, SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatr
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
   N_VDestroy(atols);
+  free_Dengo_structures(udata);
 }
 
 

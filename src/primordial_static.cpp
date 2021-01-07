@@ -213,6 +213,14 @@ int initialize_Dengo_structures(EulerData& udata) {
 }
 
 
+// Utility routine to free Dengo data structures
+void free_Dengo_structures(EulerData& udata) {
+  // call utility routine to free contents of Dengo_data structure
+  cvklu_free_data(udata.RxNetData);
+  udata.RxNetData = NULL;
+}
+
+
 // Utility routine to prepare N_Vector solution and Dengo data structures
 // for subsequent chemical evolution
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)

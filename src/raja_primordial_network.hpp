@@ -34,6 +34,106 @@
 #define NSPECIES 10
 
 
+typedef struct cell_rate_data {
+  double rs_k01;
+  double drs_k01;
+  double rs_k02;
+  double drs_k02;
+  double rs_k03;
+  double drs_k03;
+  double rs_k04;
+  double drs_k04;
+  double rs_k05;
+  double drs_k05;
+  double rs_k06;
+  double drs_k06;
+  double rs_k07;
+  double drs_k07;
+  double rs_k08;
+  double drs_k08;
+  double rs_k09;
+  double drs_k09;
+  double rs_k10;
+  double drs_k10;
+  double rs_k11;
+  double drs_k11;
+  double rs_k12;
+  double drs_k12;
+  double rs_k13;
+  double drs_k13;
+  double rs_k14;
+  double drs_k14;
+  double rs_k15;
+  double drs_k15;
+  double rs_k16;
+  double drs_k16;
+  double rs_k17;
+  double drs_k17;
+  double rs_k18;
+  double drs_k18;
+  double rs_k19;
+  double drs_k19;
+  double rs_k21;
+  double drs_k21;
+  double rs_k22;
+  double drs_k22;
+  double cs_brem_brem;
+  double dcs_brem_brem;
+  double cs_ceHeI_ceHeI;
+  double dcs_ceHeI_ceHeI;
+  double cs_ceHeII_ceHeII;
+  double dcs_ceHeII_ceHeII;
+  double cs_ceHI_ceHI;
+  double dcs_ceHI_ceHI;
+  double cs_cie_cooling_cieco;
+  double dcs_cie_cooling_cieco;
+  double cs_ciHeI_ciHeI;
+  double dcs_ciHeI_ciHeI;
+  double cs_ciHeII_ciHeII;
+  double dcs_ciHeII_ciHeII;
+  double cs_ciHeIS_ciHeIS;
+  double dcs_ciHeIS_ciHeIS;
+  double cs_ciHI_ciHI;
+  double dcs_ciHI_ciHI;
+  double cs_compton_comp_;
+  double dcs_compton_comp_;
+  double cs_gloverabel08_gael;
+  double dcs_gloverabel08_gael;
+  double cs_gloverabel08_gaH2;
+  double dcs_gloverabel08_gaH2;
+  double cs_gloverabel08_gaHe;
+  double dcs_gloverabel08_gaHe;
+  double cs_gloverabel08_gaHI;
+  double dcs_gloverabel08_gaHI;
+  double cs_gloverabel08_gaHp;
+  double dcs_gloverabel08_gaHp;
+  double cs_gloverabel08_h2lte;
+  double dcs_gloverabel08_h2lte;
+  double cs_h2formation_h2mcool;
+  double dcs_h2formation_h2mcool;
+  double cs_h2formation_h2mheat;
+  double dcs_h2formation_h2mheat;
+  double cs_h2formation_ncrd1;
+  double dcs_h2formation_ncrd1;
+  double cs_h2formation_ncrd2;
+  double dcs_h2formation_ncrd2;
+  double cs_h2formation_ncrn;
+  double dcs_h2formation_ncrn;
+  double cs_reHeII1_reHeII1;
+  double dcs_reHeII1_reHeII1;
+  double cs_reHeII2_reHeII2;
+  double dcs_reHeII2_reHeII2;
+  double cs_reHeIII_reHeIII;
+  double dcs_reHeIII_reHeIII;
+  double cs_reHII_reHII;
+  double dcs_reHII_reHII;
+  double gammaH2_1;
+  double dgammaH2_1_dT;
+  double gammaH2_2;
+  double dgammaH2_2_dT;
+} cell_rate_data;
+
+
 typedef struct cvklu_data {
   /* All of the network bins will be the same width */
   double dbin;
@@ -44,220 +144,76 @@ typedef struct cvklu_data {
   /* For storing and passing around redshift information */
   double current_z;
 
-  /* Temperature-related bin information */
+  /* Cell-specific derived quantities */
   double *Ts;
   double *dTs_ge;
+  double *mdensity;
+  double *inv_mdensity;
+  double *cie_optical_depth_approx;
+  double *h2_optical_depth_approx;
 
-  /* Now we do all of our cooling and chemical tables */
+  /* Cell-specific reaction rate information */
+  cell_rate_data *rate_data;
+
+  /* Cooling and chemical tables */
   double r_k01[1024];
-  double *rs_k01;
-  double *drs_k01;
-
   double r_k02[1024];
-  double *rs_k02;
-  double *drs_k02;
-
   double r_k03[1024];
-  double *rs_k03;
-  double *drs_k03;
-
   double r_k04[1024];
-  double *rs_k04;
-  double *drs_k04;
-
   double r_k05[1024];
-  double *rs_k05;
-  double *drs_k05;
-
   double r_k06[1024];
-  double *rs_k06;
-  double *drs_k06;
-
   double r_k07[1024];
-  double *rs_k07;
-  double *drs_k07;
-
   double r_k08[1024];
-  double *rs_k08;
-  double *drs_k08;
-
   double r_k09[1024];
-  double *rs_k09;
-  double *drs_k09;
-
   double r_k10[1024];
-  double *rs_k10;
-  double *drs_k10;
-
   double r_k11[1024];
-  double *rs_k11;
-  double *drs_k11;
-
   double r_k12[1024];
-  double *rs_k12;
-  double *drs_k12;
-
   double r_k13[1024];
-  double *rs_k13;
-  double *drs_k13;
-
   double r_k14[1024];
-  double *rs_k14;
-  double *drs_k14;
-
   double r_k15[1024];
-  double *rs_k15;
-  double *drs_k15;
-
   double r_k16[1024];
-  double *rs_k16;
-  double *drs_k16;
-
   double r_k17[1024];
-  double *rs_k17;
-  double *drs_k17;
-
   double r_k18[1024];
-  double *rs_k18;
-  double *drs_k18;
-
   double r_k19[1024];
-  double *rs_k19;
-  double *drs_k19;
-
   double r_k21[1024];
-  double *rs_k21;
-  double *drs_k21;
-
   double r_k22[1024];
-  double *rs_k22;
-  double *drs_k22;
-
   double c_brem_brem[1024];
-  double *cs_brem_brem;
-  double *dcs_brem_brem;
-
   double c_ceHeI_ceHeI[1024];
-  double *cs_ceHeI_ceHeI;
-  double *dcs_ceHeI_ceHeI;
-
   double c_ceHeII_ceHeII[1024];
-  double *cs_ceHeII_ceHeII;
-  double *dcs_ceHeII_ceHeII;
-
   double c_ceHI_ceHI[1024];
-  double *cs_ceHI_ceHI;
-  double *dcs_ceHI_ceHI;
-
   double c_cie_cooling_cieco[1024];
-  double *cs_cie_cooling_cieco;
-  double *dcs_cie_cooling_cieco;
-
   double c_ciHeI_ciHeI[1024];
-  double *cs_ciHeI_ciHeI;
-  double *dcs_ciHeI_ciHeI;
-
   double c_ciHeII_ciHeII[1024];
-  double *cs_ciHeII_ciHeII;
-  double *dcs_ciHeII_ciHeII;
-
   double c_ciHeIS_ciHeIS[1024];
-  double *cs_ciHeIS_ciHeIS;
-  double *dcs_ciHeIS_ciHeIS;
-
   double c_ciHI_ciHI[1024];
-  double *cs_ciHI_ciHI;
-  double *dcs_ciHI_ciHI;
-
   double c_compton_comp_[1024];
-  double *cs_compton_comp_;
-  double *dcs_compton_comp_;
-
   double c_gloverabel08_gael[1024];
-  double *cs_gloverabel08_gael;
-  double *dcs_gloverabel08_gael;
-
   double c_gloverabel08_gaH2[1024];
-  double *cs_gloverabel08_gaH2;
-  double *dcs_gloverabel08_gaH2;
-
   double c_gloverabel08_gaHe[1024];
-  double *cs_gloverabel08_gaHe;
-  double *dcs_gloverabel08_gaHe;
-
   double c_gloverabel08_gaHI[1024];
-  double *cs_gloverabel08_gaHI;
-  double *dcs_gloverabel08_gaHI;
-
   double c_gloverabel08_gaHp[1024];
-  double *cs_gloverabel08_gaHp;
-  double *dcs_gloverabel08_gaHp;
-
   double c_gloverabel08_h2lte[1024];
-  double *cs_gloverabel08_h2lte;
-  double *dcs_gloverabel08_h2lte;
-
   double c_h2formation_h2mcool[1024];
-  double *cs_h2formation_h2mcool;
-  double *dcs_h2formation_h2mcool;
-
   double c_h2formation_h2mheat[1024];
-  double *cs_h2formation_h2mheat;
-  double *dcs_h2formation_h2mheat;
-
   double c_h2formation_ncrd1[1024];
-  double *cs_h2formation_ncrd1;
-  double *dcs_h2formation_ncrd1;
-
   double c_h2formation_ncrd2[1024];
-  double *cs_h2formation_ncrd2;
-  double *dcs_h2formation_ncrd2;
-
   double c_h2formation_ncrn[1024];
-  double *cs_h2formation_ncrn;
-  double *dcs_h2formation_ncrn;
-
   double c_reHeII1_reHeII1[1024];
-  double *cs_reHeII1_reHeII1;
-  double *dcs_reHeII1_reHeII1;
-
   double c_reHeII2_reHeII2[1024];
-  double *cs_reHeII2_reHeII2;
-  double *dcs_reHeII2_reHeII2;
-
   double c_reHeIII_reHeIII[1024];
-  double *cs_reHeIII_reHeIII;
-  double *dcs_reHeIII_reHeIII;
-
   double c_reHII_reHII[1024];
-  double *cs_reHII_reHII;
-  double *dcs_reHII_reHII;
 
   // gamma as a function of temperature
   double g_gammaH2_1[1024];
   double g_dgammaH2_1_dT[1024];
-
-  // store the gamma for that particular step
-  double gammaH2_1;
-  double dgammaH2_1_dT;
-
   double g_gammaH2_2[1024];
   double g_dgammaH2_2_dT[1024];
-
-  // store the gamma for that particular step
-  double *gammaH2_2;
-  double *dgammaH2_2_dT;
 
   // scaling factors
   double *scale;
   double *inv_scale;
 
   int nstrip;
-  double *mdensity;
-  double *inv_mdensity;
-
-  double *cie_optical_depth_approx;
-  double *h2_optical_depth_approx;
 
   const char *dengo_data_file;
 } cvklu_data;
@@ -268,6 +224,7 @@ typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix , void *, N_Vector, N_Vector, N_Vector);
 
 cvklu_data *cvklu_setup_data(const char *, int);
+void cvklu_free_data(void*);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
