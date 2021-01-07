@@ -139,5 +139,7 @@ export KLU_ROOT="${PROJHOME}/${COMPILERNAME}/suitesparse-5.8.1-${bldtype}"
 export KLU_INC_DIR="${KLU_ROOT}/include"
 export KLU_LIB_DIR="${KLU_ROOT}/lib"
 
+export HDF5_ROOT="${OLCF_HDF5_ROOT}"
+
 export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-cuda-${cudaver}-${bldtype}"
 export RAJA_ROOT="${PROJHOME}/${COMPILERNAME}/raja-0.13.0-cuda-${cudaver}-${bldtype}"
