@@ -975,17 +975,18 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 
   // update fluid energy (derived) field from other quantities
   realtype EUnitScale = ONE/udata->EnergyUnits;
+#ifdef USERAJA
+  realtype *sc = network_data->scale;
+#else
+  realtype *sc = network_data->scale[0];
+#endif
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
         cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-#ifdef USERAJA
-        realtype ge = chem[cidx] * network_data->scale[cidx] * EUnitScale;
-#else
-        realtype ge = chem[cidx] * network_data->scale[0][cidx] * EUnitScale;
-#endif
         fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
+        et[fidx] = chem[cidx] * sc[cidx] * EUnitScale
+          + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
   // stop timer and return

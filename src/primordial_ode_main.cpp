@@ -365,18 +365,20 @@ int main(int argc, char* argv[]) {
       }
 
   // move input solution values into 'scale' components of network_data structure
+#ifdef USERAJA
+  double *sc = network_data->scale;
+  double *isc = network_data->inv_scale;
+#else
+  double *sc = network_data->scale[0];
+  double *isc = network_data->inv_scale[0];
+#endif
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++)
         for (l=0; l<udata.nchem; l++) {
           idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-#ifdef USERAJA
-          network_data->scale[idx] = wdata[idx];
-          network_data->inv_scale[idx] = ONE / wdata[idx];
-#else
-          network_data->scale[0][idx] = wdata[idx];
-          network_data->inv_scale[0][idx] = ONE / wdata[idx];
-#endif
+          sc[idx] = wdata[idx];
+          isc[idx] = ONE / wdata[idx];
           wdata[idx] = ONE;
         }
 
@@ -624,85 +626,44 @@ int main(int argc, char* argv[]) {
       for (i=0; i<udata.nxl; i++) {
         idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
-#ifdef USERAJA
         // H2I
-        wdata[idx] *= (network_data->scale[idx]) * H2I_weight;
+        wdata[idx] *= sc[idx] * H2I_weight;
         idx++;
 
         // H2II
-        wdata[idx] *= (network_data->scale[idx]) * H2II_weight;
+        wdata[idx] *= sc[idx] * H2II_weight;
         idx++;
 
         // HI
-        wdata[idx] *= (network_data->scale[idx]) * HI_weight;
+        wdata[idx] *= sc[idx] * HI_weight;
         idx++;
 
         // HII
-        wdata[idx] *= (network_data->scale[idx]) * HII_weight;
+        wdata[idx] *= sc[idx] * HII_weight;
         idx++;
 
         // HM
-        wdata[idx] *= (network_data->scale[idx]) * HM_weight;
+        wdata[idx] *= sc[idx] * HM_weight;
         idx++;
 
         // HeI
-        wdata[idx] *= (network_data->scale[idx]) * HeI_weight;
+        wdata[idx] *= sc[idx] * HeI_weight;
         idx++;
 
         // HeII
-        wdata[idx] *= (network_data->scale[idx]) * HeII_weight;
+        wdata[idx] *= sc[idx] * HeII_weight;
         idx++;
 
         // HeIII
-        wdata[idx] *= (network_data->scale[idx]) * HeIII_weight;
+        wdata[idx] *= sc[idx] * HeIII_weight;
         idx++;
 
         // de
-        wdata[idx] *= (network_data->scale[idx]) * m_amu;
+        wdata[idx] *= sc[idx] * m_amu;
         idx++;
 
         // ge
-        wdata[idx] *= (network_data->scale[idx]);
-#else
-        // H2I
-        wdata[idx] *= (network_data->scale[0][idx]) * H2I_weight;
-        idx++;
-
-        // H2II
-        wdata[idx] *= (network_data->scale[0][idx]) * H2II_weight;
-        idx++;
-
-        // HI
-        wdata[idx] *= (network_data->scale[0][idx]) * HI_weight;
-        idx++;
-
-        // HII
-        wdata[idx] *= (network_data->scale[0][idx]) * HII_weight;
-        idx++;
-
-        // HM
-        wdata[idx] *= (network_data->scale[0][idx]) * HM_weight;
-        idx++;
-
-        // HeI
-        wdata[idx] *= (network_data->scale[0][idx]) * HeI_weight;
-        idx++;
-
-        // HeII
-        wdata[idx] *= (network_data->scale[0][idx]) * HeII_weight;
-        idx++;
-
-        // HeIII
-        wdata[idx] *= (network_data->scale[0][idx]) * HeIII_weight;
-        idx++;
-
-        // de
-        wdata[idx] *= (network_data->scale[0][idx]) * m_amu;
-        idx++;
-
-        // ge
-        wdata[idx] *= (network_data->scale[0][idx]);
-#endif
+        wdata[idx] *= sc[idx];
       }
 
   // compute simulation time
@@ -807,20 +768,19 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   double cmean[] = {ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO};
   double cmax[]  = {ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO};
   double cmin[]  = {1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300};
+#ifdef USERAJA
+  double *sc = network_data->scale;
+#else
+  double *sc = network_data->scale[0];
+#endif
   for (long int k=0; k<udata.nzl; k++)
     for (long int j=0; j<udata.nyl; j++)
       for (long int i=0; i<udata.nxl; i++)
         for (long int l=0; l<udata.nchem; l++) {
           long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-#ifdef USERAJA
-          cmean[l] += network_data->scale[idx]*wdata[idx];
-          cmax[l]  = max(cmax[l], network_data->scale[idx]*wdata[idx]);
-          cmin[l]  = min(cmin[l], network_data->scale[idx]*wdata[idx]);
-#else
-          cmean[l] += network_data->scale[0][idx]*wdata[idx];
-          cmax[l]  = max(cmax[l], network_data->scale[0][idx]*wdata[idx]);
-          cmin[l]  = min(cmin[l], network_data->scale[0][idx]*wdata[idx]);
-#endif
+          cmean[l] += sc[idx]*wdata[idx];
+          cmax[l]  = max(cmax[l], sc[idx]*wdata[idx]);
+          cmin[l]  = min(cmin[l], sc[idx]*wdata[idx]);
         }
   for (long int l=0; l<udata.nchem; l++)
     cmean[l] /= (udata.nxl * udata.nyl * udata.nzl);
