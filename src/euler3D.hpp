@@ -23,7 +23,11 @@
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_manyvector.h>
 #include <nvector/nvector_parallel.h>
+#ifdef USERAJA
+#include <nvector/nvector_raja.h>
+#else
 #include <nvector/nvector_serial.h>
+#endif
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
 #include <mpi.h>
@@ -132,7 +136,7 @@ public:
   double atol;         // absolute solution tolerance (0 => default)
   int fusedkernels;    // flag for fused N_Vector operations (0 disabled, 1 enabled)
   int localreduce;     // flag for N_Vector local reduction operations (0 disabled, 1 enabled)
-  
+
   // constructor (with default values)
   ARKodeParameters() :
     order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
@@ -195,7 +199,7 @@ public:
 
   ///// unit non-dimensionalization factors /////
   // the Euler solver itself only operates on the non-dimensionalized fields;
-  // the following factors are used when interfacing with the chemistry solver, 
+  // the following factors are used when interfacing with the chemistry solver,
   // that requires its fields to be in CGS units.
   realtype MassUnits;     // base mass   unit scaling factor (code -> g)
   realtype LengthUnits;   // base length unit scaling factor (code -> cm)
@@ -241,7 +245,7 @@ public:
   MPI_Request req[12];  // MPI requests for neighbor exchange
 
   ///// class operations /////
-  
+
   // constructor
   EulerData() :
       RxNetData(NULL), nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0),
@@ -258,7 +262,7 @@ public:
   {
     nchem = (NVAR) - 5;
   };
-  
+
   // destructor
   ~EulerData() {
     if (Wrecv != NULL)  delete[] Wrecv;
@@ -289,7 +293,7 @@ public:
     EnergyUnits   = MassUnits/LengthUnits/TimeUnits/TimeUnits;
     return 0;
   }
-  
+
   // Set up parallel decomposition
   int SetupDecomp()
   {

@@ -16,30 +16,17 @@
 # --------------------------------------------------------------------------
 
 # check for correct number of inputs
-if [ "$#" -lt 3 ]; then
-    echo "ERROR: Three (3) inputs required:"
-    echo "  1) Path to metis source e.g., ~/metis-5.1.0"
-    echo "  2) Metis version e.g., 5.1.0"
-    echo "  3) Build type: opt or dbg"
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Path to source required"
     exit 1
 fi
-
-# path to SUNDIALS source and version name or number
 srcdir=$1
-srcver=$2
 
-# build type: opt (optimized) or dbg (debug)
-bldtype=$3
-case "$bldtype" in
-    opt|dbg) ;;
-    *)
-        echo "ERROR: Unknown build type: $bldtype"
-        exit 1
-        ;;
-esac
-
-# set install path
-installdir=${PROJHOME}/${COMPILERNAME}/metis-${srcver}-${bldtype}
+# build threads
+bldthreads=12
+if [ "$#" -gt 1 ]; then
+    bldthreads=$2
+fi
 
 # ------------------------------------------------------------------------------
 # Configure, build, and install
@@ -56,14 +43,14 @@ sed -i s/"#define REALTYPEWIDTH.*"/"#define REALTYPEWIDTH 64"/ include/metis.h
 sed -i s/"#define IDXTYPEWIDTH.*"/"#define IDXTYPEWIDTH 64"/ include/metis.h
 
 # set source and install directory paths
-\rm -rf $installdir
-mkdir -p $installdir
+\rm -rf ${METIS_ROOT}
+mkdir -p ${METIS_ROOT}
 
 # configure
 make config \
     CC=${CC} \
     CXX=${CXX} \
-    prefix=$installdir \
+    prefix=${METIS_ROOT} \
     shared=1 \
     2>&1 | tee configure.log
 
@@ -71,4 +58,4 @@ make config \
 make install 2>&1 | tee install.log
 
 # move log files
-mv *.log $installdir/.
+mv *.log ${METIS_ROOT}/.

@@ -47,7 +47,6 @@ foreach(nvar ${_nvar_values})
   target_link_libraries(${_shared_obj}
     PUBLIC
     MPI::MPI_CXX
-    SUNDIALS::nvecserial
     SUNDIALS::nvecparallel
     SUNDIALS::nvecmpimanyvector
     SUNDIALS::sunmatrixsparse

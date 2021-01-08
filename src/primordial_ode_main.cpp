@@ -165,10 +165,17 @@ int main(int argc, char* argv[]) {
 
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
+#ifdef USERAJA
+  w = N_VNewManaged_Raja(N);
+  if (check_flag((void *) w, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+  atols = N_VNewManaged_Raja(N);
+  if (check_flag((void *) atols, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+#else
   w = N_VNew_Serial(N);
   if (check_flag((void *) w, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
   atols = N_VNew_Serial(N);
   if (check_flag((void *) atols, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+#endif
 
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
