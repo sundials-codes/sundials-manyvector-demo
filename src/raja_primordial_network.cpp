@@ -37,10 +37,8 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   data->nstrip = ncells;
 
   // initialize temperature so it wont crash
-  //  for ( i = 0; i < ncells; i++ ) {
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] RAJA_DEVICE (int i) {
     (data->cell_data[i]).Ts = 1000.0;
-  //}
   });
 
   // Temperature-related pieces
@@ -111,7 +109,6 @@ void cvklu_read_rate_tables(cvklu_data *data)
   H5LTread_dataset_double(file_id, "/k19", data->r_k19);
   H5LTread_dataset_double(file_id, "/k21", data->r_k21);
   H5LTread_dataset_double(file_id, "/k22", data->r_k22);
-
   H5Fclose(file_id);
 }
 
@@ -212,7 +209,7 @@ void cvklu_read_gamma(cvklu_data *data)
 
 
 
-int cvklu_calculate_temperature(cvklu_data *data, double *input, cell_rate_data &rdata)
+RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, cell_rate_data &rdata)
 {
 
   // Define some constants
@@ -295,7 +292,7 @@ int cvklu_calculate_temperature(cvklu_data *data, double *input, cell_rate_data 
 
 
 
-void cvklu_interpolate_rates(cvklu_data *data, cell_rate_data &rdata)
+RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data *data, cell_rate_data &rdata)
 {
   int bin_id, zbin_id;
   double lb, t1, t2;
@@ -505,7 +502,7 @@ void cvklu_interpolate_rates(cvklu_data *data, cell_rate_data &rdata)
 
 
 
-void cvklu_interpolate_gamma(cvklu_data *data, cell_rate_data &rdata)
+RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data *data, cell_rate_data &rdata)
 {
 
   int bin_id, zbin_id;
