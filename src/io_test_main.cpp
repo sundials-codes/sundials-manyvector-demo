@@ -98,8 +98,13 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
+#ifdef USERAJA
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+#else
     wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+#endif
   }
   w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
