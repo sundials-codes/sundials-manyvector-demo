@@ -281,7 +281,7 @@ install(TARGETS primordial_static_mr.exe)
 # primordial blast tests
 add_executable(primordial_blast_imex.exe
   primordial_blast.cpp
-  multirate_chem_hydro_main.cpp
+  imex_chem_hydro_main.cpp
   ${_chem_solver})
 target_link_libraries(primordial_blast_imex.exe
   PRIVATE
