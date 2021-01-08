@@ -14,7 +14,7 @@
 #define __RAJA_PRIMORDIAL_HPP__
 
 
-/* stdlib, hdf5, local includes */
+// Header files
 #include "time.h"
 #include "sys/time.h"
 #include "stdlib.h"
@@ -25,13 +25,16 @@
 #endif
 #include "stdio.h"
 #include "string.h"
-
-/* header files for SUNDIALS */
-#include <sundials/sundials_types.h>     /* defs. of realtype, sunindextype */
+#include <RAJA/RAJA.hpp>
+#include <sundials/sundials_types.h>
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
 
 #define NSPECIES 10
+
+
+// desired execution policy for all RAJA loops
+#define EXECPOLICY RAJA::loop_exec
 
 
 typedef struct cell_rate_data {

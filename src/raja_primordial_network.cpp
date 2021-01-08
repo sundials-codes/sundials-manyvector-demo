@@ -20,8 +20,6 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   // Description: Initialize a data object that stores the reaction/ cooling rate data
   //-----------------------------------------------------
 
-  int i;
-
   cvklu_data *data = (cvklu_data *) malloc(sizeof(cvklu_data));
 
   // point the module to look for cvklu_tables.h5
@@ -39,9 +37,11 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
   data->nstrip = ncells;
 
   // initialize temperature so it wont crash
-  for ( i = 0; i < ncells; i++ ) {
+  //  for ( i = 0; i < ncells; i++ ) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] (int i) {
     (data->cell_data[i]).Ts = 1000.0;
-  }
+  //}
+  });
 
   // Temperature-related pieces
   data->bounds[0] = 1.0;
@@ -546,18 +546,17 @@ void cvklu_interpolate_gamma(cvklu_data *data, cell_rate_data &rdata)
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 {
   cvklu_data *data = (cvklu_data* ) user_data;
-  int i, j;
-  const int nstrip = data->nstrip;
-  const double mh = 1.67e-24;
-  double y_arr[NSPECIES];
+  const double mh   = 1.67e-24;
   double *scale     = data->scale;
   double *inv_scale = data->inv_scale;
   double *ydata     = N_VGetArrayPointer(y);
   double *ydotdata  = N_VGetArrayPointer(ydot);
 
-  for ( i = 0; i < nstrip; i++ ){
+  //  for (int i = 0; i < data->nstrip; i++ ){
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] (int i) {
 
-    j = i * NSPECIES;
+    double y_arr[NSPECIES];
+    int j = i * NSPECIES;
     double H2_1 = y_arr[0] = ydata[j]*scale[j];
     j++;
     double H2_2 = y_arr[1] = ydata[j]*scale[j];
@@ -714,7 +713,9 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
     ydotdata[j] *= inv_mdensity;
     j++;
 
-  }
+    //  }
+  });
+
   return 0;
 }
 
@@ -741,10 +742,8 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   SUNMatZero(J);
 
   // Loop over data, filling in sparse Jacobian
-  for (int i = 0; i < data->nstrip; i++ ){
-
-    // Compute reaction rates for this cell
-    cvklu_interpolate_rates(data, data->cell_data[i]);
+  //  for (int i = 0; i < data->nstrip; i++ ){
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] (int i) {
 
     // Set up some temporaries
     const double T   = (data->cell_data[i]).Ts;
@@ -1235,7 +1234,8 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ i * NSPARSE + 62]  *= (inv_scale[ j + 9 ]*scale[ j + 8 ]);
     matrix_data[ i * NSPARSE + 63]  *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
 
-  }
+    //  }
+  });
 
   rowptrs[ data->nstrip * NSPECIES ] = data->nstrip * NSPARSE;
   return 0;
@@ -1247,7 +1247,8 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip ){
 
   const double mh = 1.67e-24;
-  for ( int i = 0; i < nstrip; i++){
+  //  for ( int i = 0; i < nstrip; i++){
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] (int i) {
 
     double mdensity = 0.0;
 
@@ -1285,7 +1286,8 @@ void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip )
     (data->cell_data[i]).inv_mdensity = 1.0 / mdensity;
     (data->cell_data[i]).cie_optical_depth_approx = fmin( 1.0, (1.0 - exp(-tau) ) / tau );
     (data->cell_data[i]).h2_optical_depth_approx = fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
-  }
+  //}
+  });
 
 
 
