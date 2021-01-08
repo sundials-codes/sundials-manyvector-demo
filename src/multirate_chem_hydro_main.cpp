@@ -352,6 +352,10 @@ int main(int argc, char* argv[]) {
   inner_arkode_mem = ARKStepCreate(NULL, ffast, udata.t0, w);
   if (check_flag((void*) inner_arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
+  // pass udata to user functions
+  retval = ARKStepSetUserData(inner_arkode_mem, (void *) (&udata));
+  if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
+
   // create the fast integrator linear solver module, and attach to ARKStep
   A  = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
   if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
