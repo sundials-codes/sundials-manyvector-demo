@@ -38,7 +38,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, int ncells)
 
   // initialize temperature so it wont crash
   //  for ( i = 0; i < ncells; i++ ) {
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] (int i) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] RAJA_DEVICE (int i) {
     (data->cell_data[i]).Ts = 1000.0;
   //}
   });
@@ -553,7 +553,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
   double *ydotdata  = N_VGetArrayPointer(ydot);
 
   //  for (int i = 0; i < data->nstrip; i++ ){
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] (int i) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (int i) {
 
     double y_arr[NSPECIES];
     int j = i * NSPECIES;
@@ -743,7 +743,7 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   // Loop over data, filling in sparse Jacobian
   //  for (int i = 0; i < data->nstrip; i++ ){
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] (int i) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (int i) {
 
     // Set up some temporaries
     const double T   = (data->cell_data[i]).Ts;
@@ -1248,7 +1248,7 @@ void setting_up_extra_variables( cvklu_data * data, double * input, int nstrip )
 
   const double mh = 1.67e-24;
   //  for ( int i = 0; i < nstrip; i++){
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] (int i) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (int i) {
 
     double mdensity = 0.0;
 

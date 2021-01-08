@@ -34,8 +34,33 @@
 
 
 // desired execution policy for all RAJA loops
-#define EXECPOLICY RAJA::loop_exec
+using EXECPOLICY = RAJA::loop_exec;
+// using EXECPOLICY = RAJA::cuda_exec<256>;
 
+using REDUCEPOLICY = RAJA::loop_reduce;
+// using REDUCEPOLICY = RAJA::cuda_reduce;
+
+using EXECPOLICY3D = RAJA::KernelPolicy<
+  RAJA::statement::For<2, EXECPOLICY,       // k
+    RAJA::statement::For<1, EXECPOLICY,     // j
+      RAJA::statement::For<0, EXECPOLICY,   // i
+        RAJA::statement::Lambda<0>
+      >
+    >
+  >
+>;
+
+using EXECPOLICY4D = RAJA::KernelPolicy<
+  RAJA::statement::For<3, EXECPOLICY,         // l
+    RAJA::statement::For<2, EXECPOLICY,       // k
+      RAJA::statement::For<1, EXECPOLICY,     // j
+        RAJA::statement::For<0, EXECPOLICY,   // i
+          RAJA::statement::Lambda<0>
+        >
+      >
+    >
+  >
+>;
 
 typedef struct cell_rate_data {
   double Ts;

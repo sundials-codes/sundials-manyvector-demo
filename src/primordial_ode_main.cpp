@@ -17,6 +17,7 @@
 // Header files
 #include <euler3D.hpp>
 #ifdef USERAJA
+#include <RAJA/RAJA.hpp>
 #include <raja_primordial_network.hpp>
 #else
 #include <dengo_primordial_network.hpp>
@@ -48,8 +49,8 @@
 #define  MAX_CLUMP_RADIUS    RCONST(6.0)     // in number of cells
 #define  MAX_CLUMP_STRENGTH  RCONST(10.0)    // mult. density factor
 #define  T0                  RCONST(10.0)    // background temperature
-#define  BLAST_DENSITY       RCONST(10.0)  // mult. density factor
-#define  BLAST_TEMPERATURE   RCONST(5.0)   // mult. temperature factor
+#define  BLAST_DENSITY       RCONST(10.0)    // mult. density factor
+#define  BLAST_TEMPERATURE   RCONST(5.0)     // mult. temperature factor
 #define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
 #define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
 #define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
@@ -70,7 +71,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem parameters
-  long int N, i, j, k, l, idx, idx2, nstrip;
+  long int N, nstrip;
 
   // general problem variables
   int retval;                    // reusable error-checking flag
@@ -179,7 +180,8 @@ int main(int argc, char* argv[]) {
 
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
-  double clump_data[nclumps*5];
+  double *clump_data;
+  clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
   if (udata.myid == 0) {
 
     // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
@@ -191,7 +193,7 @@ int main(int argc, char* argv[]) {
     std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
 
     // fill clump information
-    for (i=0; i<nclumps; i++) {
+    for (int i=0; i<nclumps; i++) {
 
       // global (x,y,z) coordinates for this clump center
       clump_data[5*i+0] = cx_d(gen);
@@ -215,7 +217,7 @@ int main(int argc, char* argv[]) {
   // output clump information
   if (udata.myid == 0) {
     cout << "\nInitializing problem with " << nclumps << " clumps:\n";
-    for (i=0; i<nclumps; i++)
+    for (int i=0; i<nclumps; i++)
       cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
            << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
            << clump_data[5*i+3] << " cells,  \tstrength = " << clump_data[5*i+4] << std::endl;
@@ -228,30 +230,39 @@ int main(int argc, char* argv[]) {
   }
 
   // set initial conditions -- essentially-neutral primordial gas
-  realtype tiny = 1e-40;
-  realtype small = 1e-12;
-  //realtype small = 1e-16;
-  realtype mH = 1.67e-24;
-  realtype Hfrac = 0.76;
-  realtype HI_weight = 1.00794 * mH;
-  realtype HII_weight = 1.00794 * mH;
-  realtype HM_weight = 1.00794 * mH;
-  realtype HeI_weight = 4.002602 * mH;
-  realtype HeII_weight = 4.002602 * mH;
-  realtype HeIII_weight = 4.002602 * mH;
-  realtype H2I_weight = 2*HI_weight;
-  realtype H2II_weight = 2*HI_weight;
-  realtype kboltz = 1.3806488e-16;
-  realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
-  realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-  realtype m_amu = 1.66053904e-24;
-  realtype density0 = 1e2 * mH;   // in g/cm^{-3}
-  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
+  const realtype tiny = 1e-40;
+  const realtype small = 1e-12;
+  //const realtype small = 1e-16;
+  const realtype mH = 1.67e-24;
+  const realtype Hfrac = 0.76;
+  const realtype HI_weight = 1.00794 * mH;
+  const realtype HII_weight = 1.00794 * mH;
+  const realtype HM_weight = 1.00794 * mH;
+  const realtype HeI_weight = 4.002602 * mH;
+  const realtype HeII_weight = 4.002602 * mH;
+  const realtype HeIII_weight = 4.002602 * mH;
+  const realtype H2I_weight = 2*HI_weight;
+  const realtype H2II_weight = 2*HI_weight;
+  const realtype kboltz = 1.3806488e-16;
+  const realtype m_amu = 1.66053904e-24;
+  const realtype density0 = 1e2 * mH;   // in g/cm^{-3}
   realtype *wdata = NULL;
   wdata = N_VGetArrayPointer(w);
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
+#ifdef USERAJA
+    RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nxl),
+                                                RAJA::RangeSegment(0,udata.nyl),
+                                                RAJA::RangeSegment(0,udata.nzl)),
+                               [=,&udata] RAJA_DEVICE (int i, int j, int k) {
+#else
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++) {
+#endif
+
+        // cell-specific local variables
+        realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
+        realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
+        realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
 
         // determine cell center
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
@@ -260,15 +271,15 @@ int main(int argc, char* argv[]) {
 
         // determine density in this cell (via loop over clumps)
         density = ONE;
-        for (idx=0; idx<nclumps; idx++) {
+        for (long int idx=0; idx<nclumps; idx++) {
           cx = clump_data[5*idx+0];
           cy = clump_data[5*idx+1];
           cz = clump_data[5*idx+2];
           cr = clump_data[5*idx+3]*udata.dx;
           cs = clump_data[5*idx+4];
-          //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-          //ydist = min( abs(yloc-cy), min( abs(yloc-cx+udata.yr), abs(xloc-cx-udata.xr) ) );
-          //zdist = min( abs(zloc-cz), min( abs(zloc-cx+udata.zr), abs(xloc-cx-udata.xr) ) );
+          //realtype xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+          //realtype ydist = min( abs(yloc-cy), min( abs(yloc-cx+udata.yr), abs(xloc-cx-udata.xr) ) );
+          //realtype zdist = min( abs(zloc-cz), min( abs(zloc-cx+udata.zr), abs(xloc-cx-udata.xr) ) );
           xdist = abs(xloc-cx);
           ydist = abs(yloc-cy);
           zdist = abs(zloc-cz);
@@ -331,7 +342,7 @@ int main(int argc, char* argv[]) {
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
         // converting to 'dimensionless' electron number density
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         wdata[idx+0] = nH2I;
         wdata[idx+1] = nH2II;
         wdata[idx+2] = nHI;
@@ -342,45 +353,58 @@ int main(int argc, char* argv[]) {
         wdata[idx+7] = nHeIII;
         wdata[idx+8] = de / m_amu;
         wdata[idx+9] = ge;
-
+#ifdef USERAJA
+      });
+#else
       }
+#endif
 
   // set absolute tolerance array
-  realtype *atdata = NULL;
-  atdata = N_VGetArrayPointer(atols);
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        atdata[idx+0] = opts.atol; // H2I
-        atdata[idx+1] = opts.atol; // H2II
-        atdata[idx+2] = opts.atol; // HI
-        atdata[idx+3] = opts.atol; // HII
-        atdata[idx+4] = opts.atol; // HM
-        atdata[idx+5] = opts.atol; // HeI
-        atdata[idx+6] = opts.atol; // HeII
-        atdata[idx+7] = opts.atol; // HeIII
-        atdata[idx+8] = opts.atol; // de
-        atdata[idx+9] = opts.atol; // ge
-      }
+  N_VConst(opts.atol, atols);
+  // realtype *atdata = NULL;
+  // atdata = N_VGetArrayPointer(atols);
+  // for (k=0; k<udata.nzl; k++)
+  //   for (j=0; j<udata.nyl; j++)
+  //     for (i=0; i<udata.nxl; i++) {
+  //       idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+  //       atdata[idx+0] = opts.atol; // H2I
+  //       atdata[idx+1] = opts.atol; // H2II
+  //       atdata[idx+2] = opts.atol; // HI
+  //       atdata[idx+3] = opts.atol; // HII
+  //       atdata[idx+4] = opts.atol; // HM
+  //       atdata[idx+5] = opts.atol; // HeI
+  //       atdata[idx+6] = opts.atol; // HeII
+  //       atdata[idx+7] = opts.atol; // HeIII
+  //       atdata[idx+8] = opts.atol; // de
+  //       atdata[idx+9] = opts.atol; // ge
+  //     }
 
   // move input solution values into 'scale' components of network_data structure
 #ifdef USERAJA
   double *sc = network_data->scale;
   double *isc = network_data->inv_scale;
+  RAJA::kernel<EXECPOLICY4D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nchem),
+                                              RAJA::RangeSegment(0,udata.nxl),
+                                              RAJA::RangeSegment(0,udata.nyl),
+                                              RAJA::RangeSegment(0,udata.nzl)),
+                             [=,&udata] RAJA_DEVICE (int l, int i, int j, int k) {
 #else
   double *sc = network_data->scale[0];
   double *isc = network_data->inv_scale[0];
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
 #endif
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
           sc[idx] = wdata[idx];
           isc[idx] = ONE / wdata[idx];
           wdata[idx] = ONE;
+#ifdef USERAJA
+        });
+#else
         }
+#endif
 
   // compute auxiliary values within network_data structure
 #ifdef USERAJA
@@ -584,8 +608,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
-  int iout;
-  for (iout=restart; iout<restart+udata.nout; iout++) {
+  for (int iout=restart; iout<restart+udata.nout; iout++) {
 
 #ifdef USE_CVODE
     if (!idense)
@@ -621,10 +644,17 @@ int main(int argc, char* argv[]) {
 
 
   // reconstruct overall solution values, converting back to mass densities
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+#ifdef USERAJA
+  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nxl),
+                                              RAJA::RangeSegment(0,udata.nyl),
+                                              RAJA::RangeSegment(0,udata.nzl)),
+                             [=,&udata] RAJA_DEVICE (int i, int j, int k) {
+#else
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++) {
+#endif
+        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 
         // H2I
         wdata[idx] *= sc[idx] * H2I_weight;
@@ -664,7 +694,11 @@ int main(int argc, char* argv[]) {
 
         // ge
         wdata[idx] *= sc[idx];
+#ifdef USERAJA
+      });
+#else
       }
+#endif
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();
@@ -719,6 +753,7 @@ int main(int argc, char* argv[]) {
 
   // Clean up and return with successful completion
   free(network_data);          // Free Dengo data structure
+  free(clump_data);
   N_VDestroy(w);               // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
   SUNLinSolFree(LS);           // Free matrix and linear solver
@@ -765,34 +800,189 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   printf("\nt = %.3e  (nst = %li)\n", t, nst);
 
   // determine mean, min, max values for each component
-  double cmean[] = {ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO};
-  double cmax[]  = {ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO};
-  double cmin[]  = {1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300, 1e300};
 #ifdef USERAJA
   double *sc = network_data->scale;
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean0(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean1(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean2(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean3(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean4(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean5(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean6(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean7(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean8(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> cmean9(ZERO);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin0(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin1(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin2(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin3(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin4(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin5(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin6(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin7(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin8(1e300);
+  RAJA::ReduceMin<REDUCEPOLICY, double> cmin9(1e300);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax0(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax1(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax2(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax3(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax4(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax5(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax6(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax7(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax8(ZERO);
+  RAJA::ReduceMax<REDUCEPOLICY, double> cmax9(ZERO);
+  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nxl),
+                                              RAJA::RangeSegment(0,udata.nyl),
+                                              RAJA::RangeSegment(0,udata.nzl)),
+                             [=,&udata] RAJA_DEVICE (int i, int j, int k) {
+        long int idx;
+        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean0 += sc[idx]*wdata[idx];
+        cmax0.max(sc[idx]*wdata[idx]);
+        cmin0.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(1,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean1 += sc[idx]*wdata[idx];
+        cmax1.max(sc[idx]*wdata[idx]);
+        cmin1.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(2,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean2 += sc[idx]*wdata[idx];
+        cmax2.max(sc[idx]*wdata[idx]);
+        cmin2.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(3,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean3 += sc[idx]*wdata[idx];
+        cmax3.max(sc[idx]*wdata[idx]);
+        cmin3.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(4,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean4 += sc[idx]*wdata[idx];
+        cmax4.max(sc[idx]*wdata[idx]);
+        cmin4.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(5,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean5 += sc[idx]*wdata[idx];
+        cmax5.max(sc[idx]*wdata[idx]);
+        cmin5.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(6,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean6 += sc[idx]*wdata[idx];
+        cmax6.max(sc[idx]*wdata[idx]);
+        cmin6.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(7,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean7 += sc[idx]*wdata[idx];
+        cmax7.max(sc[idx]*wdata[idx]);
+        cmin7.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(8,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean8 += sc[idx]*wdata[idx];
+        cmax8.max(sc[idx]*wdata[idx]);
+        cmin8.min(sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(9,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean9 += sc[idx]*wdata[idx];
+        cmax9.max(sc[idx]*wdata[idx]);
+        cmin9.min(sc[idx]*wdata[idx]);
+  });
+
+  // print solutions at first location
+  long int Ntot = udata.nxl * udata.nyl * udata.nzl;
+  printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
+  printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         cmin0.get(), cmin1.get(), cmin2.get(), cmin3.get(), cmin4.get(),
+         cmin5.get(), cmin6.get(), cmin7.get(), cmin8.get(), cmin9.get());
+  printf("       mean: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         cmean0.get()/Ntot, cmean1.get()/Ntot, cmean2.get()/Ntot, cmean3.get()/Ntot,
+         cmean4.get()/Ntot, cmean5.get()/Ntot, cmean6.get()/Ntot, cmean7.get()/Ntot,
+         cmean8.get()/Ntot, cmean9.get()/Ntot);
+  printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         cmax0.get(), cmax1.get(), cmax2.get(), cmax3.get(), cmax4.get(),
+         cmax5.get(), cmax6.get(), cmax7.get(), cmax8.get(), cmax9.get());
 #else
   double *sc = network_data->scale[0];
-#endif
-  for (long int k=0; k<udata.nzl; k++)
-    for (long int j=0; j<udata.nyl; j++)
-      for (long int i=0; i<udata.nxl; i++)
-        for (long int l=0; l<udata.nchem; l++) {
-          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          cmean[l] += sc[idx]*wdata[idx];
-          cmax[l]  = max(cmax[l], sc[idx]*wdata[idx]);
-          cmin[l]  = min(cmin[l], sc[idx]*wdata[idx]);
-        }
-  for (long int l=0; l<udata.nchem; l++)
-    cmean[l] /= (udata.nxl * udata.nyl * udata.nzl);
+  double cmean0, cmean1, cmean2, cmean3, cmean4, cmean5, cmean6, cmean7, cmean8, cmean9;
+  cmean0 = cmean1 = cmean2 = cmean3 = cmean4 = cmean5 = cmean6 = cmean7 = cmean8 = cmean9 = ZERO;
+  double cmax0, cmax1, cmax2, cmax3, cmax4, cmax5, cmax6, cmax7, cmax8, cmax9;
+  cmax0 = cmax1 = cmax2 = cmax3 = cmax4 = cmax5 = cmax6 = cmax7 = cmax8 = cmax9 = ZERO;
+  double cmin0, cmin1, cmin2, cmin3, cmin4, cmin5, cmin6, cmin7, cmin8, cmin9;
+  cmin0 = cmin1 = cmin2 = cmin3 = cmin4 = cmin5 = cmin6 = cmin7 = cmin8 = cmin9 = 1e300;
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++) {
+        long int idx;
+        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean0 += sc[idx]*wdata[idx];
+        cmax0  = max(cmax0, sc[idx]*wdata[idx]);
+        cmin0  = min(cmin0, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(1,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean1 += sc[idx]*wdata[idx];
+        cmax1  = max(cmax1, sc[idx]*wdata[idx]);
+        cmin1  = min(cmin1, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(2,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean2 += sc[idx]*wdata[idx];
+        cmax2  = max(cmax2, sc[idx]*wdata[idx]);
+        cmin2  = min(cmin2, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(3,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean3 += sc[idx]*wdata[idx];
+        cmax3  = max(cmax3, sc[idx]*wdata[idx]);
+        cmin3  = min(cmin3, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(4,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean4 += sc[idx]*wdata[idx];
+        cmax4  = max(cmax4, sc[idx]*wdata[idx]);
+        cmin4  = min(cmin4, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(5,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean5 += sc[idx]*wdata[idx];
+        cmax5  = max(cmax5, sc[idx]*wdata[idx]);
+        cmin5  = min(cmin5, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(6,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean6 += sc[idx]*wdata[idx];
+        cmax6  = max(cmax6, sc[idx]*wdata[idx]);
+        cmin6  = min(cmin6, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(7,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean7 += sc[idx]*wdata[idx];
+        cmax7  = max(cmax7, sc[idx]*wdata[idx]);
+        cmin7  = min(cmin7, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(8,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean8 += sc[idx]*wdata[idx];
+        cmax8  = max(cmax8, sc[idx]*wdata[idx]);
+        cmin8  = min(cmin8, sc[idx]*wdata[idx]);
+
+        idx = BUFIDX(9,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        cmean9 += sc[idx]*wdata[idx];
+        cmax9  = max(cmax9, sc[idx]*wdata[idx]);
+        cmin9  = min(cmin9, sc[idx]*wdata[idx]);
+      }
+  cmean0 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean1 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean2 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean3 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean4 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean5 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean6 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean7 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean8 /= (udata.nxl * udata.nyl * udata.nzl);
+  cmean9 /= (udata.nxl * udata.nyl * udata.nzl);
 
   // print solutions at first location
   printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
   printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmin[0], cmin[1], cmin[2], cmin[3], cmin[4], cmin[5], cmin[6], cmin[7], cmin[8], cmin[9]);
+         cmin0, cmin1, cmin2, cmin3, cmin4, cmin5, cmin6, cmin7, cmin8, cmin9);
   printf("       mean: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmean[0], cmean[1], cmean[2], cmean[3], cmean[4], cmean[5], cmean[6], cmean[7], cmean[8], cmean[9]);
+         cmean0, cmean1, cmean2, cmean3, cmean4, cmean5, cmean6, cmean7, cmean8, cmean9);
   printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmax[0], cmax[1], cmax[2], cmax[3], cmax[4], cmax[5], cmax[6], cmax[7], cmax[8], cmax[9]);
+         cmax0, cmax1, cmax2, cmax3, cmax4, cmax5, cmax6, cmax7, cmax8, cmax9);
+#endif
 }
 
 
