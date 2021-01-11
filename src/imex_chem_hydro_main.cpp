@@ -114,11 +114,10 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot, i, j, k, l;
+  long int N, Ntot;
   long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf, nje;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
-  int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
@@ -269,7 +268,7 @@ int main(int argc, char* argv[]) {
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
-  for (i=0; i<5; i++) {
+  for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
@@ -869,7 +868,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, l, cidx, fidx;
+  long int i, j, k, cidx, fidx;
 
   // start timer
   EulerData *udata = (EulerData*) user_data;
@@ -951,7 +950,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
 static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 {
-  long int i, j, k, l, cidx, fidx;
+  long int i, j, k, cidx, fidx;
 
   // start timer
   EulerData *udata = (EulerData*) user_data;

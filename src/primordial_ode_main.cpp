@@ -75,7 +75,6 @@ int main(int argc, char* argv[]) {
 
   // general problem variables
   int retval;                    // reusable error-checking flag
-  int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled here)
@@ -87,6 +86,7 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
+  EulerData *udat = &udata;
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -230,34 +230,35 @@ int main(int argc, char* argv[]) {
   }
 
   // set initial conditions -- essentially-neutral primordial gas
-  const realtype tiny = 1e-40;
-  const realtype small = 1e-12;
-  //const realtype small = 1e-16;
-  const realtype mH = 1.67e-24;
-  const realtype Hfrac = 0.76;
-  const realtype HI_weight = 1.00794 * mH;
-  const realtype HII_weight = 1.00794 * mH;
-  const realtype HM_weight = 1.00794 * mH;
-  const realtype HeI_weight = 4.002602 * mH;
-  const realtype HeII_weight = 4.002602 * mH;
-  const realtype HeIII_weight = 4.002602 * mH;
-  const realtype H2I_weight = 2*HI_weight;
-  const realtype H2II_weight = 2*HI_weight;
-  const realtype kboltz = 1.3806488e-16;
-  const realtype m_amu = 1.66053904e-24;
-  const realtype density0 = 1e2 * mH;   // in g/cm^{-3}
-  realtype *wdata = NULL;
-  wdata = N_VGetArrayPointer(w);
+  realtype *wdata = N_VGetDeviceArrayPointer(w);
 #ifdef USERAJA
-    RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nxl),
-                                                RAJA::RangeSegment(0,udata.nyl),
-                                                RAJA::RangeSegment(0,udata.nzl)),
-                               [=,&udata] RAJA_DEVICE (int i, int j, int k) {
+    RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
+                                                RAJA::RangeSegment(0,udat->nyl),
+                                                RAJA::RangeSegment(0,udat->nzl)),
+                               [=] RAJA_DEVICE (int i, int j, int k) {
 #else
   for (int k=0; k<udata.nzl; k++)
     for (int j=0; j<udata.nyl; j++)
       for (int i=0; i<udata.nxl; i++) {
 #endif
+
+        // constants
+        const realtype tiny = 1e-40;
+        const realtype small = 1e-12;
+        //const realtype small = 1e-16;
+        const realtype mH = 1.67e-24;
+        const realtype Hfrac = 0.76;
+        const realtype HI_weight = 1.00794 * mH;
+        const realtype HII_weight = 1.00794 * mH;
+        const realtype HM_weight = 1.00794 * mH;
+        const realtype HeI_weight = 4.002602 * mH;
+        const realtype HeII_weight = 4.002602 * mH;
+        const realtype HeIII_weight = 4.002602 * mH;
+        const realtype H2I_weight = 2*HI_weight;
+        const realtype H2II_weight = 2*HI_weight;
+        const realtype kboltz = 1.3806488e-16;
+        const realtype m_amu = 1.66053904e-24;
+        const realtype density0 = 1e2 * mH;   // in g/cm^{-3}
 
         // cell-specific local variables
         realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
@@ -265,9 +266,9 @@ int main(int argc, char* argv[]) {
         realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
 
         // determine cell center
-        xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
-        yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
-        zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
+        xloc = (udat->is+i+HALF)*udat->dx + udat->xl;
+        yloc = (udat->js+j+HALF)*udat->dy + udat->yl;
+        zloc = (udat->ks+k+HALF)*udat->dz + udat->zl;
 
         // determine density in this cell (via loop over clumps)
         density = ONE;
@@ -275,11 +276,11 @@ int main(int argc, char* argv[]) {
           cx = clump_data[5*idx+0];
           cy = clump_data[5*idx+1];
           cz = clump_data[5*idx+2];
-          cr = clump_data[5*idx+3]*udata.dx;
+          cr = clump_data[5*idx+3]*udat->dx;
           cs = clump_data[5*idx+4];
-          //realtype xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-          //realtype ydist = min( abs(yloc-cy), min( abs(yloc-cx+udata.yr), abs(xloc-cx-udata.xr) ) );
-          //realtype zdist = min( abs(zloc-cz), min( abs(zloc-cx+udata.zr), abs(xloc-cx-udata.xr) ) );
+          //realtype xdist = min( abs(xloc-cx), min( abs(xloc-cx+udat->xr), abs(xloc-cx-udat->xr) ) );
+          //realtype ydist = min( abs(yloc-cy), min( abs(yloc-cx+udat->yr), abs(xloc-cx-udat->xr) ) );
+          //realtype zdist = min( abs(zloc-cz), min( abs(zloc-cx+udat->zr), abs(xloc-cx-udat->xr) ) );
           xdist = abs(xloc-cx);
           ydist = abs(yloc-cy);
           zdist = abs(zloc-cz);
@@ -289,13 +290,13 @@ int main(int argc, char* argv[]) {
         density *= density0;
 
         // add blast clump density
-        cx = udata.xl + BLAST_CENTER_X*(udata.xr - udata.xl);
-        cy = udata.yl + BLAST_CENTER_Y*(udata.yr - udata.yl);
-        cz = udata.zl + BLAST_CENTER_Z*(udata.zr - udata.zl);
-        //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-        //ydist = min( abs(yloc-cy), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-        //zdist = min( abs(zloc-cz), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-        cr = BLAST_RADIUS*min( udata.xr-udata.xl, min(udata.yr-udata.yl, udata.zr-udata.zl));
+        cx = udat->xl + BLAST_CENTER_X*(udat->xr - udat->xl);
+        cy = udat->yl + BLAST_CENTER_Y*(udat->yr - udat->yl);
+        cz = udat->zl + BLAST_CENTER_Z*(udat->zr - udat->zl);
+        //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udat->xr), abs(xloc-cx-udat->xr) ) );
+        //ydist = min( abs(yloc-cy), min( abs(xloc-cx+udat->xr), abs(xloc-cx-udat->xr) ) );
+        //zdist = min( abs(zloc-cz), min( abs(xloc-cx+udat->xr), abs(xloc-cx-udat->xr) ) );
+        cr = BLAST_RADIUS*min( udat->xr-udat->xl, min(udat->yr-udat->yl, udat->zr-udat->zl));
         cs = density0*BLAST_DENSITY;
         xdist = abs(xloc-cx);
         ydist = abs(yloc-cy);
@@ -338,11 +339,11 @@ int main(int argc, char* argv[]) {
         de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // convert temperature to gas energy
-        ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
+        ge = (kboltz * T * ndens) / (density * (udat->gamma - ONE));
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
         // converting to 'dimensionless' electron number density
-        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        long int idx = BUFIDX(0,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         wdata[idx+0] = nH2I;
         wdata[idx+1] = nH2II;
         wdata[idx+2] = nHI;
@@ -383,11 +384,11 @@ int main(int argc, char* argv[]) {
 #ifdef USERAJA
   double *sc = network_data->scale;
   double *isc = network_data->inv_scale;
-  RAJA::kernel<EXECPOLICY4D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nchem),
-                                              RAJA::RangeSegment(0,udata.nxl),
-                                              RAJA::RangeSegment(0,udata.nyl),
-                                              RAJA::RangeSegment(0,udata.nzl)),
-                             [=,&udata] RAJA_DEVICE (int l, int i, int j, int k) {
+  RAJA::kernel<EXECPOLICY4D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nchem),
+                                              RAJA::RangeSegment(0,udat->nxl),
+                                              RAJA::RangeSegment(0,udat->nyl),
+                                              RAJA::RangeSegment(0,udat->nzl)),
+                             [=] RAJA_DEVICE (int l, int i, int j, int k) {
 #else
   double *sc = network_data->scale[0];
   double *isc = network_data->inv_scale[0];
@@ -396,7 +397,7 @@ int main(int argc, char* argv[]) {
       for (int i=0; i<udata.nxl; i++)
         for (int l=0; l<udata.nchem; l++) {
 #endif
-          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          long int idx = BUFIDX(l,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
           sc[idx] = wdata[idx];
           isc[idx] = ONE / wdata[idx];
           wdata[idx] = ONE;
@@ -645,55 +646,58 @@ int main(int argc, char* argv[]) {
 
   // reconstruct overall solution values, converting back to mass densities
 #ifdef USERAJA
-  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nxl),
-                                              RAJA::RangeSegment(0,udata.nyl),
-                                              RAJA::RangeSegment(0,udata.nzl)),
-                             [=,&udata] RAJA_DEVICE (int i, int j, int k) {
+  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
+                                              RAJA::RangeSegment(0,udat->nyl),
+                                              RAJA::RangeSegment(0,udat->nzl)),
+                             [=] RAJA_DEVICE (int i, int j, int k) {
 #else
   for (int k=0; k<udata.nzl; k++)
     for (int j=0; j<udata.nyl; j++)
       for (int i=0; i<udata.nxl; i++) {
 #endif
-        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        // constants
+        const realtype mH = 1.67e-24;
+        const realtype HI_weight = 1.00794 * mH;
+        const realtype HII_weight = 1.00794 * mH;
+        const realtype HM_weight = 1.00794 * mH;
+        const realtype HeI_weight = 4.002602 * mH;
+        const realtype HeII_weight = 4.002602 * mH;
+        const realtype HeIII_weight = 4.002602 * mH;
+        const realtype H2I_weight = 2*HI_weight;
+        const realtype H2II_weight = 2*HI_weight;
+        const realtype m_amu = 1.66053904e-24;
+
+        long int idx = BUFIDX(0,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
 
         // H2I
         wdata[idx] *= sc[idx] * H2I_weight;
-        idx++;
 
         // H2II
-        wdata[idx] *= sc[idx] * H2II_weight;
-        idx++;
+        wdata[idx+1] *= sc[idx+1] * H2II_weight;
 
         // HI
-        wdata[idx] *= sc[idx] * HI_weight;
-        idx++;
+        wdata[idx+2] *= sc[idx+2] * HI_weight;
 
         // HII
-        wdata[idx] *= sc[idx] * HII_weight;
-        idx++;
+        wdata[idx+3] *= sc[idx+3] * HII_weight;
 
         // HM
-        wdata[idx] *= sc[idx] * HM_weight;
-        idx++;
+        wdata[idx+4] *= sc[idx+4] * HM_weight;
 
         // HeI
-        wdata[idx] *= sc[idx] * HeI_weight;
-        idx++;
+        wdata[idx+5] *= sc[idx+5] * HeI_weight;
 
         // HeII
-        wdata[idx] *= sc[idx] * HeII_weight;
-        idx++;
+        wdata[idx+6] *= sc[idx+6] * HeII_weight;
 
         // HeIII
-        wdata[idx] *= sc[idx] * HeIII_weight;
-        idx++;
+        wdata[idx+7] *= sc[idx+7] * HeIII_weight;
 
         // de
-        wdata[idx] *= sc[idx] * m_amu;
-        idx++;
+        wdata[idx+8] *= sc[idx+8] * m_amu;
 
         // ge
-        wdata[idx] *= sc[idx];
+        wdata[idx+9] *= sc[idx+9];
 #ifdef USERAJA
       });
 #else
@@ -786,7 +790,6 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   realtype HeIII_weight = 4.002602 * mH;
   realtype H2I_weight = 2*HI_weight;
   realtype H2II_weight = 2*HI_weight;
-  realtype m_amu = 1.66053904e-24;
 
   // get current number of time steps
   long int nst = 0;
@@ -802,6 +805,7 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   // determine mean, min, max values for each component
 #ifdef USERAJA
   double *sc = network_data->scale;
+  EulerData *udat = &udata;
   RAJA::ReduceSum<REDUCEPOLICY, double> cmean0(ZERO);
   RAJA::ReduceSum<REDUCEPOLICY, double> cmean1(ZERO);
   RAJA::ReduceSum<REDUCEPOLICY, double> cmean2(ZERO);
@@ -832,57 +836,57 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   RAJA::ReduceMax<REDUCEPOLICY, double> cmax7(ZERO);
   RAJA::ReduceMax<REDUCEPOLICY, double> cmax8(ZERO);
   RAJA::ReduceMax<REDUCEPOLICY, double> cmax9(ZERO);
-  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udata.nxl),
-                                              RAJA::RangeSegment(0,udata.nyl),
-                                              RAJA::RangeSegment(0,udata.nzl)),
-                             [=,&udata] RAJA_DEVICE (int i, int j, int k) {
+  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
+                                              RAJA::RangeSegment(0,udat->nyl),
+                                              RAJA::RangeSegment(0,udat->nzl)),
+                             [=] RAJA_DEVICE (int i, int j, int k) {
         long int idx;
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(0,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean0 += sc[idx]*wdata[idx];
         cmax0.max(sc[idx]*wdata[idx]);
         cmin0.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(1,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(1,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean1 += sc[idx]*wdata[idx];
         cmax1.max(sc[idx]*wdata[idx]);
         cmin1.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(2,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(2,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean2 += sc[idx]*wdata[idx];
         cmax2.max(sc[idx]*wdata[idx]);
         cmin2.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(3,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(3,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean3 += sc[idx]*wdata[idx];
         cmax3.max(sc[idx]*wdata[idx]);
         cmin3.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(4,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(4,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean4 += sc[idx]*wdata[idx];
         cmax4.max(sc[idx]*wdata[idx]);
         cmin4.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(5,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(5,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean5 += sc[idx]*wdata[idx];
         cmax5.max(sc[idx]*wdata[idx]);
         cmin5.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(6,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(6,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean6 += sc[idx]*wdata[idx];
         cmax6.max(sc[idx]*wdata[idx]);
         cmin6.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(7,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(7,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean7 += sc[idx]*wdata[idx];
         cmax7.max(sc[idx]*wdata[idx]);
         cmin7.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(8,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(8,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean8 += sc[idx]*wdata[idx];
         cmax8.max(sc[idx]*wdata[idx]);
         cmin8.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(9,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(9,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
         cmean9 += sc[idx]*wdata[idx];
         cmax9.max(sc[idx]*wdata[idx]);
         cmin9.min(sc[idx]*wdata[idx]);

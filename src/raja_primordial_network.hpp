@@ -34,11 +34,18 @@
 
 
 // desired execution policy for all RAJA loops
-using EXECPOLICY = RAJA::loop_exec;
-// using EXECPOLICY = RAJA::cuda_exec<256>;
-
-using REDUCEPOLICY = RAJA::loop_reduce;
-// using REDUCEPOLICY = RAJA::cuda_reduce;
+#ifdef RAJA_SERIAL
+#define EXECPOLICY    RAJA::loop_exec
+#define REDUCEPOLICY  RAJA::loop_reduce
+#endif
+#ifdef RAJA_CUDA
+#define EXECPOLICY    RAJA::cuda_exec<256>
+#define REDUCEPOLICY  RAJA::cuda_reduce
+#endif
+#ifdef RAJA_HIP
+#define EXECPOLICY    RAJA::hip_exec<256>
+#define REDUCEPOLICY  RAJA::hip_reduce
+#endif
 
 using EXECPOLICY3D = RAJA::KernelPolicy<
   RAJA::statement::For<2, EXECPOLICY,       // k
@@ -254,9 +261,9 @@ void cvklu_free_data(void*);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
-void cvklu_interpolate_rates(cvklu_data*, cell_rate_data&);
-void cvklu_interpolate_gamma(cvklu_data*, cell_rate_data&);
-int cvklu_calculate_temperature(cvklu_data*, double*, cell_rate_data&);
+RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data*, cell_rate_data&);
+RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data*, cell_rate_data&);
+RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data*, double*, cell_rate_data&);
 void setting_up_extra_variables(cvklu_data*, double*, int);
 
 int calculate_sparse_jacobian_cvklu( realtype t,

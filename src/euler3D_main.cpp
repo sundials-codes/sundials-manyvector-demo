@@ -46,7 +46,6 @@ int main(int argc, char* argv[]) {
   long int N, Ntot, i;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
-  int dense_order;               // dense output order of accuracy
   int idense;                    // flag denoting integration type (dense output vs tstop)
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)

@@ -6,7 +6,7 @@
  For details, see the LICENSE file.
  ----------------------------------------------------------------
  Test problem in which a blast wave proceeds across a "clumpy"
- density field.  The initial background density field is defined 
+ density field.  The initial background density field is defined
  to be
 
     rho(X) = rho0*(1 + \sum_i s_i*exp(-2*(||X-X_i||/r_i)^2)),
@@ -24,19 +24,19 @@
  parameters CLUMPS_PER_PROC, MIN_CLUMP_RADIUS, MAX_CLUMP_RADIUS
  and MAX_CLUMP_STRENGTH are #defined below.
 
- The background temperature is held at a fixed constant, T0, and 
- the fluid is initially at rest (all initial velocities are 
- identically zero).  The value of T0 is similarly specified by 
+ The background temperature is held at a fixed constant, T0, and
+ the fluid is initially at rest (all initial velocities are
+ identically zero).  The value of T0 is similarly specified by
  a #define below.
 
- On top of this background state, we add another Gaussian bump 
+ On top of this background state, we add another Gaussian bump
  to both density **and Temperature**:
 
     rho_S(X) = rho0*B_DENSITY*exp(-2*(||X-B_CENTER||/B_RADIUS)^2)),
     T_S(X)   = T0*B_TEMPERATURE*exp(-2*(||X-B_CENTER||/B_RADIUS)^2)),
 
- It is this higher-pressure region that initiates the "blast" 
- through the domain.  The values of B_DENSITY, B_TEMPERATURE, 
+ It is this higher-pressure region that initiates the "blast"
+ through the domain.  The values of B_DENSITY, B_TEMPERATURE,
  B_RADIUS and B_CENTER are all #defined below.
 
  This test is set up to mirror primordial_blast.cpp, except that
@@ -165,7 +165,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   realtype H2I_weight = 2*HI_weight;
   realtype H2II_weight = 2*HI_weight;
   realtype kboltz = 1.3806488e-16;
-  realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
+  realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, T, ge;
   realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
   realtype density0 = 1e2 * mH;   // in g/cm^{-3}
   realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
@@ -221,7 +221,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         T = T0;
         cs = T0*BLAST_TEMPERATURE;
         T += cs*exp(-2.0*rsq/cr/cr);
-        
+
         // set initial mass densities into local variables -- blast clump is essentially
         // only HI and HeI, but outside we have trace amounts of other species.
         H2I   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;

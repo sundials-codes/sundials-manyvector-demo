@@ -217,8 +217,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, cel
   const double mh = 1.67e-24;
   const double gamma = 5.e0/3.e0;
   const double _gamma_m1 = 1.0 / (gamma - 1);
-  const double gammaH2 = 7.e0/5.e0;
-  const int MAX_T_ITERATION = 100;
+  //const int MAX_T_ITERATION = 100;
 
   // Calculate total density
   double H2_1 = input[0];
@@ -238,7 +237,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, cel
   double Tnew = T*1.1;
   double Tdiff = Tnew - T;
   double dge_dT;
-  int count = 0;
+  //int count = 0;
 
   // We do Newton's Iteration to calculate the temperature
   // Since gammaH2 is dependent on the temperature too!
@@ -294,7 +293,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, cel
 
 RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data *data, cell_rate_data &rdata)
 {
-  int bin_id, zbin_id;
+  int bin_id;
   double lb, t1, t2;
   double Tdef, dT, invTs, Tfactor;
 
@@ -505,7 +504,7 @@ RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data *data, cell_rate_data &rdata
 RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data *data, cell_rate_data &rdata)
 {
 
-  int bin_id, zbin_id;
+  int bin_id;
   double lb, t1, t2, Tdef;
 
   lb = log(data->bounds[0]);
@@ -542,12 +541,11 @@ RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data *data, cell_rate_data &rdata
 
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 {
-  cvklu_data *data = (cvklu_data* ) user_data;
-  const double mh   = 1.67e-24;
-  double *scale     = data->scale;
-  double *inv_scale = data->inv_scale;
-  double *ydata     = N_VGetArrayPointer(y);
-  double *ydotdata  = N_VGetArrayPointer(ydot);
+  cvklu_data *data    = (cvklu_data*) user_data;
+  double *scale       = data->scale;
+  double *inv_scale   = data->inv_scale;
+  const double *ydata = N_VGetDeviceArrayPointer(y);
+  double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
 
   //  for (int i = 0; i < data->nstrip; i++ ){
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (int i) {
@@ -577,9 +575,9 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
     // Calculate temperature in this cell
     int flag = cvklu_calculate_temperature(data, y_arr, data->cell_data[i]);
-    if (flag > 0) {
-      return 1;   // return recoverable failure if temperature failed to converged
-    }
+    // if (flag > 0) {
+    //   return 1;   // return recoverable failure if temperature failed to converged
+    // }
 
     // Calculate reaction rates in this cell
     cvklu_interpolate_rates(data, data->cell_data[i]);
@@ -724,13 +722,12 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                                     N_Vector tmp1, N_Vector tmp2,
                                     N_Vector tmp3)
 {
-  cvklu_data *data = (cvklu_data*)user_data;
-  const int NSPARSE = 64;
-  const double mh = 1.67e-24;
-  const double z = data->current_z;
-  double *scale     = data->scale;
-  double *inv_scale = data->inv_scale;
-  double *ydata = N_VGetArrayPointer(y);
+  cvklu_data *data    = (cvklu_data*) user_data;
+  const int NSPARSE   = 64;
+  const double z      = data->current_z;
+  double *scale       = data->scale;
+  double *inv_scale   = data->inv_scale;
+  const double *ydata = N_VGetDeviceArrayPointer(y);
 
   // Access CSR sparse matrix structures, and zero out data
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
@@ -788,25 +785,15 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     const double k22 = (data->cell_data[i]).rs_k22;
     const double rk22= (data->cell_data[i]).drs_k22;
     const double brem_brem = (data->cell_data[i]).cs_brem_brem;
-    const double rbrem_brem = (data->cell_data[i]).dcs_brem_brem;
     const double ceHeI_ceHeI = (data->cell_data[i]).cs_ceHeI_ceHeI;
-    const double rceHeI_ceHeI = (data->cell_data[i]).dcs_ceHeI_ceHeI;
     const double ceHeII_ceHeII = (data->cell_data[i]).cs_ceHeII_ceHeII;
-    const double rceHeII_ceHeII = (data->cell_data[i]).dcs_ceHeII_ceHeII;
     const double ceHI_ceHI = (data->cell_data[i]).cs_ceHI_ceHI;
-    const double rceHI_ceHI = (data->cell_data[i]).dcs_ceHI_ceHI;
     const double cie_cooling_cieco = (data->cell_data[i]).cs_cie_cooling_cieco;
-    const double rcie_cooling_cieco = (data->cell_data[i]).dcs_cie_cooling_cieco;
     const double ciHeI_ciHeI = (data->cell_data[i]).cs_ciHeI_ciHeI;
-    const double rciHeI_ciHeI = (data->cell_data[i]).dcs_ciHeI_ciHeI;
     const double ciHeII_ciHeII = (data->cell_data[i]).cs_ciHeII_ciHeII;
-    const double rciHeII_ciHeII = (data->cell_data[i]).dcs_ciHeII_ciHeII;
     const double ciHeIS_ciHeIS = (data->cell_data[i]).cs_ciHeIS_ciHeIS;
-    const double rciHeIS_ciHeIS = (data->cell_data[i]).dcs_ciHeIS_ciHeIS;
     const double ciHI_ciHI = (data->cell_data[i]).cs_ciHI_ciHI;
-    const double rciHI_ciHI = (data->cell_data[i]).dcs_ciHI_ciHI;
     const double compton_comp_ = (data->cell_data[i]).cs_compton_comp_;
-    const double rcompton_comp_ = (data->cell_data[i]).dcs_compton_comp_;
     const double gloverabel08_gael = (data->cell_data[i]).cs_gloverabel08_gael;
     const double rgloverabel08_gael = (data->cell_data[i]).dcs_gloverabel08_gael;
     const double gloverabel08_gaH2 = (data->cell_data[i]).cs_gloverabel08_gaH2;
@@ -830,45 +817,21 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     const double h2formation_ncrn = (data->cell_data[i]).cs_h2formation_ncrn;
     const double rh2formation_ncrn = (data->cell_data[i]).dcs_h2formation_ncrn;
     const double reHeII1_reHeII1 = (data->cell_data[i]).cs_reHeII1_reHeII1;
-    const double rreHeII1_reHeII1 = (data->cell_data[i]).dcs_reHeII1_reHeII1;
     const double reHeII2_reHeII2 = (data->cell_data[i]).cs_reHeII2_reHeII2;
-    const double rreHeII2_reHeII2 = (data->cell_data[i]).dcs_reHeII2_reHeII2;
     const double reHeIII_reHeIII = (data->cell_data[i]).cs_reHeIII_reHeIII;
-    const double rreHeIII_reHeIII = (data->cell_data[i]).dcs_reHeIII_reHeIII;
     const double reHII_reHII = (data->cell_data[i]).cs_reHII_reHII;
-    const double rreHII_reHII = (data->cell_data[i]).dcs_reHII_reHII;
 
-    int j = i * NSPECIES;
+    long int j = i * NSPECIES;
     const double H2_1 = ydata[j]*scale[j];
-    j++;
-
-    const double H2_2 = ydata[j]*scale[j];
-    j++;
-
-    const double H_1 = ydata[j]*scale[j];
-    j++;
-
-    const double H_2 = ydata[j]*scale[j];
-    j++;
-
-    const double H_m0 = ydata[j]*scale[j];
-    j++;
-
-    const double He_1 = ydata[j]*scale[j];
-    j++;
-
-    const double He_2 = ydata[j]*scale[j];
-    j++;
-
-    const double He_3 = ydata[j]*scale[j];
-    j++;
-
-    const double de = ydata[j]*scale[j];
-    j++;
-
-    const double ge = ydata[j]*scale[j];
-    j++;
-
+    const double H2_2 = ydata[j+1]*scale[j+1];
+    const double H_1 = ydata[j+2]*scale[j+2];
+    const double H_2 = ydata[j+3]*scale[j+3];
+    const double H_m0 = ydata[j+4]*scale[j+4];
+    const double He_1 = ydata[j+5]*scale[j+5];
+    const double He_2 = ydata[j+6]*scale[j+6];
+    const double He_3 = ydata[j+7]*scale[j+7];
+    const double de = ydata[j+8]*scale[j+8];
+    const double ge = ydata[j+9]*scale[j+9];
     const double mdensity = (data->cell_data[i]).mdensity;
     const double inv_mdensity = 1.0 / mdensity;
     const double h2_optical_depth_approx = (data->cell_data[i]).h2_optical_depth_approx;
