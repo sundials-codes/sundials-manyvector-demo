@@ -80,10 +80,23 @@ foreach(nvar ${_nvar_values})
       target_link_libraries(${_shared_obj}
         PUBLIC
         SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
+      target_compile_definitions(${_shared_obj}
+        PUBLIC
+        RAJA_CUDA)
     elseif(RAJA_BACKEND MATCHES "HIP")
       target_link_libraries(${_shared_obj}
         PUBLIC
         SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
+      target_compile_definitions(${_shared_obj}
+        PUBLIC
+        RAJA_HIP)
+    elseif(RAJA_BACKEND MATCHES "SERIAL")
+      target_link_libraries(${_shared_obj}
+        PUBLIC
+        SUNDIALS::nvecraja) # not supported in sundials yet
+      target_compile_definitions(${_shared_obj}
+        PUBLIC
+        RAJA_SERIAL)
     endif()
   endif()
 
