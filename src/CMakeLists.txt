@@ -114,211 +114,300 @@ endif()
 # Executables
 # ------------------------------------------------------------------------------
 
+# macro to create executables
+macro(sundemo_add_executable target)
+
+  # macro keyword arguments/options
+  set(options )
+  set(oneValueArgs )
+  set(multiValueArgs SOURCES LINK_LIBRARIES COMPILE_DEFINITIONS)
+
+  # parse keyword arguments/options
+  cmake_parse_arguments(sundemo_add_executable
+    "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+  # set source properties
+  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+    foreach(file ${sundemo_add_executable_SOURCES})
+      set_source_files_properties(${file} PROPERTIES LANGUAGE CUDA)
+    endforeach()
+  endif()
+
+  # create executable target
+  add_executable(${target}
+    ${sundemo_add_executable_SOURCES})
+
+  # set executable compile options
+  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+    target_compile_options(${target}
+      PRIVATE "--expt-extended-lambda")
+  endif()
+
+  # set executable link libraries
+  target_link_libraries(${target}
+    PRIVATE ${sundemo_add_executable_LINK_LIBRARIES})
+
+  # set executable compile definitions
+  target_compile_definitions(${target}
+    PRIVATE ${sundemo_add_executable_COMPILE_DEFINITIONS})
+
+  # install rule
+  install(TARGETS ${target})
+
+endmacro()
+
 # fluid compile test
-add_executable(compile_test_fluid.exe
-  compile_test.cpp
-  euler3D_main.cpp)
-target_link_libraries(compile_test_fluid.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(compile_test_fluid.exe PRIVATE NVAR=5)
-install(TARGETS compile_test_fluid.exe)
+sundemo_add_executable(compile_test_fluid.exe
+  SOURCES
+    compile_test.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    NVAR=5)
 
 # tracers compile test
-add_executable(compile_test_tracers.exe
-  compile_test.cpp
-  euler3D_main.cpp)
-target_link_libraries(compile_test_tracers.exe PRIVATE shared_obj_nvar_7)
-target_compile_definitions(compile_test_tracers.exe PRIVATE NVAR=7)
-install(TARGETS compile_test_tracers.exe)
+sundemo_add_executable(compile_test_tracers.exe
+  SOURCES
+    compile_test.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_7
+  COMPILE_DEFINITIONS
+    NVAR=7)
 
 # fluid communication test
-add_executable(communication_test_fluid.exe
-  communication_test_main.cpp
-  compile_test.cpp)
-target_link_libraries(communication_test_fluid.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(communication_test_fluid.exe PRIVATE NVAR=5)
-install(TARGETS communication_test_fluid.exe)
+sundemo_add_executable(communication_test_fluid.exe
+  SOURCES
+    communication_test_main.cpp
+    compile_test.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    NVAR=5)
 
 # tracers communication test
-add_executable(communication_test_tracers.exe
-  communication_test_main.cpp
-  compile_test.cpp)
-target_link_libraries(communication_test_tracers.exe PRIVATE shared_obj_nvar_9)
-target_compile_definitions(communication_test_tracers.exe PRIVATE NVAR=9)
-install(TARGETS communication_test_tracers.exe)
+sundemo_add_executable(communication_test_tracers.exe
+  SOURCES
+    communication_test_main.cpp
+    compile_test.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_9
+  COMPILE_DEFINITIONS
+    NVAR=9)
 
 # fluid I/O test
-add_executable(io_test_fluid.exe
-  io_test_main.cpp
-  compile_test.cpp)
-target_link_libraries(io_test_fluid.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(io_test_fluid.exe PRIVATE NVAR=5)
-install(TARGETS io_test_fluid.exe)
+sundemo_add_executable(io_test_fluid.exe
+  SOURCES
+    io_test_main.cpp
+    compile_test.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    NVAR=5)
 
 # tracers I/O test
-add_executable(io_test_tracers.exe
-  io_test_main.cpp
-  compile_test.cpp)
-target_link_libraries(io_test_tracers.exe PRIVATE shared_obj_nvar_9)
-target_compile_definitions(io_test_tracers.exe PRIVATE NVAR=9)
-install(TARGETS io_test_tracers.exe)
+sundemo_add_executable(io_test_tracers.exe
+  SOURCES
+    io_test_main.cpp
+    compile_test.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_9
+  COMPILE_DEFINITIONS
+    NVAR=9)
 
 # linear advection tests
-add_executable(linear_advection_x.exe
-  linear_advection.cpp
-  euler3D_main.cpp)
-target_link_libraries(linear_advection_x.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(linear_advection_x.exe PRIVATE ADVECTION_X)
-install(TARGETS linear_advection_x.exe)
+sundemo_add_executable(linear_advection_x.exe
+  SOURCES
+    linear_advection.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    ADVECTION_X)
 
-add_executable(linear_advection_y.exe
-  linear_advection.cpp
-  euler3D_main.cpp)
-target_link_libraries(linear_advection_y.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(linear_advection_y.exe PRIVATE ADVECTION_Y)
-install(TARGETS linear_advection_y.exe)
+sundemo_add_executable(linear_advection_y.exe
+  SOURCES
+    linear_advection.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    ADVECTION_Y)
 
-add_executable(linear_advection_z.exe
-  linear_advection.cpp
-  euler3D_main.cpp)
-target_link_libraries(linear_advection_z.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(linear_advection_z.exe PRIVATE ADVECTION_Z)
-install(TARGETS linear_advection_z.exe)
+sundemo_add_executable(linear_advection_z.exe
+  SOURCES
+    linear_advection.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    ADVECTION_Z)
 
 # Rayleigh Taylor test
-add_executable(rayleigh_taylor.exe
-  rayleigh_taylor.cpp
-  euler3D_main.cpp)
-target_link_libraries(rayleigh_taylor.exe PRIVATE shared_obj_nvar_5)
-install(TARGETS rayleigh_taylor.exe)
+sundemo_add_executable(rayleigh_taylor.exe
+  SOURCES
+    rayleigh_taylor.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5)
 
 # sod tests
-add_executable(sod_x.exe
-  sod.cpp
-  euler3D_main.cpp)
-target_link_libraries(sod_x.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(sod_x.exe PRIVATE ADVECTION_X)
-install(TARGETS sod_x.exe)
+sundemo_add_executable(sod_x.exe
+  SOURCES
+    sod.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    ADVECTION_X)
 
-add_executable(sod_y.exe
-  sod.cpp
-  euler3D_main.cpp)
-target_link_libraries(sod_y.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(sod_y.exe PRIVATE ADVECTION_Y)
-install(TARGETS sod_y.exe)
+sundemo_add_executable(sod_y.exe
+  SOURCES
+    sod.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    ADVECTION_Y)
 
-add_executable(sod_z.exe
-  sod.cpp
-  euler3D_main.cpp)
-target_link_libraries(sod_z.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(sod_z.exe PRIVATE ADVECTION_Z)
-install(TARGETS sod_z.exe)
+sundemo_add_executable(sod_z.exe
+  SOURCES
+    sod.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    ADVECTION_Z)
 
 # hurricane tests
-add_executable(hurricane_xy.exe
-  hurricane.cpp
-  euler3D_main.cpp)
-target_link_libraries(hurricane_xy.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(hurricane_xy.exe PRIVATE TEST_XZ)
-install(TARGETS hurricane_xy.exe)
+sundemo_add_executable(hurricane_xy.exe
+  SOURCES
+    hurricane.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    TEST_XZ)
 
-add_executable(hurricane_yz.exe
-  hurricane.cpp
-  euler3D_main.cpp)
-target_link_libraries(hurricane_yz.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(hurricane_yz.exe PRIVATE TEST_YZ)
-install(TARGETS hurricane_yz.exe)
+sundemo_add_executable(hurricane_yz.exe
+  SOURCES
+    hurricane.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    TEST_YZ)
 
-add_executable(hurricane_zx.exe
-  hurricane.cpp
-  euler3D_main.cpp)
-target_link_libraries(hurricane_zx.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(hurricane_zx.exe PRIVATE TEST_ZX)
-install(TARGETS hurricane_zx.exe)
+sundemo_add_executable(hurricane_zx.exe
+  SOURCES
+    hurricane.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    TEST_ZX)
 
-add_executable(hurricane_zx_color.exe
-  hurricane.cpp
-  euler3D_main.cpp)
-target_link_libraries(hurricane_zx_color.exe PRIVATE shared_obj_nvar_11)
-target_compile_definitions(hurricane_zx_color.exe PRIVATE TEST_ZX NVAR=11)
-install(TARGETS hurricane_zx_color.exe)
+sundemo_add_executable(hurricane_zx_color.exe
+  SOURCES
+    hurricane.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_11
+  COMPILE_DEFINITIONS
+    TEST_ZX
+    NVAR=11)
 
 # primordial ode tests
-add_executable(primordial_ode.exe
-  primordial_ode_main.cpp
-  ${_chem_solver})
-target_link_libraries(primordial_ode.exe
-  PRIVATE
-  shared_obj_nvar_5
-  SUNDIALS::sunlinsolklu)
-target_compile_definitions(primordial_ode.exe
-  PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1)
-install(TARGETS primordial_ode.exe)
+sundemo_add_executable(primordial_ode.exe
+  SOURCES
+    primordial_ode_main.cpp
+    ${_chem_solver}
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+    SUNDIALS::sunlinsolklu
+  COMPILE_DEFINITIONS
+    CVKLU
+    MAX_NCELLS=1000000
+    NTHREADS=1)
 
-add_executable(primordial_ode_CVODE.exe
-  primordial_ode_main.cpp
-  ${_chem_solver})
-target_link_libraries(primordial_ode_CVODE.exe
-  PRIVATE
-  shared_obj_nvar_5
-  SUNDIALS::sunlinsolklu)
-target_compile_definitions(primordial_ode_CVODE.exe
-  PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 USE_CVODE)
-install(TARGETS primordial_ode_CVODE.exe)
+sundemo_add_executable(primordial_ode_CVODE.exe
+  SOURCES
+    primordial_ode_main.cpp
+    ${_chem_solver}
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+    SUNDIALS::sunlinsolklu
+  COMPILE_DEFINITIONS
+    CVKLU
+    MAX_NCELLS=1000000
+    NTHREADS=1
+    USE_CVODE)
 
 # primordial static tests
-add_executable(primordial_static_imex.exe
-  primordial_static.cpp
-  imex_chem_hydro_main.cpp
-  ${_chem_solver})
-target_link_libraries(primordial_static_imex.exe
-  PRIVATE
-  shared_obj_nvar_15
-  SUNDIALS::sunlinsolklu)
-target_compile_definitions(primordial_static_imex.exe
-  PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 NVAR=15)
-install(TARGETS primordial_static_imex.exe)
+sundemo_add_executable(primordial_static_imex.exe
+  SOURCES
+    primordial_static.cpp
+    imex_chem_hydro_main.cpp
+    ${_chem_solver}
+  LINK_LIBRARIES
+    shared_obj_nvar_15
+    SUNDIALS::sunlinsolklu
+  COMPILE_DEFINITIONS
+    CVKLU
+    MAX_NCELLS=1000000
+    NTHREADS=1
+    NVAR=15)
 
-add_executable(primordial_static_mr.exe
-  primordial_static.cpp
-  multirate_chem_hydro_main.cpp
-  ${_chem_solver})
-target_link_libraries(primordial_static_mr.exe
-  PRIVATE
-  shared_obj_nvar_15
-  SUNDIALS::sunlinsolklu)
-target_compile_definitions(primordial_static_mr.exe
-  PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 NVAR=15)
-install(TARGETS primordial_static_mr.exe)
+sundemo_add_executable(primordial_static_mr.exe
+  SOURCES
+    primordial_static.cpp
+    multirate_chem_hydro_main.cpp
+    ${_chem_solver}
+  LINK_LIBRARIES
+    shared_obj_nvar_15
+    SUNDIALS::sunlinsolklu
+  COMPILE_DEFINITIONS
+    CVKLU
+    MAX_NCELLS=1000000
+    NTHREADS=1
+    NVAR=15)
 
 # primordial blast tests
-add_executable(primordial_blast_imex.exe
-  primordial_blast.cpp
-  imex_chem_hydro_main.cpp
-  ${_chem_solver})
-target_link_libraries(primordial_blast_imex.exe
-  PRIVATE
-  shared_obj_nvar_15
-  SUNDIALS::sunlinsolklu)
-target_compile_definitions(primordial_blast_imex.exe
-  PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 NVAR=15)
-install(TARGETS primordial_blast_imex.exe)
+sundemo_add_executable(primordial_blast_imex.exe
+  SOURCES
+    primordial_blast.cpp
+    imex_chem_hydro_main.cpp
+    ${_chem_solver}
+  LINK_LIBRARIES
+    shared_obj_nvar_15
+    SUNDIALS::sunlinsolklu
+  COMPILE_DEFINITIONS
+    CVKLU
+    MAX_NCELLS=1000000
+    NTHREADS=1
+    NVAR=15)
 
-add_executable(primordial_blast_mr.exe
-  primordial_blast.cpp
-  multirate_chem_hydro_main.cpp
-  ${_chem_solver})
-target_link_libraries(primordial_blast_mr.exe
-  PRIVATE
-  shared_obj_nvar_15
-  SUNDIALS::sunlinsolklu)
-target_compile_definitions(primordial_blast_mr.exe
-  PRIVATE CVKLU MAX_NCELLS=1000000 NTHREADS=1 NVAR=15)
-install(TARGETS primordial_blast_mr.exe)
+sundemo_add_executable(primordial_blast_mr.exe
+  SOURCES
+    primordial_blast.cpp
+    multirate_chem_hydro_main.cpp
+    ${_chem_solver}
+  LINK_LIBRARIES
+    shared_obj_nvar_15
+    SUNDIALS::sunlinsolklu
+  COMPILE_DEFINITIONS
+    CVKLU
+    MAX_NCELLS=1000000
+    NTHREADS=1
+    NVAR=15)
 
 # fluid blast test
-add_executable(fluid_blast.exe
-  fluid_blast.cpp
-  euler3D_main.cpp)
-target_link_libraries(fluid_blast.exe PRIVATE shared_obj_nvar_5)
-target_compile_definitions(fluid_blast.exe PRIVATE NVAR=5)
-install(TARGETS fluid_blast.exe)
+sundemo_add_executable(fluid_blast.exe
+  SOURCES
+    fluid_blast.cpp
+    euler3D_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5
+  COMPILE_DEFINITIONS
+    NVAR=5)

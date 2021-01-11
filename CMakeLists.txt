@@ -18,12 +18,10 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "In-source build prohibited.")
 endif()
 
-# Show C and C++ compiler and flags. Hide build type specific flag options,
-# except for the one corresponding to the current build type
-set(_build_types DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
-set(_languages C CXX)
-
-foreach(lang ${_languages})
+# Macro to show compiler and flags. Hides build type specific flag options,
+# except for the one corresponding to the current build type.
+macro(show_language_flags lang)
+  set(_build_types DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
   foreach(build_type ${_build_types})
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _cmake_build_type)
     if(${_cmake_build_type} MATCHES "${build_type}")
@@ -35,7 +33,11 @@ foreach(lang ${_languages})
   endforeach()
   # show the language compiler and flags
   mark_as_advanced(CLEAR CMAKE_${lang}_COMPILER CMAKE_${lang}_FLAGS)
-endforeach()
+endmacro()
+
+# Show C and C++ flags
+show_language_flags(C)
+show_language_flags(CXX)
 
 # Set C and C++ standards
 set(CMAKE_C_STANDARD "99" CACHE STRING "C standard to use")
@@ -108,6 +110,17 @@ if(ENABLE_RAJA)
 endif()
 
 mark_as_advanced(FORCE RAJA_DIR)
+
+# -----
+# CUDA
+# -----
+
+if(ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  enable_language(CUDA)
+  show_language_flags(CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES "70" CACHE STRING "CUDA Architecture")
+  set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
+endif()
 
 # ---------------------
 # add source directory
