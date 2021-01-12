@@ -17,7 +17,6 @@
 // Header files
 #include <euler3D.hpp>
 #ifdef USERAJA
-#include <RAJA/RAJA.hpp>
 #include <raja_primordial_network.hpp>
 #else
 #include <dengo_primordial_network.hpp>
@@ -231,16 +230,16 @@ int main(int argc, char* argv[]) {
 
   // set initial conditions -- essentially-neutral primordial gas
   realtype *wdata = N_VGetDeviceArrayPointer(w);
-#ifdef USERAJA
-    RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
-                                                RAJA::RangeSegment(0,udat->nyl),
-                                                RAJA::RangeSegment(0,udat->nzl)),
-                               [=] RAJA_DEVICE (int i, int j, int k) {
-#else
+// #ifdef USERAJA
+//     RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
+//                                                 RAJA::RangeSegment(0,udat->nyl),
+//                                                 RAJA::RangeSegment(0,udat->nzl)),
+//                                [=] RAJA_DEVICE (int i, int j, int k) {
+// #else
   for (int k=0; k<udata.nzl; k++)
     for (int j=0; j<udata.nyl; j++)
       for (int i=0; i<udata.nxl; i++) {
-#endif
+// #endif
 
         // constants
         const realtype tiny = 1e-40;
@@ -354,11 +353,11 @@ int main(int argc, char* argv[]) {
         wdata[idx+7] = nHeIII;
         wdata[idx+8] = de / m_amu;
         wdata[idx+9] = ge;
-#ifdef USERAJA
-      });
-#else
+// #ifdef USERAJA
+//       });
+// #else
       }
-#endif
+// #endif
 
   // set absolute tolerance array
   N_VConst(opts.atol, atols);
@@ -382,37 +381,34 @@ int main(int argc, char* argv[]) {
 
   // move input solution values into 'scale' components of network_data structure
 #ifdef USERAJA
-  double *sc = network_data->scale;
-  double *isc = network_data->inv_scale;
-  RAJA::kernel<EXECPOLICY4D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nchem),
-                                              RAJA::RangeSegment(0,udat->nxl),
-                                              RAJA::RangeSegment(0,udat->nyl),
-                                              RAJA::RangeSegment(0,udat->nzl)),
-                             [=] RAJA_DEVICE (int l, int i, int j, int k) {
+   double *sc = network_data->scale;
+   double *isc = network_data->inv_scale;
+   // RAJA::kernel<EXECPOLICY4D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nchem),
+   //                                             RAJA::RangeSegment(0,udat->nxl),
+   //                                             RAJA::RangeSegment(0,udat->nyl),
+   //                                             RAJA::RangeSegment(0,udat->nzl)),
+   //                            [=] RAJA_DEVICE (int l, int i, int j, int k) {
 #else
   double *sc = network_data->scale[0];
   double *isc = network_data->inv_scale[0];
+#endif
   for (int k=0; k<udata.nzl; k++)
     for (int j=0; j<udata.nyl; j++)
       for (int i=0; i<udata.nxl; i++)
         for (int l=0; l<udata.nchem; l++) {
-#endif
+//#endif
           long int idx = BUFIDX(l,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
           sc[idx] = wdata[idx];
           isc[idx] = ONE / wdata[idx];
           wdata[idx] = ONE;
-#ifdef USERAJA
-        });
-#else
+// #ifdef USERAJA
+//         });
+// #else
         }
-#endif
+// #endif
 
   // compute auxiliary values within network_data structure
-#ifdef USERAJA
-  setting_up_extra_variables(network_data, network_data->scale, nstrip);
-#else
-  setting_up_extra_variables(network_data, network_data->scale[0], nstrip);
-#endif
+  setting_up_extra_variables(network_data, sc, nstrip);
 
   // initialize the integrator memory
 #ifdef USE_CVODE
@@ -645,16 +641,16 @@ int main(int argc, char* argv[]) {
 
 
   // reconstruct overall solution values, converting back to mass densities
-#ifdef USERAJA
-  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
-                                              RAJA::RangeSegment(0,udat->nyl),
-                                              RAJA::RangeSegment(0,udat->nzl)),
-                             [=] RAJA_DEVICE (int i, int j, int k) {
-#else
+// #ifdef USERAJA
+//   RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
+//                                               RAJA::RangeSegment(0,udat->nyl),
+//                                               RAJA::RangeSegment(0,udat->nzl)),
+//                              [=] RAJA_DEVICE (int i, int j, int k) {
+// #else
   for (int k=0; k<udata.nzl; k++)
     for (int j=0; j<udata.nyl; j++)
       for (int i=0; i<udata.nxl; i++) {
-#endif
+// #endif
         // constants
         const realtype mH = 1.67e-24;
         const realtype HI_weight = 1.00794 * mH;
@@ -698,11 +694,11 @@ int main(int argc, char* argv[]) {
 
         // ge
         wdata[idx+9] *= sc[idx+9];
-#ifdef USERAJA
-      });
-#else
+// #ifdef USERAJA
+//       });
+// #else
       }
-#endif
+// #endif
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();
@@ -805,108 +801,109 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   // determine mean, min, max values for each component
 #ifdef USERAJA
   double *sc = network_data->scale;
-  EulerData *udat = &udata;
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean0(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean1(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean2(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean3(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean4(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean5(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean6(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean7(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean8(ZERO);
-  RAJA::ReduceSum<REDUCEPOLICY, double> cmean9(ZERO);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin0(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin1(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin2(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin3(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin4(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin5(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin6(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin7(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin8(1e300);
-  RAJA::ReduceMin<REDUCEPOLICY, double> cmin9(1e300);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax0(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax1(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax2(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax3(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax4(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax5(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax6(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax7(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax8(ZERO);
-  RAJA::ReduceMax<REDUCEPOLICY, double> cmax9(ZERO);
-  RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
-                                              RAJA::RangeSegment(0,udat->nyl),
-                                              RAJA::RangeSegment(0,udat->nzl)),
-                             [=] RAJA_DEVICE (int i, int j, int k) {
-        long int idx;
-        idx = BUFIDX(0,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean0 += sc[idx]*wdata[idx];
-        cmax0.max(sc[idx]*wdata[idx]);
-        cmin0.min(sc[idx]*wdata[idx]);
+//   EulerData *udat = &udata;
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean0(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean1(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean2(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean3(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean4(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean5(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean6(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean7(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean8(ZERO);
+//   RAJA::ReduceSum<REDUCEPOLICY, double> cmean9(ZERO);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin0(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin1(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin2(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin3(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin4(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin5(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin6(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin7(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin8(1e300);
+//   RAJA::ReduceMin<REDUCEPOLICY, double> cmin9(1e300);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax0(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax1(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax2(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax3(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax4(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax5(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax6(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax7(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax8(ZERO);
+//   RAJA::ReduceMax<REDUCEPOLICY, double> cmax9(ZERO);
+//   RAJA::kernel<EXECPOLICY3D>(RAJA::make_tuple(RAJA::RangeSegment(0,udat->nxl),
+//                                               RAJA::RangeSegment(0,udat->nyl),
+//                                               RAJA::RangeSegment(0,udat->nzl)),
+//                              [=] RAJA_DEVICE (int i, int j, int k) {
+//         long int idx;
+//         idx = BUFIDX(0,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean0 += sc[idx]*wdata[idx];
+//         cmax0.max(sc[idx]*wdata[idx]);
+//         cmin0.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(1,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean1 += sc[idx]*wdata[idx];
-        cmax1.max(sc[idx]*wdata[idx]);
-        cmin1.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(1,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean1 += sc[idx]*wdata[idx];
+//         cmax1.max(sc[idx]*wdata[idx]);
+//         cmin1.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(2,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean2 += sc[idx]*wdata[idx];
-        cmax2.max(sc[idx]*wdata[idx]);
-        cmin2.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(2,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean2 += sc[idx]*wdata[idx];
+//         cmax2.max(sc[idx]*wdata[idx]);
+//         cmin2.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(3,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean3 += sc[idx]*wdata[idx];
-        cmax3.max(sc[idx]*wdata[idx]);
-        cmin3.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(3,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean3 += sc[idx]*wdata[idx];
+//         cmax3.max(sc[idx]*wdata[idx]);
+//         cmin3.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(4,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean4 += sc[idx]*wdata[idx];
-        cmax4.max(sc[idx]*wdata[idx]);
-        cmin4.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(4,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean4 += sc[idx]*wdata[idx];
+//         cmax4.max(sc[idx]*wdata[idx]);
+//         cmin4.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(5,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean5 += sc[idx]*wdata[idx];
-        cmax5.max(sc[idx]*wdata[idx]);
-        cmin5.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(5,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean5 += sc[idx]*wdata[idx];
+//         cmax5.max(sc[idx]*wdata[idx]);
+//         cmin5.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(6,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean6 += sc[idx]*wdata[idx];
-        cmax6.max(sc[idx]*wdata[idx]);
-        cmin6.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(6,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean6 += sc[idx]*wdata[idx];
+//         cmax6.max(sc[idx]*wdata[idx]);
+//         cmin6.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(7,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean7 += sc[idx]*wdata[idx];
-        cmax7.max(sc[idx]*wdata[idx]);
-        cmin7.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(7,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean7 += sc[idx]*wdata[idx];
+//         cmax7.max(sc[idx]*wdata[idx]);
+//         cmin7.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(8,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean8 += sc[idx]*wdata[idx];
-        cmax8.max(sc[idx]*wdata[idx]);
-        cmin8.min(sc[idx]*wdata[idx]);
+//         idx = BUFIDX(8,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean8 += sc[idx]*wdata[idx];
+//         cmax8.max(sc[idx]*wdata[idx]);
+//         cmin8.min(sc[idx]*wdata[idx]);
 
-        idx = BUFIDX(9,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
-        cmean9 += sc[idx]*wdata[idx];
-        cmax9.max(sc[idx]*wdata[idx]);
-        cmin9.min(sc[idx]*wdata[idx]);
-  });
+//         idx = BUFIDX(9,i,j,k,udat->nchem,udat->nxl,udat->nyl,udat->nzl);
+//         cmean9 += sc[idx]*wdata[idx];
+//         cmax9.max(sc[idx]*wdata[idx]);
+//         cmin9.min(sc[idx]*wdata[idx]);
+//   });
 
-  // print solutions at first location
-  long int Ntot = udata.nxl * udata.nyl * udata.nzl;
-  printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
-  printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmin0.get(), cmin1.get(), cmin2.get(), cmin3.get(), cmin4.get(),
-         cmin5.get(), cmin6.get(), cmin7.get(), cmin8.get(), cmin9.get());
-  printf("       mean: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmean0.get()/Ntot, cmean1.get()/Ntot, cmean2.get()/Ntot, cmean3.get()/Ntot,
-         cmean4.get()/Ntot, cmean5.get()/Ntot, cmean6.get()/Ntot, cmean7.get()/Ntot,
-         cmean8.get()/Ntot, cmean9.get()/Ntot);
-  printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmax0.get(), cmax1.get(), cmax2.get(), cmax3.get(), cmax4.get(),
-         cmax5.get(), cmax6.get(), cmax7.get(), cmax8.get(), cmax9.get());
+//   // print solutions at first location
+//   long int Ntot = udata.nxl * udata.nyl * udata.nzl;
+//   printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
+//   printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+//          cmin0.get(), cmin1.get(), cmin2.get(), cmin3.get(), cmin4.get(),
+//          cmin5.get(), cmin6.get(), cmin7.get(), cmin8.get(), cmin9.get());
+//   printf("       mean: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+//          cmean0.get()/Ntot, cmean1.get()/Ntot, cmean2.get()/Ntot, cmean3.get()/Ntot,
+//          cmean4.get()/Ntot, cmean5.get()/Ntot, cmean6.get()/Ntot, cmean7.get()/Ntot,
+//          cmean8.get()/Ntot, cmean9.get()/Ntot);
+//   printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+//          cmax0.get(), cmax1.get(), cmax2.get(), cmax3.get(), cmax4.get(),
+//          cmax5.get(), cmax6.get(), cmax7.get(), cmax8.get(), cmax9.get());
 #else
   double *sc = network_data->scale[0];
+#endif
   double cmean0, cmean1, cmean2, cmean3, cmean4, cmean5, cmean6, cmean7, cmean8, cmean9;
   cmean0 = cmean1 = cmean2 = cmean3 = cmean4 = cmean5 = cmean6 = cmean7 = cmean8 = cmean9 = ZERO;
   double cmax0, cmax1, cmax2, cmax3, cmax4, cmax5, cmax6, cmax7, cmax8, cmax9;
@@ -986,7 +983,7 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
          cmean0, cmean1, cmean2, cmean3, cmean4, cmean5, cmean6, cmean7, cmean8, cmean9);
   printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
          cmax0, cmax1, cmax2, cmax3, cmax4, cmax5, cmax6, cmax7, cmax8, cmax9);
-#endif
+// #endif
 }
 
 
