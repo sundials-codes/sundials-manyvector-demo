@@ -60,7 +60,7 @@ cmake \
     -D BUILD_KINSOL=OFF \
     \
     -D SUNDIALS_PRECISION="double" \
-    -D SUNDIALS_INDEX_SIZE="64" \
+    -D SUNDIALS_INDEX_SIZE="$SUNDIALS_INDEX_SIZE" \
     \
     -D ENABLE_MPI=ON \
     -D MPI_C_COMPILER=${MPICC} \

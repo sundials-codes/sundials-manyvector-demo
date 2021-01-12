@@ -127,5 +127,7 @@ export KLU_LIB_DIR=${KLU_ROOT}/lib
 
 export HDF5_ROOT=${HDF5}
 
-export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-cuda-${cudaver}-${bldtype}"
 export RAJA_ROOT="${PROJHOME}/${COMPILERNAME}/raja-0.13.0-cuda-${cudaver}-${bldtype}"
+
+export SUNDIALS_INDEX_SIZE=32
+export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-int${SUNDIALS_INDEX_SIZE}-cuda-${cudaver}-${bldtype}"
