@@ -435,16 +435,18 @@ int main(int argc, char* argv[]) {
   // Initialize cuSOLVER and cuSPARSE handles
   cusparseCreate(&cusp_handle);
   cusolverSpCreate(&cusol_handle);
-  A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
-  if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
+  //A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+  //if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
+  A = SUNMatrix_cuSparse_NewCSR(N, N, 64*nstrip, cusp_handle);
+  if(check_flag((void*) A, "SUNMatrix_cuSparse_NewCSR (main)", 0)) MPI_Abort(udata.comm, 1);
   LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle);
   if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
-  // Set the sparsity pattern to be fixed
-  retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
-  if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
-  // Initialiize the Jacobian with the fixed sparsity pattern
-  retval = initialize_sparse_jacobian_cvklu(A, &udata);
-  if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
+  //// Set the sparsity pattern to be fixed
+  //retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
+  //if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
+  //// Initialiize the Jacobian with the fixed sparsity pattern
+  //retval = initialize_sparse_jacobian_cvklu(A, &udata);
+  //if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #elif defined CVKLU
   A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT);
   if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);

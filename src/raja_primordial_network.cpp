@@ -1373,6 +1373,8 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   // Access CSR sparse matrix structures, and zero out data
 #ifdef RAJA_CUDA
   realtype *matrix_data = SUNMatrix_cuSparse_Data(J);
+  sunindextype *rowptrs = SUNMatrix_cuSparse_IndexPointers(J);
+  sunindextype *colvals = SUNMatrix_cuSparse_IndexValues(J);
 #elif RAJA_SERIAL
   realtype *matrix_data = SUNSparseMatrix_Data(J);
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
@@ -1706,7 +1708,7 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ j + 63] *= inv_mdensity;
     matrix_data[ j + 63] *= Tge;
 
-#ifdef RAJA_SERIAL
+//#ifdef RAJA_SERIAL
     colvals[j + 0] = i * NSPECIES + 0 ;
     colvals[j + 1] = i * NSPECIES + 1 ;
     colvals[j + 2] = i * NSPECIES + 2 ;
@@ -1771,6 +1773,7 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     colvals[j + 61] = i * NSPECIES + 7 ;
     colvals[j + 62] = i * NSPECIES + 8 ;
     colvals[j + 63] = i * NSPECIES + 9 ;
+
     rowptrs[ i * NSPECIES +  0] = i * NSPARSE + 0;
     rowptrs[ i * NSPECIES +  1] = i * NSPARSE + 7;
     rowptrs[ i * NSPECIES +  2] = i * NSPARSE + 14;
@@ -1781,7 +1784,10 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     rowptrs[ i * NSPECIES +  7] = i * NSPARSE + 43;
     rowptrs[ i * NSPECIES +  8] = i * NSPARSE + 47;
     rowptrs[ i * NSPECIES +  9] = i * NSPARSE + 56;
-#endif
+    if (i == data->nstrip-1) {
+      rowptrs[ data->nstrip * NSPECIES ] = data->nstrip * NSPARSE;
+    }
+//#endif
 
     j = i * NSPECIES;
     matrix_data[ i * NSPARSE + 0]  *=  (inv_scale[ j + 0 ]*scale[ j + 0 ]);
@@ -1850,10 +1856,6 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ i * NSPARSE + 63]  *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
 
   });
-
-#ifdef RAJA_SERIAL
-  rowptrs[ data->nstrip * NSPECIES ] = data->nstrip * NSPARSE;
-#endif
 
 //  // ensure that problem data structures are synchronized between host/device memory
 //#ifdef RAJA_CUDA
