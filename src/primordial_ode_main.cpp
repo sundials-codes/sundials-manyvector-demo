@@ -15,14 +15,19 @@
  ---------------------------------------------------------------*/
 
 // Header files
+#include <random>
 #include <euler3D.hpp>
+
 #ifdef USERAJA
 #include <raja_primordial_network.hpp>
 #else
 #include <dengo_primordial_network.hpp>
 #endif
-#include <random>
-#ifdef CVKLU
+
+#if defined RAJA_CUDA
+#include <sunmatrix/sunmatrix_cusparse.h>
+#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
+#elif defined CVKLU
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
 #else
@@ -86,6 +91,10 @@ int main(int argc, char* argv[]) {
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
   EulerData *udat = &udata;
+#if defined RAJA_CUDA
+  cusparseHandle_t cusp_handle;
+  cusolverSpHandle_t cusol_handle;
+#endif
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -422,7 +431,21 @@ int main(int argc, char* argv[]) {
 #endif
 
   // create matrix and linear solver modules, and attach to ARKStep
-#ifdef CVKLU
+#if defined RAJA_CUDA
+  // Initialize cuSOLVER and cuSPARSE handles
+  cusparseCreate(&cusp_handle);
+  cusolverSpCreate(&cusol_handle);
+  A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+  if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
+  LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle);
+  if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
+  // Set the sparsity pattern to be fixed
+  retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
+  if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
+  // Initialiize the Jacobian with the fixed sparsity pattern
+  retval = initialize_sparse_jacobian_cvklu(A, &udata);
+  if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
+#elif defined CVKLU
   A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT);
   if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
   LS = SUNLinSol_KLU(w, A);
@@ -762,6 +785,10 @@ int main(int argc, char* argv[]) {
   N_VDestroy(atols);
   SUNLinSolFree(LS);              // Free matrix and linear solver
   SUNMatDestroy(A);
+#ifdef RAJA_CUDA
+  cusparseDestroy(cusp_handle);   // Destroy the cuSOLVER and cuSPARSE handles
+  cusolverSpDestroy(cusol_handle);
+#endif
 #ifdef USE_CVODE
   CVodeFree(&arkode_mem);         // Free integrator memory
 #else

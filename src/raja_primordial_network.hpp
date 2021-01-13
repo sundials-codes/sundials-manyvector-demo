@@ -27,8 +27,15 @@
 #include "string.h"
 #include <RAJA/RAJA.hpp>
 #include <sundials/sundials_types.h>
+#ifdef RAJA_CUDA
+#include <sunmatrix/sunmatrix_cusparse.h>
+#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
+#elif RAJA_SERIAL
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
+#else
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
 
 #define NSPECIES 10
 
@@ -262,6 +269,7 @@ RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data*, long int);
 RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data*, double*, long int);
 void setting_up_extra_variables(cvklu_data*, double*, long int);
 
+int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
 int calculate_sparse_jacobian_cvklu( realtype t,
                                      N_Vector y, N_Vector fy,
                                      SUNMatrix J, void *user_data,

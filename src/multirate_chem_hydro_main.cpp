@@ -51,8 +51,13 @@
 #endif
 #include <arkode/arkode_mristep.h>
 #include <arkode/arkode_arkstep.h>
+#ifdef RAJA_CUDA
+#include <sunmatrix/sunmatrix_cusparse.h>
+#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
+#else
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
+#endif
 
 #ifdef DEBUG
 #include "fenv.h"
@@ -107,7 +112,7 @@ int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
 int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
                            N_Vector x, N_Vector b, realtype tol);
-long int SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
+sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
 
 
 
@@ -136,6 +141,10 @@ int main(int argc, char* argv[]) {
   void *inner_arkode_mem = NULL;
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
+#ifdef RAJA_CUDA
+  cusparseHandle_t cusp_handle;
+  cusolverSpHandle_t cusol_handle;
+#endif
 
   //--- General Initialization ---//
 
@@ -364,12 +373,26 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // create the fast integrator linear solver module, and attach to ARKStep
-  A  = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
+#ifdef RAJA_CUDA
+  // Initialize cuSOLVER and cuSPARSE handles
+  cusparseCreate(&cusp_handle);
+  cusolverSpCreate(&cusol_handle);
+  A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+  if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
+  BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
+  if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
+  // Set the sparsity pattern to be fixed
+  retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
+  if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
+  // Initialiize the Jacobian with the fixed sparsity pattern
+  retval = initialize_sparse_jacobian_cvklu(A, &udata);
+  if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
+#else
+  A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
   if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
   BLS = SUNLinSol_KLU(wsubvecs[5], A);
   if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
-  // sun_klu_common* common = SUNLinSol_KLUGetCommon(BLS);
-  // common->btf = 0;
+#endif
   LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
@@ -798,6 +821,11 @@ int main(int argc, char* argv[]) {
   // Clean up, finalize MPI, and return with successful completion
   cleanup(&outer_arkode_mem, &inner_arkode_mem, udata,
           BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+#ifdef RAJA_CUDA
+  // Destroy the cuSOLVER and cuSPARSE handles
+  cusparseDestroy(cusp_handle);
+  cusolverSpDestroy(cusol_handle);
+#endif
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   MPI_Finalize();                  // Finalize MPI
@@ -881,10 +909,21 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
+  realtype TUnit = udata->TimeUnits;
+#ifdef RAJA_CUDA
+  Jdata = SUNMatrix_cuSparse_Data(Jac);
+  if (check_flag((void *) Jdata, "SUNMatrix_cuSparse_Data (Jimpl)", 0)) return(-1);
+  sunindextype nnz = SUNMatrix_cuSparse_NNZ(Jac);
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nnz), [=] RAJA_DEVICE (long int i) {
+    Jdata[i] *= TUnit;
+  });
+#else
   Jdata = SUNSparseMatrix_Data(Jac);
   if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
-  for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
+  for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= TUnit;
+#endif
+
 
   // stop timer and return
   retval = udata->profile[PR_JACFAST].stop();
@@ -1103,7 +1142,7 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   return(BDMPIMV_LASTFLAG(S));
 }
 
-long int SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
+sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
 }

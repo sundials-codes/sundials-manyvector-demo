@@ -521,7 +521,7 @@ void cvklu_read_rate_tables(cvklu_data *data)
 {
   const char * filedir;
   if (data->dengo_data_file != NULL){
-    filedir = data->dengo_data_file;
+    filedir =  data->dengo_data_file;
   } else{
     filedir = "cvklu_tables.h5";
   }
@@ -1133,6 +1133,230 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
 
 
+int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
+{
+#ifdef RAJA_CUDA
+  const int NSPARSE = 64;
+
+  // Access CSR sparse matrix structures, and zero out data
+  sunindextype rowptrs[11];
+  sunindextype colvals[NSPARSE];
+  //  SUNMatZero(J);
+
+  // H2_1 by H2_1
+  colvals[0] = 0 ;
+
+  // H2_1 by H2_2
+  colvals[1] = 1 ;
+
+  // H2_1 by H_1
+  colvals[2] = 2 ;
+
+  // H2_1 by H_2
+  colvals[3] = 3 ;
+
+  // H2_1 by H_m0
+  colvals[4] = 4 ;
+
+  // H2_1 by de
+  colvals[5] = 8 ;
+
+  // H2_1 by ge
+  colvals[6] = 9 ;
+
+  // H2_2 by H2_1
+  colvals[7] = 0 ;
+
+  // H2_2 by H2_2
+  colvals[8] = 1 ;
+
+  // H2_2 by H_1
+  colvals[9] = 2 ;
+
+  // H2_2 by H_2
+  colvals[10] = 3 ;
+
+  // H2_2 by H_m0
+  colvals[11] = 4 ;
+
+  // H2_2 by de
+  colvals[12] = 8 ;
+
+  // H2_2 by ge
+  colvals[13] = 9 ;
+
+  // H_1 by H2_1
+  colvals[14] = 0 ;
+
+  // H_1 by H2_2
+  colvals[15] = 1 ;
+
+  // H_1 by H_1
+  colvals[16] = 2 ;
+
+  // H_1 by H_2
+  colvals[17] = 3 ;
+
+  // H_1 by H_m0
+  colvals[18] = 4 ;
+
+  // H_1 by de
+  colvals[19] = 8 ;
+
+  // H_1 by ge
+  colvals[20] = 9 ;
+
+  // H_2 by H2_1
+  colvals[21] = 0 ;
+
+  // H_2 by H2_2
+  colvals[22] = 1 ;
+
+  // H_2 by H_1
+  colvals[23] = 2 ;
+
+  // H_2 by H_2
+  colvals[24] = 3 ;
+
+  // H_2 by H_m0
+  colvals[25] = 4 ;
+
+  // H_2 by de
+  colvals[26] = 8 ;
+
+  // H_2 by ge
+  colvals[27] = 9 ;
+
+  // H_m0 by H2_2
+  colvals[28] = 1 ;
+
+  // H_m0 by H_1
+  colvals[29] = 2 ;
+
+  // H_m0 by H_2
+  colvals[30] = 3 ;
+
+  // H_m0 by H_m0
+  colvals[31] = 4 ;
+
+  // H_m0 by de
+  colvals[32] = 8 ;
+
+  // H_m0 by ge
+  colvals[33] = 9 ;
+
+  // He_1 by He_1
+  colvals[34] = 5 ;
+
+  // He_1 by He_2
+  colvals[35] = 6 ;
+
+  // He_1 by de
+  colvals[36] = 8 ;
+
+  // He_1 by ge
+  colvals[37] = 9 ;
+
+  // He_2 by He_1
+  colvals[38] = 5 ;
+
+  // He_2 by He_2
+  colvals[39] = 6 ;
+
+  // He_2 by He_3
+  colvals[40] = 7 ;
+
+  // He_2 by de
+  colvals[41] = 8 ;
+
+  // He_2 by ge
+  colvals[42] = 9 ;
+
+  // He_3 by He_2
+  colvals[43] = 6 ;
+
+  // He_3 by He_3
+  colvals[44] = 7 ;
+
+  // He_3 by de
+  colvals[45] = 8 ;
+
+  // He_3 by ge
+  colvals[46] = 9 ;
+
+  // de by H2_2
+  colvals[47] = 1 ;
+
+  // de by H_1
+  colvals[48] = 2 ;
+
+  // de by H_2
+  colvals[49] = 3 ;
+
+  // de by H_m0
+  colvals[50] = 4 ;
+
+  // de by He_1
+  colvals[51] = 5 ;
+
+  // de by He_2
+  colvals[52] = 6 ;
+
+  // de by He_3
+  colvals[53] = 7 ;
+
+  // de by de
+  colvals[54] = 8 ;
+
+  // de by ge
+  colvals[55] = 9 ;
+
+  // ge by H2_1
+  colvals[56] = 0 ;
+
+  // ge by H_1
+  colvals[57] = 2 ;
+
+  // ge by H_2
+  colvals[58] = 3 ;
+
+  // ge by He_1
+  colvals[59] = 5 ;
+
+  // ge by He_2
+  colvals[60] = 6 ;
+
+  // ge by He_3
+  colvals[61] = 7 ;
+
+  // ge by de
+  colvals[62] = 8 ;
+
+  // ge by ge
+  colvals[63] = 9 ;
+
+  // set row pointers for CSR structure
+  rowptrs[0] = 0;
+  rowptrs[1] = 7;
+  rowptrs[2] = 14;
+  rowptrs[3] = 21;
+  rowptrs[4] = 28;
+  rowptrs[5] = 34;
+  rowptrs[6] = 38;
+  rowptrs[7] = 43;
+  rowptrs[8] = 47;
+  rowptrs[9] = 56;
+  rowptrs[10] = NSPARSE;
+
+  // copy rowptrs, colvals to the device
+  SUNMatrix_cuSparse_CopyToDevice(J, NULL, rowptrs, colvals);
+  cudaDeviceSynchronize();
+#endif
+
+  return 0;
+}
+
+
 
 int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                                     SUNMatrix J, void *user_data,
@@ -1147,21 +1371,26 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   const double *ydata = N_VGetDeviceArrayPointer(y);
 
   // Access CSR sparse matrix structures, and zero out data
+#ifdef RAJA_CUDA
+  realtype *matrix_data = SUNMatrix_cuSparse_Data(J);
+#elif RAJA_SERIAL
+  realtype *matrix_data = SUNSparseMatrix_Data(J);
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
   sunindextype *colvals = SUNSparseMatrix_IndexValues(J);
-  realtype *matrix_data = SUNSparseMatrix_Data(J);
-  SUNMatZero(J);
-
-  // ensure that problem data structures are synchronized between host/device memory
-#ifdef RAJA_CUDA
-  cudaDeviceSynchronize();
-#elif RAJA_HIP
+#else
 #error RAJA HIP chemistry interface is currently unimplemented
 #endif
+  SUNMatZero(J);
+
+//  // ensure that problem data structures are synchronized between host/device memory
+//#ifdef RAJA_CUDA
+//  cudaDeviceSynchronize();
+//#elif RAJA_HIP
+//#error RAJA HIP chemistry interface is currently unimplemented
+//#endif
 
   // Loop over data, filling in sparse Jacobian
-  //RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (long int i) {
-  for (long int i=0; i<data->nstrip; i++) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (long int i) {
 
     // Set up some temporaries
     const double T   = data->Ts[i];
@@ -1264,275 +1493,211 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     j = i * NSPARSE;
 
     // H2_1 by H2_1
-    colvals[j + 0] = i * NSPECIES + 0 ;
     matrix_data[ j + 0 ] = -k11*H_2 - k12*de - k13*H_1 + k21*pow(H_1, 2);
 
     // H2_1 by H2_2
-    colvals[j + 1] = i * NSPECIES + 1 ;
     matrix_data[ j + 1 ] = k10*H_1 + k19*H_m0;
 
     // H2_1 by H_1
-    colvals[j + 2] = i * NSPECIES + 2 ;
     matrix_data[ j + 2 ] = k08*H_m0 + k10*H2_2 - k13*H2_1 + 2*k21*H2_1*H_1 + 3*k22*pow(H_1, 2);
 
     // H2_1 by H_2
-    colvals[j + 3] = i * NSPECIES + 3 ;
     matrix_data[ j + 3 ] = -k11*H2_1;
 
     // H2_1 by H_m0
-    colvals[j + 4] = i * NSPECIES + 4 ;
     matrix_data[ j + 4 ] = k08*H_1 + k19*H2_2;
 
     // H2_1 by de
-    colvals[j + 5] = i * NSPECIES + 8 ;
     matrix_data[ j + 5 ] = -k12*H2_1;
 
     // H2_1 by ge
-    colvals[j + 6] = i * NSPECIES + 9 ;
     matrix_data[ j + 6 ] = rk08*H_1*H_m0 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk12*H2_1*de - rk13*H2_1*H_1 + rk19*H2_2*H_m0 + rk21*H2_1*H_1*H_1 + rk22*H_1*H_1*H_1;
     matrix_data[ j + 6] *= Tge;
 
     // H2_2 by H2_1
-    colvals[j + 7] = i * NSPECIES + 0 ;
     matrix_data[ j + 7 ] = k11*H_2;
 
     // H2_2 by H2_2
-    colvals[j + 8] = i * NSPECIES + 1 ;
     matrix_data[ j + 8 ] = -k10*H_1 - k18*de - k19*H_m0;
 
     // H2_2 by H_1
-    colvals[j + 9] = i * NSPECIES + 2 ;
     matrix_data[ j + 9 ] = k09*H_2 - k10*H2_2;
 
     // H2_2 by H_2
-    colvals[j + 10] = i * NSPECIES + 3 ;
     matrix_data[ j + 10 ] = k09*H_1 + k11*H2_1 + k17*H_m0;
 
     // H2_2 by H_m0
-    colvals[j + 11] = i * NSPECIES + 4 ;
     matrix_data[ j + 11 ] = k17*H_2 - k19*H2_2;
 
     // H2_2 by de
-    colvals[j + 12] = i * NSPECIES + 8 ;
     matrix_data[ j + 12 ] = -k18*H2_2;
 
     // H2_2 by ge
-    colvals[j + 13] = i * NSPECIES + 9 ;
     matrix_data[ j + 13 ] = rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + rk17*H_2*H_m0 - rk18*H2_2*de - rk19*H2_2*H_m0;
     matrix_data[ j + 13] *= Tge;
 
     // H_1 by H2_1
-    colvals[j + 14] = i * NSPECIES + 0 ;
     matrix_data[ j + 14 ] = k11*H_2 + 2*k12*de + 2*k13*H_1 - 2*k21*pow(H_1, 2);
 
     // H_1 by H2_2
-    colvals[j + 15] = i * NSPECIES + 1 ;
     matrix_data[ j + 15 ] = -k10*H_1 + 2*k18*de + k19*H_m0;
 
     // H_1 by H_1
-    colvals[j + 16] = i * NSPECIES + 2 ;
     matrix_data[ j + 16 ] = -k01*de - k07*de - k08*H_m0 - k09*H_2 - k10*H2_2 + 2*k13*H2_1 + k15*H_m0 - 4*k21*H2_1*H_1 - 6*k22*pow(H_1, 2);
 
     // H_1 by H_2
-    colvals[j + 17] = i * NSPECIES + 3 ;
     matrix_data[ j + 17 ] = k02*de - k09*H_1 + k11*H2_1 + 2*k16*H_m0;
 
     // H_1 by H_m0
-    colvals[j + 18] = i * NSPECIES + 4 ;
     matrix_data[ j + 18 ] = -k08*H_1 + k14*de + k15*H_1 + 2*k16*H_2 + k19*H2_2;
 
     // H_1 by de
-    colvals[j + 19] = i * NSPECIES + 8 ;
     matrix_data[ j + 19 ] = -k01*H_1 + k02*H_2 - k07*H_1 + 2*k12*H2_1 + k14*H_m0 + 2*k18*H2_2;
 
     // H_1 by ge
-    colvals[j + 20] = i * NSPECIES + 9 ;
     matrix_data[ j + 20 ] = -rk01*H_1*de + rk02*H_2*de - rk07*H_1*de - rk08*H_1*H_m0 - rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + 2*rk12*H2_1*de + 2*rk13*H2_1*H_1 + rk14*H_m0*de + rk15*H_1*H_m0 + 2*rk16*H_2*H_m0 + 2*rk18*H2_2*de + rk19*H2_2*H_m0 - 2*rk21*H2_1*H_1*H_1 - 2*rk22*H_1*H_1*H_1;
     matrix_data[ j + 20] *= Tge;
 
     // H_2 by H2_1
-    colvals[j + 21] = i * NSPECIES + 0 ;
     matrix_data[ j + 21 ] = -k11*H_2;
 
     // H_2 by H2_2
-    colvals[j + 22] = i * NSPECIES + 1 ;
     matrix_data[ j + 22 ] = k10*H_1;
 
     // H_2 by H_1
-    colvals[j + 23] = i * NSPECIES + 2 ;
     matrix_data[ j + 23 ] = k01*de - k09*H_2 + k10*H2_2;
 
     // H_2 by H_2
-    colvals[j + 24] = i * NSPECIES + 3 ;
     matrix_data[ j + 24 ] = -k02*de - k09*H_1 - k11*H2_1 - k16*H_m0 - k17*H_m0;
 
     // H_2 by H_m0
-    colvals[j + 25] = i * NSPECIES + 4 ;
     matrix_data[ j + 25 ] = -k16*H_2 - k17*H_2;
 
     // H_2 by de
-    colvals[j + 26] = i * NSPECIES + 8 ;
     matrix_data[ j + 26 ] = k01*H_1 - k02*H_2;
 
     // H_2 by ge
-    colvals[j + 27] = i * NSPECIES + 9 ;
     matrix_data[ j + 27 ] = rk01*H_1*de - rk02*H_2*de - rk09*H_1*H_2 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk16*H_2*H_m0 - rk17*H_2*H_m0;
     matrix_data[ j + 27] *= Tge;
 
     // H_m0 by H2_2
-    colvals[j + 28] = i * NSPECIES + 1 ;
     matrix_data[ j + 28 ] = -k19*H_m0;
 
     // H_m0 by H_1
-    colvals[j + 29] = i * NSPECIES + 2 ;
     matrix_data[ j + 29 ] = k07*de - k08*H_m0 - k15*H_m0;
 
     // H_m0 by H_2
-    colvals[j + 30] = i * NSPECIES + 3 ;
     matrix_data[ j + 30 ] = -k16*H_m0 - k17*H_m0;
 
     // H_m0 by H_m0
-    colvals[j + 31] = i * NSPECIES + 4 ;
     matrix_data[ j + 31 ] = -k08*H_1 - k14*de - k15*H_1 - k16*H_2 - k17*H_2 - k19*H2_2;
 
     // H_m0 by de
-    colvals[j + 32] = i * NSPECIES + 8 ;
     matrix_data[ j + 32 ] = k07*H_1 - k14*H_m0;
 
     // H_m0 by ge
-    colvals[j + 33] = i * NSPECIES + 9 ;
     matrix_data[ j + 33 ] = rk07*H_1*de - rk08*H_1*H_m0 - rk14*H_m0*de - rk15*H_1*H_m0 - rk16*H_2*H_m0 - rk17*H_2*H_m0 - rk19*H2_2*H_m0;
     matrix_data[ j + 33] *= Tge;
 
     // He_1 by He_1
-    colvals[j + 34] = i * NSPECIES + 5 ;
     matrix_data[ j + 34 ] = -k03*de;
 
     // He_1 by He_2
-    colvals[j + 35] = i * NSPECIES + 6 ;
     matrix_data[ j + 35 ] = k04*de;
 
     // He_1 by de
-    colvals[j + 36] = i * NSPECIES + 8 ;
     matrix_data[ j + 36 ] = -k03*He_1 + k04*He_2;
 
     // He_1 by ge
-    colvals[j + 37] = i * NSPECIES + 9 ;
     matrix_data[ j + 37 ] = -rk03*He_1*de + rk04*He_2*de;
     matrix_data[ j + 37] *= Tge;
 
     // He_2 by He_1
-    colvals[j + 38] = i * NSPECIES + 5 ;
     matrix_data[ j + 38 ] = k03*de;
 
     // He_2 by He_2
-    colvals[j + 39] = i * NSPECIES + 6 ;
     matrix_data[ j + 39 ] = -k04*de - k05*de;
 
     // He_2 by He_3
-    colvals[j + 40] = i * NSPECIES + 7 ;
     matrix_data[ j + 40 ] = k06*de;
 
     // He_2 by de
-    colvals[j + 41] = i * NSPECIES + 8 ;
     matrix_data[ j + 41 ] = k03*He_1 - k04*He_2 - k05*He_2 + k06*He_3;
 
     // He_2 by ge
-    colvals[j + 42] = i * NSPECIES + 9 ;
     matrix_data[ j + 42 ] = rk03*He_1*de - rk04*He_2*de - rk05*He_2*de + rk06*He_3*de;
     matrix_data[ j + 42] *= Tge;
 
     // He_3 by He_2
-    colvals[j + 43] = i * NSPECIES + 6 ;
     matrix_data[ j + 43 ] = k05*de;
 
     // He_3 by He_3
-    colvals[j + 44] = i * NSPECIES + 7 ;
     matrix_data[ j + 44 ] = -k06*de;
 
     // He_3 by de
-    colvals[j + 45] = i * NSPECIES + 8 ;
     matrix_data[ j + 45 ] = k05*He_2 - k06*He_3;
 
     // He_3 by ge
-    colvals[j + 46] = i * NSPECIES + 9 ;
     matrix_data[ j + 46 ] = rk05*He_2*de - rk06*He_3*de;
     matrix_data[ j + 46] *= Tge;
 
     // de by H2_2
-    colvals[j + 47] = i * NSPECIES + 1 ;
     matrix_data[ j + 47 ] = -k18*de;
 
     // de by H_1
-    colvals[j + 48] = i * NSPECIES + 2 ;
     matrix_data[ j + 48 ] = k01*de - k07*de + k08*H_m0 + k15*H_m0;
 
     // de by H_2
-    colvals[j + 49] = i * NSPECIES + 3 ;
     matrix_data[ j + 49 ] = -k02*de + k17*H_m0;
 
     // de by H_m0
-    colvals[j + 50] = i * NSPECIES + 4 ;
     matrix_data[ j + 50 ] = k08*H_1 + k14*de + k15*H_1 + k17*H_2;
 
     // de by He_1
-    colvals[j + 51] = i * NSPECIES + 5 ;
     matrix_data[ j + 51 ] = k03*de;
 
     // de by He_2
-    colvals[j + 52] = i * NSPECIES + 6 ;
     matrix_data[ j + 52 ] = -k04*de + k05*de;
 
     // de by He_3
-    colvals[j + 53] = i * NSPECIES + 7 ;
     matrix_data[ j + 53 ] = -k06*de;
 
     // de by de
-    colvals[j + 54] = i * NSPECIES + 8 ;
     matrix_data[ j + 54 ] = k01*H_1 - k02*H_2 + k03*He_1 - k04*He_2 + k05*He_2 - k06*He_3 - k07*H_1 + k14*H_m0 - k18*H2_2;
 
     // de by ge
-    colvals[j + 55] = i * NSPECIES + 9 ;
     matrix_data[ j + 55 ] = rk01*H_1*de - rk02*H_2*de + rk03*He_1*de - rk04*He_2*de + rk05*He_2*de - rk06*He_3*de - rk07*H_1*de + rk08*H_1*H_m0 + rk14*H_m0*de + rk15*H_1*H_m0 + rk17*H_2*H_m0 - rk18*H2_2*de;
     matrix_data[ j + 55] *= Tge;
 
     // ge by H2_1
-    colvals[j + 56] = i * NSPECIES + 0 ;
     matrix_data[ j + 56 ] = -H2_1*gloverabel08_gaH2*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - 0.5*H_1*h2formation_h2mcool*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0) - 2.0158800000000001*cie_cooling_cieco*mdensity - gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*h2formation_ncrd2*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2);
     matrix_data[j + 56] *= inv_mdensity;
 
     // ge by H_1
-    colvals[j + 57] = i * NSPECIES + 2 ;
     matrix_data[ j + 57 ] = -H2_1*gloverabel08_gaHI*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ceHI_ceHI*de - ciHI_ciHI*de + 0.5*h2formation_ncrd1*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) + 0.5*(-H2_1*h2formation_h2mcool + 3*pow(H_1, 2)*h2formation_h2mheat)*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0);
     matrix_data[j + 57] *= inv_mdensity;
 
     // ge by H_2
-    colvals[j + 58] = i * NSPECIES + 3 ;
     matrix_data[ j + 58 ] = -H2_1*gloverabel08_gaHp*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - brem_brem*de - de*reHII_reHII;
     matrix_data[j + 58] *= inv_mdensity;
 
     // ge by He_1
-    colvals[j + 59] = i * NSPECIES + 5 ;
     matrix_data[ j + 59 ] = -H2_1*gloverabel08_gaHe*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ciHeI_ciHeI*de;
     matrix_data[j + 59] *= inv_mdensity;
 
     // ge by He_2
-    colvals[j + 60] = i * NSPECIES + 6 ;
     matrix_data[ j + 60 ] = -brem_brem*de - ceHeII_ceHeII*de - ceHeI_ceHeI*pow(de, 2) - ciHeII_ciHeII*de - ciHeIS_ciHeIS*pow(de, 2) - de*reHeII1_reHeII1 - de*reHeII2_reHeII2;
     matrix_data[j + 60] *= inv_mdensity;
 
     // ge by He_3
-    colvals[j + 61] = i * NSPECIES + 7 ;
     matrix_data[ j + 61 ] = -4.0*brem_brem*de - de*reHeIII_reHeIII;
     matrix_data[j + 61] *= inv_mdensity;
 
     // ge by de
-    colvals[j + 62] = i * NSPECIES + 8 ;
     matrix_data[ j + 62 ] = -H2_1*gloverabel08_gael*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - H_1*ceHI_ceHI - H_1*ciHI_ciHI - H_2*reHII_reHII - He_1*ciHeI_ciHeI - He_2*ceHeII_ceHeII - 2*He_2*ceHeI_ceHeI*de - He_2*ciHeII_ciHeII - 2*He_2*ciHeIS_ciHeIS*de - He_2*reHeII1_reHeII1 - He_2*reHeII2_reHeII2 - He_3*reHeIII_reHeIII - brem_brem*(H_2 + He_2 + 4.0*He_3) - compton_comp_*pow(z + 1.0, 4)*(T - 2.73*z - 2.73);
     matrix_data[j + 62] *= inv_mdensity;
 
     // ge by ge
-    colvals[j + 63] = i * NSPECIES + 9 ;
     matrix_data[ j + 63 ] = -2.0158800000000001*H2_1*cie_cooling_cieco*cie_optical_depth_approx*mdensity - H2_1*cie_optical_depth_approx*gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) - H_1*ceHI_ceHI*cie_optical_depth_approx*de - H_1*ciHI_ciHI*cie_optical_depth_approx*de - H_2*cie_optical_depth_approx*de*reHII_reHII - He_1*ciHeI_ciHeI*cie_optical_depth_approx*de - He_2*ceHeII_ceHeII*cie_optical_depth_approx*de - He_2*ceHeI_ceHeI*cie_optical_depth_approx*pow(de, 2) - He_2*ciHeII_ciHeII*cie_optical_depth_approx*de - He_2*ciHeIS_ciHeIS*cie_optical_depth_approx*pow(de, 2) - He_2*cie_optical_depth_approx*de*reHeII1_reHeII1 - He_2*cie_optical_depth_approx*de*reHeII2_reHeII2 - He_3*cie_optical_depth_approx*de*reHeIII_reHeIII - brem_brem*cie_optical_depth_approx*de*(H_2 + He_2 + 4.0*He_3) - cie_optical_depth_approx*compton_comp_*de*pow(z + 1.0, 4)*(T - 2.73*z - 2.73) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat);
 
     // ad-hoc extra term of f_ge by ge
@@ -1541,6 +1706,71 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ j + 63] *= inv_mdensity;
     matrix_data[ j + 63] *= Tge;
 
+#ifdef RAJA_SERIAL
+    colvals[j + 0] = i * NSPECIES + 0 ;
+    colvals[j + 1] = i * NSPECIES + 1 ;
+    colvals[j + 2] = i * NSPECIES + 2 ;
+    colvals[j + 3] = i * NSPECIES + 3 ;
+    colvals[j + 4] = i * NSPECIES + 4 ;
+    colvals[j + 5] = i * NSPECIES + 8 ;
+    colvals[j + 6] = i * NSPECIES + 9 ;
+    colvals[j + 7] = i * NSPECIES + 0 ;
+    colvals[j + 8] = i * NSPECIES + 1 ;
+    colvals[j + 9] = i * NSPECIES + 2 ;
+    colvals[j + 10] = i * NSPECIES + 3 ;
+    colvals[j + 11] = i * NSPECIES + 4 ;
+    colvals[j + 12] = i * NSPECIES + 8 ;
+    colvals[j + 13] = i * NSPECIES + 9 ;
+    colvals[j + 14] = i * NSPECIES + 0 ;
+    colvals[j + 15] = i * NSPECIES + 1 ;
+    colvals[j + 16] = i * NSPECIES + 2 ;
+    colvals[j + 17] = i * NSPECIES + 3 ;
+    colvals[j + 18] = i * NSPECIES + 4 ;
+    colvals[j + 19] = i * NSPECIES + 8 ;
+    colvals[j + 20] = i * NSPECIES + 9 ;
+    colvals[j + 21] = i * NSPECIES + 0 ;
+    colvals[j + 22] = i * NSPECIES + 1 ;
+    colvals[j + 23] = i * NSPECIES + 2 ;
+    colvals[j + 24] = i * NSPECIES + 3 ;
+    colvals[j + 25] = i * NSPECIES + 4 ;
+    colvals[j + 26] = i * NSPECIES + 8 ;
+    colvals[j + 27] = i * NSPECIES + 9 ;
+    colvals[j + 28] = i * NSPECIES + 1 ;
+    colvals[j + 29] = i * NSPECIES + 2 ;
+    colvals[j + 30] = i * NSPECIES + 3 ;
+    colvals[j + 31] = i * NSPECIES + 4 ;
+    colvals[j + 32] = i * NSPECIES + 8 ;
+    colvals[j + 33] = i * NSPECIES + 9 ;
+    colvals[j + 34] = i * NSPECIES + 5 ;
+    colvals[j + 35] = i * NSPECIES + 6 ;
+    colvals[j + 36] = i * NSPECIES + 8 ;
+    colvals[j + 37] = i * NSPECIES + 9 ;
+    colvals[j + 38] = i * NSPECIES + 5 ;
+    colvals[j + 39] = i * NSPECIES + 6 ;
+    colvals[j + 40] = i * NSPECIES + 7 ;
+    colvals[j + 41] = i * NSPECIES + 8 ;
+    colvals[j + 42] = i * NSPECIES + 9 ;
+    colvals[j + 43] = i * NSPECIES + 6 ;
+    colvals[j + 44] = i * NSPECIES + 7 ;
+    colvals[j + 45] = i * NSPECIES + 8 ;
+    colvals[j + 46] = i * NSPECIES + 9 ;
+    colvals[j + 47] = i * NSPECIES + 1 ;
+    colvals[j + 48] = i * NSPECIES + 2 ;
+    colvals[j + 49] = i * NSPECIES + 3 ;
+    colvals[j + 50] = i * NSPECIES + 4 ;
+    colvals[j + 51] = i * NSPECIES + 5 ;
+    colvals[j + 52] = i * NSPECIES + 6 ;
+    colvals[j + 53] = i * NSPECIES + 7 ;
+    colvals[j + 54] = i * NSPECIES + 8 ;
+    colvals[j + 55] = i * NSPECIES + 9 ;
+    colvals[j + 56] = i * NSPECIES + 0 ;
+    colvals[j + 57] = i * NSPECIES + 2 ;
+    colvals[j + 58] = i * NSPECIES + 3 ;
+    colvals[j + 59] = i * NSPECIES + 5 ;
+    colvals[j + 60] = i * NSPECIES + 6 ;
+    colvals[j + 61] = i * NSPECIES + 7 ;
+    colvals[j + 62] = i * NSPECIES + 8 ;
+    colvals[j + 63] = i * NSPECIES + 9 ;
     rowptrs[ i * NSPECIES +  0] = i * NSPARSE + 0;
     rowptrs[ i * NSPECIES +  1] = i * NSPARSE + 7;
     rowptrs[ i * NSPECIES +  2] = i * NSPARSE + 14;
@@ -1551,6 +1781,7 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     rowptrs[ i * NSPECIES +  7] = i * NSPARSE + 43;
     rowptrs[ i * NSPECIES +  8] = i * NSPARSE + 47;
     rowptrs[ i * NSPECIES +  9] = i * NSPARSE + 56;
+#endif
 
     j = i * NSPECIES;
     matrix_data[ i * NSPARSE + 0]  *=  (inv_scale[ j + 0 ]*scale[ j + 0 ]);
@@ -1618,17 +1849,18 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ i * NSPARSE + 62]  *= (inv_scale[ j + 9 ]*scale[ j + 8 ]);
     matrix_data[ i * NSPARSE + 63]  *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
 
-  //});
-  }
+  });
 
+#ifdef RAJA_SERIAL
   rowptrs[ data->nstrip * NSPECIES ] = data->nstrip * NSPARSE;
-
-  // ensure that problem data structures are synchronized between host/device memory
-#ifdef RAJA_CUDA
-  cudaDeviceSynchronize();
-#elif RAJA_HIP
-#error RAJA HIP chemistry interface is currently unimplemented
 #endif
+
+//  // ensure that problem data structures are synchronized between host/device memory
+//#ifdef RAJA_CUDA
+//  cudaDeviceSynchronize();
+//#elif RAJA_HIP
+//#error RAJA HIP chemistry interface is currently unimplemented
+//#endif
 
   return 0;
 }

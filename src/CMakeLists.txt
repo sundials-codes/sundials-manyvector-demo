@@ -102,11 +102,18 @@ foreach(nvar ${_nvar_values})
 
 endforeach()
 
-# set the filename for chemistry routines depending on RAJA usage
-if (ENABLE_RAJA)
+# set the filename for chemistry routines and linear solvers depending on the
+# RAJA backend selected
+if(ENABLE_RAJA)
   set(_chem_solver raja_primordial_network.cpp)
+  if(RAJA_BACKEND MATCHES "CUDA")
+    set(_linear_solver SUNDIALS::sunmatrixcusparse SUNDIALS::sunlinsolcusolversp)
+  else()
+    set(_linear_solver SUNDIALS::sunlinsolklu)
+  endif()
 else()
   set(_chem_solver dengo_primordial_network.cpp)
+  set(_linear_solver SUNDIALS::sunlinsolklu)
 endif()
 
 
@@ -325,7 +332,7 @@ sundemo_add_executable(primordial_ode.exe
     ${_chem_solver}
   LINK_LIBRARIES
     shared_obj_nvar_5
-    SUNDIALS::sunlinsolklu
+    ${_linear_solver}
   COMPILE_DEFINITIONS
     CVKLU
     MAX_NCELLS=1000000
@@ -337,7 +344,7 @@ sundemo_add_executable(primordial_ode_CVODE.exe
     ${_chem_solver}
   LINK_LIBRARIES
     shared_obj_nvar_5
-    SUNDIALS::sunlinsolklu
+    ${_linear_solver}
   COMPILE_DEFINITIONS
     CVKLU
     MAX_NCELLS=1000000
@@ -352,7 +359,7 @@ sundemo_add_executable(primordial_static_imex.exe
     ${_chem_solver}
   LINK_LIBRARIES
     shared_obj_nvar_15
-    SUNDIALS::sunlinsolklu
+    ${_linear_solver}
   COMPILE_DEFINITIONS
     CVKLU
     MAX_NCELLS=1000000
@@ -366,7 +373,7 @@ sundemo_add_executable(primordial_static_mr.exe
     ${_chem_solver}
   LINK_LIBRARIES
     shared_obj_nvar_15
-    SUNDIALS::sunlinsolklu
+    ${_linear_solver}
   COMPILE_DEFINITIONS
     CVKLU
     MAX_NCELLS=1000000
@@ -381,7 +388,7 @@ sundemo_add_executable(primordial_blast_imex.exe
     ${_chem_solver}
   LINK_LIBRARIES
     shared_obj_nvar_15
-    SUNDIALS::sunlinsolklu
+    ${_linear_solver}
   COMPILE_DEFINITIONS
     CVKLU
     MAX_NCELLS=1000000
@@ -395,7 +402,7 @@ sundemo_add_executable(primordial_blast_mr.exe
     ${_chem_solver}
   LINK_LIBRARIES
     shared_obj_nvar_15
-    SUNDIALS::sunlinsolklu
+    ${_linear_solver}
   COMPILE_DEFINITIONS
     CVKLU
     MAX_NCELLS=1000000
