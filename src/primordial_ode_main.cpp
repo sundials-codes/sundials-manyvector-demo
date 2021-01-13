@@ -752,18 +752,22 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up and return with successful completion
-  free(network_data);          // Free Dengo data structure
+#ifdef USERAJA
+  cvklu_free_data(network_data);  // Free Dengo data structure
+#else
+  free(network_data);
+#endif
   free(clump_data);
-  N_VDestroy(w);               // Free solution and absolute tolerance vectors
+  N_VDestroy(w);                  // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
-  SUNLinSolFree(LS);           // Free matrix and linear solver
+  SUNLinSolFree(LS);              // Free matrix and linear solver
   SUNMatDestroy(A);
 #ifdef USE_CVODE
-  CVodeFree(&arkode_mem);      // Free integrator memory
+  CVodeFree(&arkode_mem);         // Free integrator memory
 #else
-  ARKStepFree(&arkode_mem);    // Free integrator memory
+  ARKStepFree(&arkode_mem);       // Free integrator memory
 #endif
-  MPI_Finalize();              // Finalize MPI
+  MPI_Finalize();                 // Finalize MPI
   return 0;
 }
 

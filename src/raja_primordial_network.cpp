@@ -20,7 +20,14 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
   // Description: Initialize a data object that stores the reaction/ cooling rate data
   //-----------------------------------------------------
 
-  cvklu_data *data = (cvklu_data *) malloc(sizeof(cvklu_data));
+  cvklu_data *data;
+#ifdef RAJA_SERIAL
+  data = (cvklu_data *) malloc(sizeof(cvklu_data));
+#elif RAJA_CUDA
+  cudaMallocManaged((void**)&(data), sizeof(cvklu_data));
+#else
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
 
   // point the module to look for cvklu_tables.h5
   data->dengo_data_file = FileLocation;
@@ -252,8 +259,9 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
   data->current_z = 0.0;
 
   // initialize temperature so it wont crash
+  double *Ts_dev = data->Ts;
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] RAJA_DEVICE (long int i) {
-    data->Ts[i] = 1000.0;
+    Ts_dev[i] = 1000.0;
   });
 
   // Temperature-related pieces
@@ -267,7 +275,14 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
   cvklu_read_cooling_tables(data);
   cvklu_read_gamma(data);
 
-  data->dengo_data_file = NULL;
+  //  data->dengo_data_file = NULL;
+
+  // ensure that problem structures are synchronized between host/device device memory
+#ifdef RAJA_CUDA
+  cudaDeviceSynchronize();
+#elif RAJA_HIP
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
 
   return data;
 
@@ -388,6 +403,7 @@ void cvklu_free_data(void *data)
   free(rxdata->dgammaH2_2_dT);
   free(rxdata->cie_optical_depth_approx);
   free(rxdata->h2_optical_depth_approx);
+  free(rxdata);
 #elif RAJA_CUDA
   cudaFree(rxdata->scale);
   cudaFree(rxdata->inv_scale);
@@ -493,10 +509,10 @@ void cvklu_free_data(void *data)
   cudaFree(rxdata->dgammaH2_2_dT);
   cudaFree(rxdata->cie_optical_depth_approx);
   cudaFree(rxdata->h2_optical_depth_approx);
+  cudaFree(rxdata);
 #else
 #error RAJA HIP chemistry interface is currently unimplemented
 #endif
-  free(rxdata);
 
 }
 
@@ -505,7 +521,7 @@ void cvklu_read_rate_tables(cvklu_data *data)
 {
   const char * filedir;
   if (data->dengo_data_file != NULL){
-    filedir =  data->dengo_data_file;
+    filedir = data->dengo_data_file;
   } else{
     filedir = "cvklu_tables.h5";
   }
@@ -536,7 +552,7 @@ void cvklu_read_rate_tables(cvklu_data *data)
   H5LTread_dataset_double(file_id, "/k22", data->r_k22);
   H5Fclose(file_id);
 
-  // ensure that rate tables are synchronized to device memory
+  // ensure that rate tables are synchronized between host/device device memory
 #ifdef RAJA_CUDA
   cudaDeviceSynchronize();
 #elif RAJA_HIP
@@ -584,7 +600,7 @@ void cvklu_read_cooling_tables(cvklu_data *data)
   H5LTread_dataset_double(file_id, "/reHII_reHII",         data->c_reHII_reHII);
   H5Fclose(file_id);
 
-  // ensure that cooling tables are synchronized to device memory
+  // ensure that cooling tables are synchronized between host/device memory
 #ifdef RAJA_CUDA
   cudaDeviceSynchronize();
 #elif RAJA_HIP
@@ -611,7 +627,7 @@ void cvklu_read_gamma(cvklu_data *data)
   H5LTread_dataset_double(file_id, "/dgammaH2_2_dT", data->g_dgammaH2_2_dT );
   H5Fclose(file_id);
 
-  // ensure that gamma tables are synchronized to device memory
+  // ensure that gamma tables are synchronized between host/device memory
 #ifdef RAJA_CUDA
   cudaDeviceSynchronize();
 #elif RAJA_HIP
@@ -1136,8 +1152,16 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   realtype *matrix_data = SUNSparseMatrix_Data(J);
   SUNMatZero(J);
 
+  // ensure that problem data structures are synchronized between host/device memory
+#ifdef RAJA_CUDA
+  cudaDeviceSynchronize();
+#elif RAJA_HIP
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
+
   // Loop over data, filling in sparse Jacobian
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (long int i) {
+  //RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (long int i) {
+  for (long int i=0; i<data->nstrip; i++) {
 
     // Set up some temporaries
     const double T   = data->Ts[i];
@@ -1594,9 +1618,18 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ i * NSPARSE + 62]  *= (inv_scale[ j + 9 ]*scale[ j + 8 ]);
     matrix_data[ i * NSPARSE + 63]  *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
 
-  });
+  //});
+  }
 
   rowptrs[ data->nstrip * NSPECIES ] = data->nstrip * NSPARSE;
+
+  // ensure that problem data structures are synchronized between host/device memory
+#ifdef RAJA_CUDA
+  cudaDeviceSynchronize();
+#elif RAJA_HIP
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
+
   return 0;
 }
 
