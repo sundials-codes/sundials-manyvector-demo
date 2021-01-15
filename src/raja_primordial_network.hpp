@@ -42,39 +42,48 @@
 
 // desired execution policy for all RAJA loops
 #ifdef RAJA_SERIAL
-#define EXECPOLICY    RAJA::loop_exec
-#define REDUCEPOLICY  RAJA::loop_reduce
-#endif
-#ifdef RAJA_CUDA
-#define EXECPOLICY    RAJA::cuda_exec<256>
-#define REDUCEPOLICY  RAJA::cuda_reduce
-#endif
-#ifdef RAJA_HIP
+using EXECPOLICY = RAJA::loop_exec;
+using REDUCEPOLICY = RAJA::loop_reduce;
+using XYZ_KERNEL_POL =
+  RAJA::KernelPolicy< RAJA::statement::For<2, EXECPOLICY,
+                        RAJA::statement::For<1, EXECPOLICY,
+                          RAJA::statement::For<0, EXECPOLICY,
+                            RAJA::statement::Lambda<0>
+                          >
+                        >
+                      >
+                    >;
+#elif RAJA_CUDA
+using EXECPOLICY = RAJA::cuda_exec<256>;
+using REDUCEPOLICY = RAJA::cuda_reduce;
+using XYZ_KERNEL_POL =
+  RAJA::KernelPolicy< RAJA::statement::CudaKernel<
+                          RAJA::statement::For<2, RAJA::cuda_thread_x_loop,
+                            RAJA::statement::For<1, RAJA::cuda_thread_y_loop,
+                              RAJA::statement::For<0, RAJA::cuda_thread_z_loop,
+                                RAJA::statement::Lambda<0>
+                              >
+                            >
+                          >
+                        >
+                      >;
+#else // RAJA_HIP
 #define EXECPOLICY    RAJA::hip_exec<256>
 #define REDUCEPOLICY  RAJA::hip_reduce
+using XYZ_KERNEL_POL =
+    RAJA::KernelPolicy< RAJA::HipKernel<
+                          RAJA::statement::For<2, RAJA::hip_thread_x_loop,
+                            RAJA::statement::For<1, RAJA::hip_thread_y_loop,
+                              RAJA::statement::For<0, RAJA::hip_thread_z_loop,
+                                RAJA::statement::Lambda<0>
+                              >
+                            >
+                          >
+                        >
+                      >;
 #endif
 
-using EXECPOLICY3D = RAJA::KernelPolicy<
-  RAJA::statement::For<2, EXECPOLICY,       // k
-    RAJA::statement::For<1, EXECPOLICY,     // j
-      RAJA::statement::For<0, EXECPOLICY,   // i
-        RAJA::statement::Lambda<0>
-      >
-    >
-  >
->;
 
-using EXECPOLICY4D = RAJA::KernelPolicy<
-  RAJA::statement::For<3, EXECPOLICY,         // l
-    RAJA::statement::For<2, EXECPOLICY,       // k
-      RAJA::statement::For<1, EXECPOLICY,     // j
-        RAJA::statement::For<0, EXECPOLICY,   // i
-          RAJA::statement::Lambda<0>
-        >
-      >
-    >
-  >
->;
 
 typedef struct cvklu_data {
   /* All of the network bins will be the same width */
