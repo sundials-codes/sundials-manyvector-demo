@@ -614,7 +614,7 @@ void cvklu_read_gamma(cvklu_data *data)
 
 
 
-RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, long int i)
+RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *y_arr, long int i)
 {
 
   // Define some constants
@@ -625,16 +625,16 @@ RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, lon
   //const int MAX_T_ITERATION = 100;
 
   // Calculate total density
-  double H2_1 = input[0];
-  double H2_2 = input[1];
-  double H_1 = input[2];
-  double H_2 = input[3];
-  double H_m0 = input[4];
-  double He_1 = input[5];
-  double He_2 = input[6];
-  double He_3 = input[7];
-  double de = input[8];
-  double ge = input[9];
+  double H2_1 = y_arr[0];
+  double H2_2 = y_arr[1];
+  double H_1 = y_arr[2];
+  double H_2 = y_arr[3];
+  double H_m0 = y_arr[4];
+  double He_1 = y_arr[5];
+  double He_2 = y_arr[6];
+  double He_3 = y_arr[7];
+  double de = y_arr[8];
+  double ge = y_arr[9];
   double density = 2.0*H2_1 + 2.0*H2_2 + 1.0079400000000001*H_1
     + 1.0079400000000001*H_2 + 1.0079400000000001*H_m0 + 4.0026020000000004*He_1
     + 4.0026020000000004*He_2 + 4.0026020000000004*He_3;
@@ -652,7 +652,34 @@ RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, lon
   for (int j=0; j<10; j++){
 
     T = data->Ts[i];
-    cvklu_interpolate_gamma(data, i);
+
+    // interpolate gamma
+    int bin_id;
+    double lb, t1, t2, Tdef;
+
+    lb = log(data->bounds[0]);
+    bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
+    if (bin_id <= 0) {
+      bin_id = 0;
+    } else if (bin_id >= data->nbins) {
+      bin_id = data->nbins - 1;
+    }
+    t1 = (lb + (bin_id    ) * data->dbin);
+    t2 = (lb + (bin_id + 1) * data->dbin);
+    Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+
+    data->gammaH2_2[i] = data->g_gammaH2_2[bin_id] +
+      Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
+
+    data->dgammaH2_2_dT[i] = data->g_dgammaH2_2_dT[bin_id] +
+      Tdef * (data->g_dgammaH2_2_dT[bin_id+1] - data->g_dgammaH2_2_dT[bin_id]);
+
+    data->gammaH2_1[i] = data->g_gammaH2_1[bin_id] +
+      Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+
+    data->dgammaH2_1_dT[i] = data->g_dgammaH2_1_dT[bin_id] +
+      Tdef * (data->g_dgammaH2_1_dT[bin_id+1] - data->g_dgammaH2_1_dT[bin_id]);
+    ////
 
     double gammaH2_1 = data->gammaH2_1[i];
     double dgammaH2_1_dT = data->dgammaH2_1_dT[i];
@@ -698,247 +725,247 @@ RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data *data, double *input, lon
 
 
 
-RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data *data, long int i)
-{
-  int bin_id;
-  double lb, t1, t2;
-  double Tdef, dT, invTs, Tfactor;
+// RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data *data, long int i)
+// {
+//   int bin_id;
+//   double lb, t1, t2;
+//   double Tdef, dT, invTs, Tfactor;
 
-  lb = log(data->bounds[0]);
+//   lb = log(data->bounds[0]);
 
-  bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
-  if (bin_id <= 0) {
-    bin_id = 0;
-  } else if (bin_id >= data->nbins) {
-    bin_id = data->nbins - 1;
-  }
-  t1 = (lb + (bin_id    ) * data->dbin);
-  t2 = (lb + (bin_id + 1) * data->dbin);
-  Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
-  dT = (t2 - t1);
-  invTs = 1.0 / data->Ts[i];
-  Tfactor = invTs/dT;
+//   bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
+//   if (bin_id <= 0) {
+//     bin_id = 0;
+//   } else if (bin_id >= data->nbins) {
+//     bin_id = data->nbins - 1;
+//   }
+//   t1 = (lb + (bin_id    ) * data->dbin);
+//   t2 = (lb + (bin_id + 1) * data->dbin);
+//   Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+//   dT = (t2 - t1);
+//   invTs = 1.0 / data->Ts[i];
+//   Tfactor = invTs/dT;
 
-  data->rs_k01[i] = data->r_k01[bin_id] +
-    Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
-  data->drs_k01[i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id])*Tfactor;
+//   data->rs_k01[i] = data->r_k01[bin_id] +
+//     Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
+//   data->drs_k01[i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id])*Tfactor;
 
-  data->rs_k02[i] = data->r_k02[bin_id] +
-    Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
-  data->drs_k02[i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id])*Tfactor;
+//   data->rs_k02[i] = data->r_k02[bin_id] +
+//     Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
+//   data->drs_k02[i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id])*Tfactor;
 
-  data->rs_k03[i] = data->r_k03[bin_id] +
-    Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
-  data->drs_k03[i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id])*Tfactor;
+//   data->rs_k03[i] = data->r_k03[bin_id] +
+//     Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
+//   data->drs_k03[i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id])*Tfactor;
 
-  data->rs_k04[i] = data->r_k04[bin_id] +
-    Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
-  data->drs_k04[i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id])*Tfactor;
+//   data->rs_k04[i] = data->r_k04[bin_id] +
+//     Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
+//   data->drs_k04[i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id])*Tfactor;
 
-  data->rs_k05[i] = data->r_k05[bin_id] +
-    Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
-  data->drs_k05[i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id])*Tfactor;
+//   data->rs_k05[i] = data->r_k05[bin_id] +
+//     Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
+//   data->drs_k05[i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id])*Tfactor;
 
-  data->rs_k06[i] = data->r_k06[bin_id] +
-    Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
-  data->drs_k06[i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id])*Tfactor;
+//   data->rs_k06[i] = data->r_k06[bin_id] +
+//     Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
+//   data->drs_k06[i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id])*Tfactor;
 
-  data->rs_k07[i] = data->r_k07[bin_id] +
-    Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
-  data->drs_k07[i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id])*Tfactor;
+//   data->rs_k07[i] = data->r_k07[bin_id] +
+//     Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
+//   data->drs_k07[i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id])*Tfactor;
 
-  data->rs_k08[i] = data->r_k08[bin_id] +
-    Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
-  data->drs_k08[i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id])*Tfactor;
+//   data->rs_k08[i] = data->r_k08[bin_id] +
+//     Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
+//   data->drs_k08[i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id])*Tfactor;
 
-  data->rs_k09[i] = data->r_k09[bin_id] +
-    Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
-  data->drs_k09[i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id])*Tfactor;
+//   data->rs_k09[i] = data->r_k09[bin_id] +
+//     Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
+//   data->drs_k09[i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id])*Tfactor;
 
-  data->rs_k10[i] = data->r_k10[bin_id] +
-    Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
-  data->drs_k10[i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id])*Tfactor;
+//   data->rs_k10[i] = data->r_k10[bin_id] +
+//     Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
+//   data->drs_k10[i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id])*Tfactor;
 
-  data->rs_k11[i] = data->r_k11[bin_id] +
-    Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
-  data->drs_k11[i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id])*Tfactor;
+//   data->rs_k11[i] = data->r_k11[bin_id] +
+//     Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
+//   data->drs_k11[i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id])*Tfactor;
 
-  data->rs_k12[i] = data->r_k12[bin_id] +
-    Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
-  data->drs_k12[i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id])*Tfactor;
+//   data->rs_k12[i] = data->r_k12[bin_id] +
+//     Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
+//   data->drs_k12[i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id])*Tfactor;
 
-  data->rs_k13[i] = data->r_k13[bin_id] +
-    Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
-  data->drs_k13[i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id])*Tfactor;
+//   data->rs_k13[i] = data->r_k13[bin_id] +
+//     Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
+//   data->drs_k13[i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id])*Tfactor;
 
-  data->rs_k14[i] = data->r_k14[bin_id] +
-    Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
-  data->drs_k14[i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id])*Tfactor;
+//   data->rs_k14[i] = data->r_k14[bin_id] +
+//     Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
+//   data->drs_k14[i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id])*Tfactor;
 
-  data->rs_k15[i] = data->r_k15[bin_id] +
-    Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
-  data->drs_k15[i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id])*Tfactor;
+//   data->rs_k15[i] = data->r_k15[bin_id] +
+//     Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
+//   data->drs_k15[i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id])*Tfactor;
 
-  data->rs_k16[i] = data->r_k16[bin_id] +
-    Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
-  data->drs_k16[i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id])*Tfactor;
+//   data->rs_k16[i] = data->r_k16[bin_id] +
+//     Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
+//   data->drs_k16[i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id])*Tfactor;
 
-  data->rs_k17[i] = data->r_k17[bin_id] +
-    Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
-  data->drs_k17[i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id])*Tfactor;
+//   data->rs_k17[i] = data->r_k17[bin_id] +
+//     Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
+//   data->drs_k17[i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id])*Tfactor;
 
-  data->rs_k18[i] = data->r_k18[bin_id] +
-    Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
-  data->drs_k18[i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id])*Tfactor;
+//   data->rs_k18[i] = data->r_k18[bin_id] +
+//     Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
+//   data->drs_k18[i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id])*Tfactor;
 
-  data->rs_k19[i] = data->r_k19[bin_id] +
-    Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
-  data->drs_k19[i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id])*Tfactor;
+//   data->rs_k19[i] = data->r_k19[bin_id] +
+//     Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
+//   data->drs_k19[i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id])*Tfactor;
 
-  data->rs_k21[i] = data->r_k21[bin_id] +
-    Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
-  data->drs_k21[i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id])*Tfactor;
+//   data->rs_k21[i] = data->r_k21[bin_id] +
+//     Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
+//   data->drs_k21[i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id])*Tfactor;
 
-  data->rs_k22[i] = data->r_k22[bin_id] +
-    Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
-  data->drs_k22[i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id])*Tfactor;
+//   data->rs_k22[i] = data->r_k22[bin_id] +
+//     Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
+//   data->drs_k22[i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id])*Tfactor;
 
-  data->cs_brem_brem[i] = data->c_brem_brem[bin_id] +
-    Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
-  data->dcs_brem_brem[i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id])*Tfactor;
+//   data->cs_brem_brem[i] = data->c_brem_brem[bin_id] +
+//     Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
+//   data->dcs_brem_brem[i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id])*Tfactor;
 
-  data->cs_ceHeI_ceHeI[i] = data->c_ceHeI_ceHeI[bin_id] +
-    Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
-  data->dcs_ceHeI_ceHeI[i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id])*Tfactor;
+//   data->cs_ceHeI_ceHeI[i] = data->c_ceHeI_ceHeI[bin_id] +
+//     Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
+//   data->dcs_ceHeI_ceHeI[i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id])*Tfactor;
 
-  data->cs_ceHeII_ceHeII[i] = data->c_ceHeII_ceHeII[bin_id] +
-    Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
-  data->dcs_ceHeII_ceHeII[i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id])*Tfactor;
+//   data->cs_ceHeII_ceHeII[i] = data->c_ceHeII_ceHeII[bin_id] +
+//     Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
+//   data->dcs_ceHeII_ceHeII[i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id])*Tfactor;
 
-  data->cs_ceHI_ceHI[i] = data->c_ceHI_ceHI[bin_id] +
-    Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
-  data->dcs_ceHI_ceHI[i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id])*Tfactor;
+//   data->cs_ceHI_ceHI[i] = data->c_ceHI_ceHI[bin_id] +
+//     Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
+//   data->dcs_ceHI_ceHI[i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id])*Tfactor;
 
-  data->cs_cie_cooling_cieco[i] = data->c_cie_cooling_cieco[bin_id] +
-    Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
-  data->dcs_cie_cooling_cieco[i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id])*Tfactor;
+//   data->cs_cie_cooling_cieco[i] = data->c_cie_cooling_cieco[bin_id] +
+//     Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
+//   data->dcs_cie_cooling_cieco[i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id])*Tfactor;
 
-  data->cs_ciHeI_ciHeI[i] = data->c_ciHeI_ciHeI[bin_id] +
-    Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
-  data->dcs_ciHeI_ciHeI[i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id])*Tfactor;
+//   data->cs_ciHeI_ciHeI[i] = data->c_ciHeI_ciHeI[bin_id] +
+//     Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
+//   data->dcs_ciHeI_ciHeI[i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id])*Tfactor;
 
-  data->cs_ciHeII_ciHeII[i] = data->c_ciHeII_ciHeII[bin_id] +
-    Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
-  data->dcs_ciHeII_ciHeII[i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id])*Tfactor;
+//   data->cs_ciHeII_ciHeII[i] = data->c_ciHeII_ciHeII[bin_id] +
+//     Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
+//   data->dcs_ciHeII_ciHeII[i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id])*Tfactor;
 
-  data->cs_ciHeIS_ciHeIS[i] = data->c_ciHeIS_ciHeIS[bin_id] +
-    Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
-  data->dcs_ciHeIS_ciHeIS[i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
+//   data->cs_ciHeIS_ciHeIS[i] = data->c_ciHeIS_ciHeIS[bin_id] +
+//     Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
+//   data->dcs_ciHeIS_ciHeIS[i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
 
-  data->cs_ciHI_ciHI[i] = data->c_ciHI_ciHI[bin_id] +
-    Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
-  data->dcs_ciHI_ciHI[i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id])*Tfactor;
+//   data->cs_ciHI_ciHI[i] = data->c_ciHI_ciHI[bin_id] +
+//     Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
+//   data->dcs_ciHI_ciHI[i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id])*Tfactor;
 
-  data->cs_compton_comp_[i] = data->c_compton_comp_[bin_id] +
-    Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
-  data->dcs_compton_comp_[i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id])*Tfactor;
+//   data->cs_compton_comp_[i] = data->c_compton_comp_[bin_id] +
+//     Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
+//   data->dcs_compton_comp_[i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id])*Tfactor;
 
-  data->cs_gloverabel08_gael[i] = data->c_gloverabel08_gael[bin_id] +
-    Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
-  data->dcs_gloverabel08_gael[i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id])*Tfactor;
+//   data->cs_gloverabel08_gael[i] = data->c_gloverabel08_gael[bin_id] +
+//     Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
+//   data->dcs_gloverabel08_gael[i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id])*Tfactor;
 
-  data->cs_gloverabel08_gaH2[i] = data->c_gloverabel08_gaH2[bin_id] +
-    Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
-  data->dcs_gloverabel08_gaH2[i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id])*Tfactor;
+//   data->cs_gloverabel08_gaH2[i] = data->c_gloverabel08_gaH2[bin_id] +
+//     Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
+//   data->dcs_gloverabel08_gaH2[i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id])*Tfactor;
 
-  data->cs_gloverabel08_gaHe[i] = data->c_gloverabel08_gaHe[bin_id] +
-    Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
-  data->dcs_gloverabel08_gaHe[i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id])*Tfactor;
+//   data->cs_gloverabel08_gaHe[i] = data->c_gloverabel08_gaHe[bin_id] +
+//     Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
+//   data->dcs_gloverabel08_gaHe[i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id])*Tfactor;
 
-  data->cs_gloverabel08_gaHI[i] = data->c_gloverabel08_gaHI[bin_id] +
-    Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
-  data->dcs_gloverabel08_gaHI[i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id])*Tfactor;
+//   data->cs_gloverabel08_gaHI[i] = data->c_gloverabel08_gaHI[bin_id] +
+//     Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
+//   data->dcs_gloverabel08_gaHI[i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id])*Tfactor;
 
-  data->cs_gloverabel08_gaHp[i] = data->c_gloverabel08_gaHp[bin_id] +
-    Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
-  data->dcs_gloverabel08_gaHp[i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id])*Tfactor;
+//   data->cs_gloverabel08_gaHp[i] = data->c_gloverabel08_gaHp[bin_id] +
+//     Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
+//   data->dcs_gloverabel08_gaHp[i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id])*Tfactor;
 
-  data->cs_gloverabel08_h2lte[i] = data->c_gloverabel08_h2lte[bin_id] +
-    Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
-  data->dcs_gloverabel08_h2lte[i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id])*Tfactor;
+//   data->cs_gloverabel08_h2lte[i] = data->c_gloverabel08_h2lte[bin_id] +
+//     Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
+//   data->dcs_gloverabel08_h2lte[i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id])*Tfactor;
 
-  data->cs_h2formation_h2mcool[i] = data->c_h2formation_h2mcool[bin_id] +
-    Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
-  data->dcs_h2formation_h2mcool[i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id])*Tfactor;
+//   data->cs_h2formation_h2mcool[i] = data->c_h2formation_h2mcool[bin_id] +
+//     Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
+//   data->dcs_h2formation_h2mcool[i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id])*Tfactor;
 
-  data->cs_h2formation_h2mheat[i] = data->c_h2formation_h2mheat[bin_id] +
-    Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
-  data->dcs_h2formation_h2mheat[i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id])*Tfactor;
+//   data->cs_h2formation_h2mheat[i] = data->c_h2formation_h2mheat[bin_id] +
+//     Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
+//   data->dcs_h2formation_h2mheat[i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id])*Tfactor;
 
-  data->cs_h2formation_ncrd1[i] = data->c_h2formation_ncrd1[bin_id] +
-    Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
-  data->dcs_h2formation_ncrd1[i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id])*Tfactor;
+//   data->cs_h2formation_ncrd1[i] = data->c_h2formation_ncrd1[bin_id] +
+//     Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
+//   data->dcs_h2formation_ncrd1[i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id])*Tfactor;
 
-  data->cs_h2formation_ncrd2[i] = data->c_h2formation_ncrd2[bin_id] +
-    Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
-  data->dcs_h2formation_ncrd2[i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id])*Tfactor;
+//   data->cs_h2formation_ncrd2[i] = data->c_h2formation_ncrd2[bin_id] +
+//     Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
+//   data->dcs_h2formation_ncrd2[i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id])*Tfactor;
 
-  data->cs_h2formation_ncrn[i] = data->c_h2formation_ncrn[bin_id] +
-    Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
-  data->dcs_h2formation_ncrn[i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id])*Tfactor;
+//   data->cs_h2formation_ncrn[i] = data->c_h2formation_ncrn[bin_id] +
+//     Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
+//   data->dcs_h2formation_ncrn[i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id])*Tfactor;
 
-  data->cs_reHeII1_reHeII1[i] = data->c_reHeII1_reHeII1[bin_id] +
-    Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
-  data->dcs_reHeII1_reHeII1[i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id])*Tfactor;
+//   data->cs_reHeII1_reHeII1[i] = data->c_reHeII1_reHeII1[bin_id] +
+//     Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
+//   data->dcs_reHeII1_reHeII1[i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id])*Tfactor;
 
-  data->cs_reHeII2_reHeII2[i] = data->c_reHeII2_reHeII2[bin_id] +
-    Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
-  data->dcs_reHeII2_reHeII2[i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id])*Tfactor;
+//   data->cs_reHeII2_reHeII2[i] = data->c_reHeII2_reHeII2[bin_id] +
+//     Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
+//   data->dcs_reHeII2_reHeII2[i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id])*Tfactor;
 
-  data->cs_reHeIII_reHeIII[i] = data->c_reHeIII_reHeIII[bin_id] +
-    Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
-  data->dcs_reHeIII_reHeIII[i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id])*Tfactor;
+//   data->cs_reHeIII_reHeIII[i] = data->c_reHeIII_reHeIII[bin_id] +
+//     Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
+//   data->dcs_reHeIII_reHeIII[i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id])*Tfactor;
 
-  data->cs_reHII_reHII[i] = data->c_reHII_reHII[bin_id] +
-    Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
-  data->dcs_reHII_reHII[i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id])*Tfactor;
-
-
-}
+//   data->cs_reHII_reHII[i] = data->c_reHII_reHII[bin_id] +
+//     Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
+//   data->dcs_reHII_reHII[i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id])*Tfactor;
 
 
-
-RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data *data, long int i)
-{
-
-  int bin_id;
-  double lb, t1, t2, Tdef;
-
-  lb = log(data->bounds[0]);
-  bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
-  if (bin_id <= 0) {
-    bin_id = 0;
-  } else if (bin_id >= data->nbins) {
-    bin_id = data->nbins - 1;
-  }
-  t1 = (lb + (bin_id    ) * data->dbin);
-  t2 = (lb + (bin_id + 1) * data->dbin);
-  Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+// }
 
 
-  data->gammaH2_2[i] = data->g_gammaH2_2[bin_id] +
-    Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
 
-  data->dgammaH2_2_dT[i] = data->g_dgammaH2_2_dT[bin_id] +
-    Tdef * (data->g_dgammaH2_2_dT[bin_id+1] - data->g_dgammaH2_2_dT[bin_id]);
+// RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data *data, long int i)
+// {
 
-  data->gammaH2_1[i] = data->g_gammaH2_1[bin_id] +
-    Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+//   int bin_id;
+//   double lb, t1, t2, Tdef;
 
-  data->dgammaH2_1_dT[i] = data->g_dgammaH2_1_dT[bin_id] +
-    Tdef * (data->g_dgammaH2_1_dT[bin_id+1] - data->g_dgammaH2_1_dT[bin_id]);
+//   lb = log(data->bounds[0]);
+//   bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
+//   if (bin_id <= 0) {
+//     bin_id = 0;
+//   } else if (bin_id >= data->nbins) {
+//     bin_id = data->nbins - 1;
+//   }
+//   t1 = (lb + (bin_id    ) * data->dbin);
+//   t2 = (lb + (bin_id + 1) * data->dbin);
+//   Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
 
-}
+
+//   data->gammaH2_2[i] = data->g_gammaH2_2[bin_id] +
+//     Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
+
+//   data->dgammaH2_2_dT[i] = data->g_dgammaH2_2_dT[bin_id] +
+//     Tdef * (data->g_dgammaH2_2_dT[bin_id+1] - data->g_dgammaH2_2_dT[bin_id]);
+
+//   data->gammaH2_1[i] = data->g_gammaH2_1[bin_id] +
+//     Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+
+//   data->dgammaH2_1_dT[i] = data->g_dgammaH2_1_dT[bin_id] +
+//     Tdef * (data->g_dgammaH2_1_dT[bin_id+1] - data->g_dgammaH2_1_dT[bin_id]);
+
+// }
 
 
 
@@ -974,7 +1001,210 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
     // }
 
     // Calculate reaction rates in this cell
-    cvklu_interpolate_rates(data, i);
+    //cvklu_interpolate_rates(data, i);
+    int bin_id;
+    double lb, t1, t2;
+    double Tdef, dT, invTs, Tfactor;
+
+    lb = log(data->bounds[0]);
+
+    bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
+    if (bin_id <= 0) {
+      bin_id = 0;
+    } else if (bin_id >= data->nbins) {
+      bin_id = data->nbins - 1;
+    }
+    t1 = (lb + (bin_id    ) * data->dbin);
+    t2 = (lb + (bin_id + 1) * data->dbin);
+    Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+    dT = (t2 - t1);
+    invTs = 1.0 / data->Ts[i];
+    Tfactor = invTs/dT;
+
+    data->rs_k01[i] = data->r_k01[bin_id] +
+      Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
+    data->drs_k01[i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id])*Tfactor;
+
+    data->rs_k02[i] = data->r_k02[bin_id] +
+      Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
+    data->drs_k02[i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id])*Tfactor;
+
+    data->rs_k03[i] = data->r_k03[bin_id] +
+      Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
+    data->drs_k03[i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id])*Tfactor;
+
+    data->rs_k04[i] = data->r_k04[bin_id] +
+      Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
+    data->drs_k04[i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id])*Tfactor;
+
+    data->rs_k05[i] = data->r_k05[bin_id] +
+      Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
+    data->drs_k05[i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id])*Tfactor;
+
+    data->rs_k06[i] = data->r_k06[bin_id] +
+      Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
+    data->drs_k06[i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id])*Tfactor;
+
+    data->rs_k07[i] = data->r_k07[bin_id] +
+      Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
+    data->drs_k07[i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id])*Tfactor;
+
+    data->rs_k08[i] = data->r_k08[bin_id] +
+      Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
+    data->drs_k08[i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id])*Tfactor;
+
+    data->rs_k09[i] = data->r_k09[bin_id] +
+      Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
+    data->drs_k09[i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id])*Tfactor;
+
+    data->rs_k10[i] = data->r_k10[bin_id] +
+      Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
+    data->drs_k10[i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id])*Tfactor;
+
+    data->rs_k11[i] = data->r_k11[bin_id] +
+      Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
+    data->drs_k11[i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id])*Tfactor;
+
+    data->rs_k12[i] = data->r_k12[bin_id] +
+      Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
+    data->drs_k12[i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id])*Tfactor;
+
+    data->rs_k13[i] = data->r_k13[bin_id] +
+      Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
+    data->drs_k13[i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id])*Tfactor;
+
+    data->rs_k14[i] = data->r_k14[bin_id] +
+      Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
+    data->drs_k14[i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id])*Tfactor;
+
+    data->rs_k15[i] = data->r_k15[bin_id] +
+      Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
+    data->drs_k15[i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id])*Tfactor;
+
+    data->rs_k16[i] = data->r_k16[bin_id] +
+      Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
+    data->drs_k16[i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id])*Tfactor;
+
+    data->rs_k17[i] = data->r_k17[bin_id] +
+      Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
+    data->drs_k17[i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id])*Tfactor;
+
+    data->rs_k18[i] = data->r_k18[bin_id] +
+      Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
+    data->drs_k18[i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id])*Tfactor;
+
+    data->rs_k19[i] = data->r_k19[bin_id] +
+      Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
+    data->drs_k19[i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id])*Tfactor;
+
+    data->rs_k21[i] = data->r_k21[bin_id] +
+      Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
+    data->drs_k21[i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id])*Tfactor;
+
+    data->rs_k22[i] = data->r_k22[bin_id] +
+      Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
+    data->drs_k22[i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id])*Tfactor;
+
+    data->cs_brem_brem[i] = data->c_brem_brem[bin_id] +
+      Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
+    data->dcs_brem_brem[i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id])*Tfactor;
+
+    data->cs_ceHeI_ceHeI[i] = data->c_ceHeI_ceHeI[bin_id] +
+      Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
+    data->dcs_ceHeI_ceHeI[i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id])*Tfactor;
+
+    data->cs_ceHeII_ceHeII[i] = data->c_ceHeII_ceHeII[bin_id] +
+      Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
+    data->dcs_ceHeII_ceHeII[i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id])*Tfactor;
+
+    data->cs_ceHI_ceHI[i] = data->c_ceHI_ceHI[bin_id] +
+      Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
+    data->dcs_ceHI_ceHI[i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id])*Tfactor;
+
+    data->cs_cie_cooling_cieco[i] = data->c_cie_cooling_cieco[bin_id] +
+      Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
+    data->dcs_cie_cooling_cieco[i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id])*Tfactor;
+
+    data->cs_ciHeI_ciHeI[i] = data->c_ciHeI_ciHeI[bin_id] +
+      Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
+    data->dcs_ciHeI_ciHeI[i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id])*Tfactor;
+
+    data->cs_ciHeII_ciHeII[i] = data->c_ciHeII_ciHeII[bin_id] +
+      Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
+    data->dcs_ciHeII_ciHeII[i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id])*Tfactor;
+
+    data->cs_ciHeIS_ciHeIS[i] = data->c_ciHeIS_ciHeIS[bin_id] +
+      Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
+    data->dcs_ciHeIS_ciHeIS[i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
+
+    data->cs_ciHI_ciHI[i] = data->c_ciHI_ciHI[bin_id] +
+      Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
+    data->dcs_ciHI_ciHI[i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id])*Tfactor;
+
+    data->cs_compton_comp_[i] = data->c_compton_comp_[bin_id] +
+      Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
+    data->dcs_compton_comp_[i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id])*Tfactor;
+
+    data->cs_gloverabel08_gael[i] = data->c_gloverabel08_gael[bin_id] +
+      Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
+    data->dcs_gloverabel08_gael[i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id])*Tfactor;
+
+    data->cs_gloverabel08_gaH2[i] = data->c_gloverabel08_gaH2[bin_id] +
+      Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
+    data->dcs_gloverabel08_gaH2[i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id])*Tfactor;
+
+    data->cs_gloverabel08_gaHe[i] = data->c_gloverabel08_gaHe[bin_id] +
+      Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
+    data->dcs_gloverabel08_gaHe[i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id])*Tfactor;
+
+    data->cs_gloverabel08_gaHI[i] = data->c_gloverabel08_gaHI[bin_id] +
+      Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
+    data->dcs_gloverabel08_gaHI[i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id])*Tfactor;
+
+    data->cs_gloverabel08_gaHp[i] = data->c_gloverabel08_gaHp[bin_id] +
+      Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
+    data->dcs_gloverabel08_gaHp[i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id])*Tfactor;
+
+    data->cs_gloverabel08_h2lte[i] = data->c_gloverabel08_h2lte[bin_id] +
+      Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
+    data->dcs_gloverabel08_h2lte[i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id])*Tfactor;
+
+    data->cs_h2formation_h2mcool[i] = data->c_h2formation_h2mcool[bin_id] +
+      Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
+    data->dcs_h2formation_h2mcool[i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id])*Tfactor;
+
+    data->cs_h2formation_h2mheat[i] = data->c_h2formation_h2mheat[bin_id] +
+      Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
+    data->dcs_h2formation_h2mheat[i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id])*Tfactor;
+
+    data->cs_h2formation_ncrd1[i] = data->c_h2formation_ncrd1[bin_id] +
+      Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
+    data->dcs_h2formation_ncrd1[i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id])*Tfactor;
+
+    data->cs_h2formation_ncrd2[i] = data->c_h2formation_ncrd2[bin_id] +
+      Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
+    data->dcs_h2formation_ncrd2[i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id])*Tfactor;
+
+    data->cs_h2formation_ncrn[i] = data->c_h2formation_ncrn[bin_id] +
+      Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
+    data->dcs_h2formation_ncrn[i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id])*Tfactor;
+
+    data->cs_reHeII1_reHeII1[i] = data->c_reHeII1_reHeII1[bin_id] +
+      Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
+    data->dcs_reHeII1_reHeII1[i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id])*Tfactor;
+
+    data->cs_reHeII2_reHeII2[i] = data->c_reHeII2_reHeII2[bin_id] +
+      Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
+    data->dcs_reHeII2_reHeII2[i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id])*Tfactor;
+
+    data->cs_reHeIII_reHeIII[i] = data->c_reHeIII_reHeIII[bin_id] +
+      Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
+    data->dcs_reHeIII_reHeIII[i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id])*Tfactor;
+
+    data->cs_reHII_reHII[i] = data->c_reHII_reHII[bin_id] +
+      Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
+    data->dcs_reHII_reHII[i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id])*Tfactor;
+    ////
 
     // Set up some temporaries
     const double T = data->Ts[i];

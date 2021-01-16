@@ -273,8 +273,8 @@ void cvklu_free_data(void*);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
-RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data*, long int);
-RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data*, long int);
+// RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data*, long int);
+// RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data*, long int);
 RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data*, double*, long int);
 void setting_up_extra_variables(cvklu_data*, double*, long int);
 
