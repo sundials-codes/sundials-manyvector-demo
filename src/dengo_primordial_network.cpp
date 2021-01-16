@@ -19,8 +19,8 @@
    and read_init_data_to_dengo routines, as they are unused and require
    HDF5 and CVODE linkage.
 
- * updated X_calculate_temperature to only perform a fixed number of 
-   Newton iterations (removing iteration count update/test, and 
+ * updated X_calculate_temperature to only perform a fixed number of
+   Newton iterations (removing iteration count update/test, and
    while conditional).
 
  * added missing return statements to non-void functions
@@ -136,6 +136,7 @@ cvklu_data *cvklu_setup_data( const char *FileLocation, int *NumberOfFields, cha
 
 }
 
+void cvklu_free_data(void*) { return; }
 
 #ifndef IGNORED
 
