@@ -191,12 +191,16 @@ int main(int argc, char* argv[]) {
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
   double *clump_data;
+#ifdef USERAJA
 #ifdef RAJA_SERIAL
   clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
 #elif RAJA_CUDA
   cudaMallocManaged((void**)&(clump_data), nclumps * 5 * sizeof(double));
 #else
 #error RAJA HIP chemistry interface is currently unimplemented
+#endif
+#else
+  clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
 #endif
   if (udata.myid == 0) {
 
@@ -395,16 +399,17 @@ int main(int argc, char* argv[]) {
         wview(k,j,i,9) = ge;
       });
 #else
-        wdata[idx+0] = nH2I;
-        wdata[idx+1] = nH2II;
-        wdata[idx+2] = nHI;
-        wdata[idx+3] = nHII;
-        wdata[idx+4] = nHM;
-        wdata[idx+5] = nHeI;
-        wdata[idx+6] = nHeII;
-        wdata[idx+7] = nHeIII;
-        wdata[idx+8] = de / m_amu;
-        wdata[idx+9] = ge;
+        long int idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        wdata[idx2+0] = nH2I;
+        wdata[idx2+1] = nH2II;
+        wdata[idx2+2] = nHI;
+        wdata[idx2+3] = nHII;
+        wdata[idx2+4] = nHM;
+        wdata[idx2+5] = nHeI;
+        wdata[idx2+6] = nHeII;
+        wdata[idx2+7] = nHeIII;
+        wdata[idx2+8] = de / m_amu;
+        wdata[idx2+9] = ge;
       }
 #endif
 

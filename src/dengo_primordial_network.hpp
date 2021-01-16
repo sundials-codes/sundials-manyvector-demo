@@ -394,7 +394,7 @@ void *setup_cvode_solver( rhs_f f, jac_f Jac,  int NEQ,
 int cvode_solver( void *cvode_mem, double *output, int NEQ, double *dt, cvklu_data * data, N_Vector y, double reltol, N_Vector abstol );
 
 cvklu_data *cvklu_setup_data(const char *, int *, char***);
-void cvklu_free_data(void*) { };
+void cvklu_free_data(void*);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
