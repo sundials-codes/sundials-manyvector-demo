@@ -48,8 +48,8 @@ diags*.txt
 *.mp4
 restart_parameters.txt
 
-# build directory
-build/
+# build directories
+build*/
 
 # VSCode project configuration
 .vscode
