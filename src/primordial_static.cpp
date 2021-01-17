@@ -26,7 +26,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
 
   // access data fields
-  long int i, j, k, idx;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
   realtype *mx = N_VGetSubvectorArrayPointer_MPIManyVector(w,1);
@@ -89,62 +88,60 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 #endif
 
   // initial condition values -- essentially-neutral primordial gas
-  realtype Tmean = 2000.0;  // mean temperature in K
-  realtype Tamp = 0.0;      // temperature amplitude in K
-  realtype tiny = 1e-20;
-  realtype mH = 1.67e-24;
-  realtype Hfrac = 0.76;
-  realtype HI_weight = 1.00794 * mH;
-  realtype HII_weight = 1.00794 * mH;
-  realtype HM_weight = 1.00794 * mH;
-  realtype HeI_weight = 4.002602 * mH;
-  realtype HeII_weight = 4.002602 * mH;
-  realtype HeIII_weight = 4.002602 * mH;
-  realtype H2I_weight = 2*HI_weight;
-  realtype H2II_weight = 2*HI_weight;
-  realtype gamma = 5.0/3.0;
-  realtype kboltz = 1.3806488e-16;
-  realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
-  realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-  realtype m_amu = 1.66053904e-24;
-  realtype density = 1e2 * mH;   // in g/cm^{-3}
+  const realtype Tmean = 2000.0;  // mean temperature in K
+  const realtype Tamp = 0.0;      // temperature amplitude in K
+  const realtype tiny = 1e-20;
+  const realtype mH = 1.67e-24;
+  const realtype Hfrac = 0.76;
+  const realtype HI_weight = 1.00794 * mH;
+  const realtype HII_weight = 1.00794 * mH;
+  const realtype HM_weight = 1.00794 * mH;
+  const realtype HeI_weight = 4.002602 * mH;
+  const realtype HeII_weight = 4.002602 * mH;
+  const realtype HeIII_weight = 4.002602 * mH;
+  const realtype H2I_weight = 2*HI_weight;
+  const realtype H2II_weight = 2*HI_weight;
+  const realtype gamma = 5.0/3.0;
+  const realtype kboltz = 1.3806488e-16;
+  const realtype m_amu = 1.66053904e-24;
+  const realtype density = 1e2 * mH;   // in g/cm^{-3}
 
   // iterate over subdomain, setting initial conditions
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++) {
 
         // set mass densities into local variables
-        H2I = 1.e-3*density;
-        H2II = tiny*density;
-        HII = tiny*density;
-        HM = tiny*density;
-        HeII = tiny*density;
-        HeIII = tiny*density;
-        HeI = (ONE-Hfrac)*density - HeII - HeIII;
-        HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
+        const realtype H2I = 1.e-3*density;
+        const realtype H2II = tiny*density;
+        const realtype HII = tiny*density;
+        const realtype HM = tiny*density;
+        const realtype HeII = tiny*density;
+        const realtype HeIII = tiny*density;
+        const realtype HeI = (ONE-Hfrac)*density - HeII - HeIII;
+        const realtype HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 
         // compute derived number densities
-        nH2I   = H2I   / H2I_weight;
-        nH2II  = H2II  / H2II_weight;
-        nHII   = HII   / HII_weight;
-        nHM    = HM    / HM_weight;
-        nHeII  = HeII  / HeII_weight;
-        nHeIII = HeIII / HeIII_weight;
-        nHeI   = HeI   / HeI_weight;
-        nHI    = HI    / HI_weight;
-        ndens  = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
-        de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
+        const realtype nH2I   = H2I   / H2I_weight;
+        const realtype nH2II  = H2II  / H2II_weight;
+        const realtype nHII   = HII   / HII_weight;
+        const realtype nHM    = HM    / HM_weight;
+        const realtype nHeII  = HeII  / HeII_weight;
+        const realtype nHeIII = HeIII / HeIII_weight;
+        const realtype nHeI   = HeI   / HeI_weight;
+        const realtype nHI    = HI    / HI_weight;
+        const realtype ndens  = nH2I + nH2II + nHII + nHM + nHeII + nHeIII + nHeI + nHI;
+        const realtype de     = (nHII + nHeII + 2*nHeIII - nHM + nH2II)*mH;
 
         // set varying temperature throughout domain, and convert to gas energy
-        T = Tmean + ( Tamp*(i+udata.is-udata.nx/2)/(udata.nx-1) +
-                      Tamp*(j+udata.js-udata.ny/2)/(udata.ny-1) +
-                      Tamp*(k+udata.ks-udata.nz/2)/(udata.nz-1) )/3.0;
-        ge = (kboltz * T * ndens) / (density * (gamma - ONE));
+        const realtype T = Tmean + ( Tamp*(i+udata.is-udata.nx/2)/(udata.nx-1) +
+                                     Tamp*(j+udata.js-udata.ny/2)/(udata.ny-1) +
+                                     Tamp*(k+udata.ks-udata.nz/2)/(udata.nz-1) )/3.0;
+        const realtype ge = (kboltz * T * ndens) / (density * (gamma - ONE));
 
         // insert chemical fields into initial condition vector,
         // converting to 'dimensionless' electron number density
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         chem[idx+0] = nH2I;
         chem[idx+1] = nH2II;
         chem[idx+2] = nHI;
@@ -167,6 +164,11 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
                  / udata.EnergyUnits;
 
       }
+
+#ifdef RAJA_CUDA
+  // ensure that chemistry values are synchronized to device
+  N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
+#endif
 
   return 0;
 }
@@ -194,18 +196,30 @@ int initialize_Dengo_structures(EulerData& udata) {
   network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
 
   // initialize 'scale' and 'inv_scale' to valid values
-  for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
 #ifdef USERAJA
-    network_data->scale[i] = ONE;
-    network_data->inv_scale[i] = ONE;
+  double *sc = network_data->scale;
+  double *isc = network_data->inv_scale;
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,network_data->nstrip * udata.nchem),
+                           [=] RAJA_DEVICE (long int i) {
+    sc[i] = ONE;
+    isc[i] = ONE;
+  });
 #else
+  for (long int i=0; i< (network_data->nstrip * udata.nchem); i++) {
     network_data->scale[0][i] = ONE;
     network_data->inv_scale[0][i] = ONE;
-#endif
   }
+#endif
 
   // set redshift value for non-cosmological run
   network_data->current_z = -1.0;
+
+  // ensure that newtork_data structure is synchronized between host/device device memory
+#ifdef RAJA_CUDA
+  cudaDeviceSynchronize();
+#elif RAJA_HIP
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
 
   // store pointer to network_data in udata, and return
   udata.RxNetData = (void*) network_data;
@@ -225,37 +239,51 @@ void free_Dengo_structures(EulerData& udata) {
 // for subsequent chemical evolution
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 {
-  long int i, j, k, l, idx;
-
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access chemical solution fields
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+  // access network_data scaling arrays
+#ifdef USERAJA
+  realtype *sc = network_data->scale;
+  realtype *isc = network_data->scale;
+#else
+  realtype *sc = network_data->scale[0];
+  realtype *isc = network_data->scale[0];
+#endif
 
   // move current chemical solution values into 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 #ifdef USERAJA
-          network_data->scale[idx] = chem[idx];
-          network_data->inv_scale[idx] = ONE / chem[idx];
+  int nchem = udata.nchem;
+  RAJA::View<double, RAJA::Layout<4> > scview(sc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > iscview(isc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
+    for (int l=0; l<nchem; l++) {
+      scview(k,j,i,l) = cview(k,j,i,l);
+      iscview(k,j,i,l) = ONE / cview(k,j,i,l);
+      cview(k,j,i,l) = ONE;
+    }
+   });
 #else
-          network_data->scale[0][idx] = chem[idx];
-          network_data->inv_scale[0][idx] = ONE / chem[idx];
-#endif
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          sc[idx] = chem[idx];
+          isc[idx] = ONE / sc[idx];
           chem[idx] = ONE;
         }
+#endif
 
   // compute auxiliary values within network_data structure
-#ifdef USERAJA
-  setting_up_extra_variables( network_data, network_data->scale, udata.nxl*udata.nyl*udata.nzl );
-#else
-  setting_up_extra_variables( network_data, network_data->scale[0], udata.nxl*udata.nyl*udata.nzl );
-#endif
+  setting_up_extra_variables( network_data, sc, udata.nxl*udata.nyl*udata.nzl );
 
   return(0);
 }
@@ -265,28 +293,35 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 // into overall N_Vector solution (does not change 'scale')
 int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  long int i, j, k, l, idx;
-
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access chemical solution fields
+  // update current overall solution using 'network_data->scale' structure
+#ifdef USERAJA
+  int nchem = udata.nchem;
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
+                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
+    for (int l=0; l<nchem; l++) {
+      cview(k,j,i,l) *= scview(k,j,i,l);
+    }
+  });
+#else
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // update current overall solution using 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-#ifdef USERAJA
-          chem[idx] *= network_data->scale[idx];
-#else
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
           chem[idx] *= network_data->scale[0][idx];
-#endif
         }
-
+#endif
   return(0);
 }
 
@@ -294,27 +329,35 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 // Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  long int i, j, k, l, idx;
-
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access chemical solution fields
+  // update current overall solution using 'network_data->scale' structure
+#ifdef USERAJA
+  int nchem = udata.nchem;
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
+                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
+    for (int l=0; l<nchem; l++) {
+      cview(k,j,i,l) /= scview(k,j,i,l);
+    }
+   });
+#else
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // update current overall solution using 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-#ifdef USERAJA
-          chem[idx] /= network_data->scale[idx];
-#else
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
           chem[idx] /= network_data->scale[0][idx];
-#endif
         }
+#endif
 
   return(0);
 }
@@ -327,56 +370,91 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
   if (udata.myid != 0)  return(0);
 
   // indices to print
-  long int i1 = udata.nxl/3;
-  long int j1 = udata.nyl/3;
-  long int k1 = udata.nzl/3;
-  long int idx1 = BUFIDX(0,i1,j1,k1,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-  long int i2 = 2*udata.nxl/3;
-  long int j2 = 2*udata.nyl/3;
-  long int k2 = 2*udata.nzl/3;
-  long int idx2 = BUFIDX(0,i2,j2,k2,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+  int i1 = udata.nxl/3;
+  int j1 = udata.nyl/3;
+  int k1 = udata.nzl/3;
+  int i2 = 2*udata.nxl/3;
+  int j2 = 2*udata.nyl/3;
+  int k2 = 2*udata.nzl/3;
 
   // access Dengo data structure
   cvklu_data* network_data = (cvklu_data*) udata.RxNetData;
-
-  // access chemistry N_Vector data
-  realtype *chem = NULL;
-  chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
 
   // print current time
   printf("\nt = %.3e\n", t);
 
   // print solutions at first location
 #ifdef USERAJA
-  printf("  chem[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         i1, j1, k1,
-         network_data->scale[idx1+0]*chem[idx1+0],
-         network_data->scale[idx1+1]*chem[idx1+1],
-         network_data->scale[idx1+2]*chem[idx1+2],
-         network_data->scale[idx1+3]*chem[idx1+3],
-         network_data->scale[idx1+4]*chem[idx1+4],
-         network_data->scale[idx1+5]*chem[idx1+5],
-         network_data->scale[idx1+6]*chem[idx1+6],
-         network_data->scale[idx1+7]*chem[idx1+7],
-         network_data->scale[idx1+8]*chem[idx1+8],
-         network_data->scale[idx1+9]*chem[idx1+9]);
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
+                                              udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch0a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch0b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch1a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch1b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch2a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch2b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch3a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch3b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch4a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch4b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch5a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch5b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch6a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch6b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch7a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch7b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch8a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch8b(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch9a(ZERO);
+  RAJA::ReduceSum<REDUCEPOLICY, double> ch9b(ZERO);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
 
-  // print solutions at second location
-  printf("  chem[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         i2, j2, k2,
-         network_data->scale[idx2+0]*chem[idx2+0],
-         network_data->scale[idx2+1]*chem[idx2+1],
-         network_data->scale[idx2+2]*chem[idx2+2],
-         network_data->scale[idx2+3]*chem[idx2+3],
-         network_data->scale[idx2+4]*chem[idx2+4],
-         network_data->scale[idx2+5]*chem[idx2+5],
-         network_data->scale[idx2+6]*chem[idx2+6],
-         network_data->scale[idx2+7]*chem[idx2+7],
-         network_data->scale[idx2+8]*chem[idx2+8],
-         network_data->scale[idx2+9]*chem[idx2+9]);
+    realtype loc_a = ZERO;
+    realtype loc_b = ZERO;
+    if ((i == i1) && (j = j1) && (k == k1)) {
+      loc_a = ONE;
+    }
+    if ((i == i2) && (j = j2) && (k == k2)) {
+      loc_b = ONE;
+    }
+    ch0a += loc_a * cview(i,j,i,0) * scview(i,j,i,0);
+    ch0b += loc_b * cview(i,j,i,0) * scview(i,j,i,0);
+    ch1a += loc_a * cview(i,j,i,1) * scview(i,j,i,1);
+    ch1b += loc_b * cview(i,j,i,1) * scview(i,j,i,1);
+    ch2a += loc_a * cview(i,j,i,2) * scview(i,j,i,2);
+    ch2b += loc_b * cview(i,j,i,2) * scview(i,j,i,2);
+    ch3a += loc_a * cview(i,j,i,3) * scview(i,j,i,3);
+    ch3b += loc_b * cview(i,j,i,3) * scview(i,j,i,3);
+    ch4a += loc_a * cview(i,j,i,4) * scview(i,j,i,4);
+    ch4b += loc_b * cview(i,j,i,4) * scview(i,j,i,4);
+    ch5a += loc_a * cview(i,j,i,5) * scview(i,j,i,5);
+    ch5b += loc_b * cview(i,j,i,5) * scview(i,j,i,5);
+    ch6a += loc_a * cview(i,j,i,6) * scview(i,j,i,6);
+    ch6b += loc_b * cview(i,j,i,6) * scview(i,j,i,6);
+    ch7a += loc_a * cview(i,j,i,7) * scview(i,j,i,7);
+    ch7b += loc_b * cview(i,j,i,7) * scview(i,j,i,7);
+    ch8a += loc_a * cview(i,j,i,8) * scview(i,j,i,8);
+    ch8b += loc_b * cview(i,j,i,8) * scview(i,j,i,8);
+    ch9a += loc_a * cview(i,j,i,9) * scview(i,j,i,9);
+    ch9b += loc_b * cview(i,j,i,9) * scview(i,j,i,9);
+  });
+  printf("  chem[%i,%i,%i]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         i1, j1, k1, ch0a.get(), ch1a.get(), ch2a.get(), ch3a.get(), ch4a.get(),
+         ch5a.get(), ch6a.get(), ch7a.get(), ch8a.get(), ch9a.get());
+  printf("  chem[%i,%i,%i]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+         i2, j2, k2, ch0b.get(), ch1b.get(), ch2b.get(), ch3b.get(), ch4b.get(),
+         ch5b.get(), ch6b.get(), ch7b.get(), ch8b.get(), ch9b.get());
 #else
-  printf("  chem[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+  long int idx1 = BUFIDX(0,i1,j1,k1,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+  long int idx2 = BUFIDX(0,i2,j2,k2,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (output_diagnostics)", 0)) return -1;
+  printf("  chem[%i,%i,%i]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
          i1, j1, k1,
          network_data->scale[0][idx1+0]*chem[idx1+0],
          network_data->scale[0][idx1+1]*chem[idx1+1],
@@ -390,7 +468,7 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
          network_data->scale[0][idx1+9]*chem[idx1+9]);
 
   // print solutions at second location
-  printf("  chem[%li,%li,%li]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
+  printf("  chem[%i,%i,%i]: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
          i2, j2, k2,
          network_data->scale[0][idx2+0]*chem[idx2+0],
          network_data->scale[0][idx2+1]*chem[idx2+1],

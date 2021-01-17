@@ -191,14 +191,8 @@ int main(int argc, char* argv[]) {
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
   double *clump_data;
-#ifdef USERAJA
-#ifdef RAJA_SERIAL
-  clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
-#elif RAJA_CUDA
+#ifdef RAJA_CUDA
   cudaMallocManaged((void**)&(clump_data), nclumps * 5 * sizeof(double));
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
 #else
   clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
 #endif
@@ -213,7 +207,7 @@ int main(int argc, char* argv[]) {
     std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
 
     // fill clump information
-    for (int i=0; i<nclumps; i++) {
+    for (long int i=0; i<nclumps; i++) {
 
       // global (x,y,z) coordinates for this clump center
       clump_data[5*i+0] = cx_d(gen);
@@ -259,7 +253,6 @@ int main(int argc, char* argv[]) {
   // constants
   const realtype tiny = 1e-40;
   const realtype small = 1e-12;
-  const realtype smaller = 1e-16;
   //const realtype small = 1e-16;
   const realtype mH = 1.67e-24;
   const realtype Hfrac = 0.76;
@@ -284,9 +277,9 @@ int main(int argc, char* argv[]) {
   const realtype zl = udata.zl;
   const realtype zr = udata.zr;
   const realtype gamma = udata.gamma;
-  const long int is = udata.xl;
-  const long int js = udata.yl;
-  const long int ks = udata.zl;
+  const long int is = udata.is;
+  const long int js = udata.js;
+  const long int ks = udata.ks;
 
   // set initial conditions -- essentially-neutral primordial gas
   realtype *wdata = N_VGetDeviceArrayPointer(w);
@@ -321,9 +314,9 @@ int main(int argc, char* argv[]) {
           cz = clump_data[5*idx+2];
           cr = clump_data[5*idx+3]*dx;
           cs = clump_data[5*idx+4];
-          //realtype xdist = min( abs(xloc-cx), min( abs(xloc-cx+xr), abs(xloc-cx-xr) ) );
-          //realtype ydist = min( abs(yloc-cy), min( abs(yloc-cy+yr), abs(yloc-cy-yr) ) );
-          //realtype zdist = min( abs(zloc-cz), min( abs(zloc-cz+zr), abs(zloc-cz-zr) ) );
+          //xdist = min( abs(xloc-cx), min( abs(xloc-cx+xr), abs(xloc-cx-xr) ) );
+          //ydist = min( abs(yloc-cy), min( abs(yloc-cy+yr), abs(yloc-cy-yr) ) );
+          //zdist = min( abs(zloc-cz), min( abs(zloc-cz+zr), abs(zloc-cz-zr) ) );
           xdist = abs(xloc-cx);
           ydist = abs(yloc-cy);
           zdist = abs(zloc-cz);
@@ -450,7 +443,6 @@ int main(int argc, char* argv[]) {
       wview(k,j,i,l) = ONE;
     }
    });
-
 #else
   double *sc = network_data->scale[0];
   double *isc = network_data->inv_scale[0];

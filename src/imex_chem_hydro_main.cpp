@@ -906,8 +906,6 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, cidx, fidx;
-
   // start timer
   EulerData *udata = (EulerData*) user_data;
   int retval = udata->profile[PR_RHSSLOW].start();
@@ -938,16 +936,20 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (fexpl)", 1)) return(-1);
 
+#ifdef RAJA_CUDA
+  // ensure that chemistry data is synchronized to host
+  N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
+#endif
+
   // fill dimensionless total fluid energy field (internal energy + kinetic energy)
   realtype EUnitScale = ONE/udata->EnergyUnits;
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        realtype ge = chem[cidx];
-        ge *= EUnitScale;   // convert from physical units to code units
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
+  for (int k=0; k<udata->nzl; k++)
+    for (int j=0; j<udata->nyl; j++)
+      for (int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const realtype ge = chem[cidx] * EUnitScale;   // convert from physical units to code units
+        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] = ge + 0.5/rho[fidx]*(pow(mx[fidx],2) + pow(my[fidx],2) + pow(mz[fidx],2));
       }
 
 #ifndef DISABLE_HYDRO
@@ -967,14 +969,19 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
 //  realtype TUnitScale = ONE/udata->TimeUnits;
   realtype TUnitScale = ONE;
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+  for (int k=0; k<udata->nzl; k++)
+    for (int j=0; j<udata->nyl; j++)
+      for (int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }
+
+#ifdef RAJA_CUDA
+  // ensure that chemistry rate-of-change data is synchronized back to device
+  N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(wdot,5));
+#endif
 
   // reset chem to remove Dengo scaling
   retval = unapply_Dengo_scaling(w, *udata);
@@ -988,11 +995,8 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
 static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 {
-  long int i, j, k, cidx, fidx;
-
   // start timer
   EulerData *udata = (EulerData*) user_data;
-  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
   int retval = udata->profile[PR_POSTFAST].start();
   if (check_flag(&retval, "Profile::start (PostprocessStep)", 1)) return(-1);
 
@@ -1010,21 +1014,29 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (PostprocessStep)", 0)) return(-1);
 
+  // update chem to include Dengo scaling
+  retval = apply_Dengo_scaling(w, *udata);
+  if (check_flag(&retval, "apply_Dengo_scaling (PostprocessStep)", 1)) return(-1);
+
+#ifdef RAJA_CUDA
+  // ensure that chemistry data is synchronized to host
+  N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
+#endif
+
   // update fluid energy (derived) field from other quantities
   realtype EUnitScale = ONE/udata->EnergyUnits;
-#ifdef USERAJA
-  realtype *sc = network_data->scale;
-#else
-  realtype *sc = network_data->scale[0];
-#endif
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[fidx] = chem[cidx] * sc[cidx] * EUnitScale
-          + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
+  for (int k=0; k<udata->nzl; k++)
+    for (int j=0; j<udata->nyl; j++)
+      for (int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] = chem[cidx] * EUnitScale
+          + 0.5/rho[fidx]*(pow(mx[fidx],2) + pow(my[fidx],2) + pow(mz[fidx],2));
       }
+
+  // reset chem to remove Dengo scaling
+  retval = unapply_Dengo_scaling(w, *udata);
+  if (check_flag(&retval, "unapply_Dengo_scaling (PostprocessStep)", 1)) return(-1);
 
   // stop timer and return
   retval = udata->profile[PR_POSTFAST].stop();
