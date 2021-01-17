@@ -250,10 +250,6 @@ typedef struct cvklu_data {
   double *dcs_reHeIII_reHeIII;
   double *cs_reHII_reHII;
   double *dcs_reHII_reHII;
-  double *gammaH2_1;
-  double *dgammaH2_1_dT;
-  double *gammaH2_2;
-  double *dgammaH2_2_dT;
   double *cie_optical_depth_approx;
   double *h2_optical_depth_approx;
 
@@ -273,9 +269,8 @@ void cvklu_free_data(void*);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
-// RAJA_DEVICE void cvklu_interpolate_rates(cvklu_data*, long int);
-// RAJA_DEVICE void cvklu_interpolate_gamma(cvklu_data*, long int);
-RAJA_DEVICE int cvklu_calculate_temperature(cvklu_data*, double*, long int);
+RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
+                                            const long int, double &, double &);
 void setting_up_extra_variables(cvklu_data*, double*, long int);
 
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
