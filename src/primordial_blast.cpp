@@ -56,8 +56,8 @@
 #define  MAX_CLUMP_RADIUS    RCONST(6.0)     // in number of cells
 #define  MAX_CLUMP_STRENGTH  RCONST(5.0)     // mult. density factor
 #define  T0                  RCONST(10.0)    // background temperature
-#define  BLAST_DENSITY       RCONST(5.0)   // mult. density factor
-#define  BLAST_TEMPERATURE   RCONST(5.0)   // mult. temperature factor
+#define  BLAST_DENSITY       RCONST(5.0)     // mult. density factor
+#define  BLAST_TEMPERATURE   RCONST(5.0)     // mult. temperature factor
 #define  BLAST_RADIUS        RCONST(0.1)     // relative to unit cube
 #define  BLAST_CENTER_X      RCONST(0.5)     // relative to unit cube
 #define  BLAST_CENTER_Y      RCONST(0.5)     // relative to unit cube
@@ -69,7 +69,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
 
   // access data fields
-  long int i, j, k, idx;
   int retval;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
@@ -93,8 +92,8 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   }
   realtype *chem = NULL;
   if (udata.nchem > 0) {
-    chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-    if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
+    chem = N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5));
+    if (check_flag((void *) chem, "N_VGetDeviceArrayPointer (initial_conditions)", 0)) return -1;
   }
 
 #ifndef USERAJA
@@ -108,7 +107,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
-  double clump_data[nclumps*5];
+  double *clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
   if (udata.myid == 0) {
 
     // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
@@ -120,7 +119,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
 
     // fill clump information
-    for (i=0; i<nclumps; i++) {
+    for (long int i=0; i<nclumps; i++) {
 
       // global (x,y,z) coordinates for this clump center
       clump_data[5*i+0] = cx_d(gen);
@@ -141,7 +140,6 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   retval = MPI_Bcast(clump_data, nclumps*5, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
 
-
   // output clump information
   if (udata.myid == 0) {
     cout << "\nInitializing problem with " << nclumps << " clumps\n";
@@ -157,35 +155,36 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     //      << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
   }
 
-
   // initial condition values -- essentially-neutral primordial gas
-  realtype tiny = 1e-40;
-  realtype small = 1e-12;
-  //realtype small = 1e-16;
-  realtype mH = 1.67e-24;
-  realtype Hfrac = 0.76;
-  realtype HI_weight = 1.00794 * mH;
-  realtype HII_weight = 1.00794 * mH;
-  realtype HM_weight = 1.00794 * mH;
-  realtype HeI_weight = 4.002602 * mH;
-  realtype HeII_weight = 4.002602 * mH;
-  realtype HeIII_weight = 4.002602 * mH;
-  realtype H2I_weight = 2*HI_weight;
-  realtype H2II_weight = 2*HI_weight;
-  realtype kboltz = 1.3806488e-16;
-  realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
-  realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-  realtype m_amu = 1.66053904e-24;
-  realtype density0 = 1e2 * mH;   // in g/cm^{-3}
-  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
-  realtype vx0 = 0.0;   // in cm/s
-  realtype vy0 = 0.0;
-  realtype vz0 = 0.0;
+  const realtype tiny = 1e-40;
+  const realtype small = 1e-12;
+  //const realtype small = 1e-16;
+  const realtype mH = 1.67e-24;
+  const realtype Hfrac = 0.76;
+  const realtype HI_weight = 1.00794 * mH;
+  const realtype HII_weight = 1.00794 * mH;
+  const realtype HM_weight = 1.00794 * mH;
+  const realtype HeI_weight = 4.002602 * mH;
+  const realtype HeII_weight = 4.002602 * mH;
+  const realtype HeIII_weight = 4.002602 * mH;
+  const realtype H2I_weight = 2*HI_weight;
+  const realtype H2II_weight = 2*HI_weight;
+  const realtype kboltz = 1.3806488e-16;
+  const realtype m_amu = 1.66053904e-24;
+  const realtype density0 = 1e2 * mH;   // in g/cm^{-3}
+  const realtype vx0 = 0.0;   // in cm/s
+  const realtype vy0 = 0.0;
+  const realtype vz0 = 0.0;
 
   // iterate over subdomain, setting initial conditions
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++) {
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++) {
+
+        // cell-specific local variables
+        realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
+        realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
+        realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
 
         // determine cell center
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
@@ -194,15 +193,15 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // determine density in this cell (via loop over clumps)
         density = ONE;
-        for (idx=0; idx<nclumps; idx++) {
-          cx = clump_data[5*idx+0];
-          cy = clump_data[5*idx+1];
-          cz = clump_data[5*idx+2];
-          cr = clump_data[5*idx+3]*udata.dx;
-          cs = clump_data[5*idx+4];
+        for (int l=0; l<nclumps; l++) {
+          cx = clump_data[5*l+0];
+          cy = clump_data[5*l+1];
+          cz = clump_data[5*l+2];
+          cr = clump_data[5*l+3]*udata.dx;
+          cs = clump_data[5*l+4];
           //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-          //ydist = min( abs(yloc-cy), min( abs(yloc-cx+udata.yr), abs(xloc-cx-udata.xr) ) );
-          //zdist = min( abs(zloc-cz), min( abs(zloc-cx+udata.zr), abs(xloc-cx-udata.xr) ) );
+          //ydist = min( abs(yloc-cy), min( abs(yloc-cy+udata.yr), abs(yloc-cy-udata.yr) ) );
+          //zdist = min( abs(zloc-cz), min( abs(zloc-cz+udata.zr), abs(zloc-cz-udata.zr) ) );
           xdist = abs(xloc-cx);
           ydist = abs(yloc-cy);
           zdist = abs(zloc-cz);
@@ -216,8 +215,8 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         cy = udata.yl + BLAST_CENTER_Y*(udata.yr - udata.yl);
         cz = udata.zl + BLAST_CENTER_Z*(udata.zr - udata.zl);
         //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-        //ydist = min( abs(yloc-cy), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-        //zdist = min( abs(zloc-cz), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
+        //ydist = min( abs(yloc-cy), min( abs(yloc-cy+udata.yr), abs(yloc-cy-udata.yr) ) );
+        //zdist = min( abs(zloc-cz), min( abs(zloc-cz+udata.zr), abs(zloc-cz-udata.zr) ) );
         cr = BLAST_RADIUS*min( udata.xr-udata.xl, min(udata.yr-udata.yl, udata.zr-udata.zl));
         cs = density0*BLAST_DENSITY;
         xdist = abs(xloc-cx);
@@ -271,7 +270,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // insert chemical fields into initial condition vector,
         // converting to 'dimensionless' electron number density
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         chem[idx+0] = nH2I;
         chem[idx+1] = nH2II;
         chem[idx+2] = nHI;
@@ -293,6 +292,11 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         et[idx]  = (ge + 0.5*density*(vx0*vx0 + vy0*vy0 + vz0*vz0))/udata.EnergyUnits;
 
       }
+
+#ifdef RAJA_CUDA
+  // ensure that chemistry values are synchronized to device
+  N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
+#endif
 
   return 0;
 }
@@ -321,18 +325,30 @@ int initialize_Dengo_structures(EulerData& udata) {
   network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
 
   // initialize 'scale' and 'inv_scale' to valid values
-  for (int i=0; i< (network_data->nstrip * udata.nchem); i++) {
 #ifdef USERAJA
-    network_data->scale[i] = ONE;
-    network_data->inv_scale[i] = ONE;
+  double *sc = network_data->scale;
+  double *isc = network_data->inv_scale;
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,network_data->nstrip * udata.nchem),
+                           [=] RAJA_DEVICE (long int i) {
+    sc[i] = ONE;
+    isc[i] = ONE;
+  });
 #else
+  for (long int i=0; i< (network_data->nstrip * udata.nchem); i++) {
     network_data->scale[0][i] = ONE;
     network_data->inv_scale[0][i] = ONE;
-#endif
   }
+#endif
 
   // set redshift value for non-cosmological run
   network_data->current_z = -1.0;
+
+  // ensure that newtork_data structure is synchronized between host/device device memory
+#ifdef RAJA_CUDA
+  cudaDeviceSynchronize();
+#elif RAJA_HIP
+#error RAJA HIP chemistry interface is currently unimplemented
+#endif
 
   // store pointer to network_data in udata, and return
   udata.RxNetData = (void*) network_data;
@@ -352,37 +368,51 @@ void free_Dengo_structures(EulerData& udata) {
 // for subsequent chemical evolution
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 {
-  long int i, j, k, l, idx;
-
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access chemical solution fields
-  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
-  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+  // access network_data scaling arrays
+#ifdef USERAJA
+  realtype *sc = network_data->scale;
+  realtype *isc = network_data->scale;
+#else
+  realtype *sc = network_data->scale[0];
+  realtype *isc = network_data->scale[0];
+#endif
 
   // move current chemical solution values into 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
 #ifdef USERAJA
-          network_data->scale[idx] = chem[idx];
-          network_data->inv_scale[idx] = ONE / chem[idx];
+  int nchem = udata.nchem;
+  RAJA::View<double, RAJA::Layout<4> > scview(sc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > iscview(isc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
+    for (int l=0; l<nchem; l++) {
+      scview(k,j,i,l) = cview(k,j,i,l);
+      iscview(k,j,i,l) = ONE / cview(k,j,i,l);
+      cview(k,j,i,l) = ONE;
+    }
+   });
 #else
-          network_data->scale[0][idx] = chem[idx];
-          network_data->inv_scale[0][idx] = ONE / chem[idx];
-#endif
+  realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
+  if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+          sc[idx] = chem[idx];
+          isc[idx] = ONE / sc[idx];
           chem[idx] = ONE;
         }
+#endif
 
   // compute auxiliary values within network_data structure
-#ifdef USERAJA
-  setting_up_extra_variables( network_data, network_data->scale, udata.nxl*udata.nyl*udata.nzl );
-#else
-  setting_up_extra_variables( network_data, network_data->scale[0], udata.nxl*udata.nyl*udata.nzl );
-#endif
+  setting_up_extra_variables( network_data, sc, udata.nxl*udata.nyl*udata.nzl );
 
   return(0);
 }
@@ -391,28 +421,35 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 // into overall N_Vector solution (does not change 'scale')
 int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  long int i, j, k, l, idx;
-
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access chemical solution fields
+  // update current overall solution using 'network_data->scale' structure
+#ifdef USERAJA
+  int nchem = udata.nchem;
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
+                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
+    for (int l=0; l<nchem; l++) {
+      cview(k,j,i,l) *= scview(k,j,i,l);
+    }
+  });
+#else
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // update current overall solution using 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-#ifdef USERAJA
-          chem[idx] *= network_data->scale[idx];
-#else
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
           chem[idx] *= network_data->scale[0][idx];
-#endif
         }
-
+#endif
   return(0);
 }
 
@@ -420,27 +457,35 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 // Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  long int i, j, k, l, idx;
-
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access chemical solution fields
+  // update current overall solution using 'network_data->scale' structure
+#ifdef USERAJA
+  int nchem = udata.nchem;
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
+                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
+    for (int l=0; l<nchem; l++) {
+      cview(k,j,i,l) /= scview(k,j,i,l);
+    }
+   });
+#else
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
-
-  // update current overall solution using 'network_data->scale' structure
-  for (k=0; k<udata.nzl; k++)
-    for (j=0; j<udata.nyl; j++)
-      for (i=0; i<udata.nxl; i++)
-        for (l=0; l<udata.nchem; l++) {
-          idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-#ifdef USERAJA
-          chem[idx] /= network_data->scale[idx];
-#else
+  for (int k=0; k<udata.nzl; k++)
+    for (int j=0; j<udata.nyl; j++)
+      for (int i=0; i<udata.nxl; i++)
+        for (int l=0; l<udata.nchem; l++) {
+          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
           chem[idx] /= network_data->scale[0][idx];
-#endif
         }
+#endif
 
   return(0);
 }

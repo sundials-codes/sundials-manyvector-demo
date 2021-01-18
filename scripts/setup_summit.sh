@@ -144,6 +144,8 @@ export HDF5_ROOT="${OLCF_HDF5_ROOT}"
 export RAJA_ROOT="${PROJHOME}/${COMPILERNAME}/raja-0.13.0-cuda-${cudaver}-${bldtype}"
 
 export SUNDIALS_INDEX_SIZE=32
+export SUNDIALS_CUDA_STATUS=ON
+export SUNDIALS_RAJA_STATUS=ON
 export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-int${SUNDIALS_INDEX_SIZE}-cuda-${cudaver}-${bldtype}"
 
 # user workspace for installing/running the demo
