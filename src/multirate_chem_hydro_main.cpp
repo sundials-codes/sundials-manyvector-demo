@@ -261,6 +261,17 @@ int main(int argc, char* argv[]) {
 #ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
+#ifdef USERAJA
+#ifdef RAJA_CUDA
+    cout << "Executable built with RAJA+CUDA support\n";
+#elif RAJA_SERIAL
+    cout << "Executable built with RAJA+SERIAL support\n";
+#else
+    cout << "Executable built with RAJA+HIP support\n";
+#endif
+#else
+    cout << "Executable built without RAJA support\n";
+#endif
   }
 #ifdef DEBUG
   if (udata.showstats) {
@@ -380,7 +391,7 @@ int main(int argc, char* argv[]) {
   A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
   if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
   BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
-  if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
+  if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
   // Set the sparsity pattern to be fixed
   retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
   if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);

@@ -253,6 +253,15 @@ int main(int argc, char* argv[]) {
 #ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
+#ifdef RAJA_CUDA
+    cout << "Executable built with RAJA+CUDA support\n";
+#elif RAJA_SERIAL
+    cout << "Executable built with RAJA+SERIAL support\n";
+#elif RAJA_HIP
+    cout << "Executable built with RAJA+HIP support\n";
+#else
+    cout << "Executable built without RAJA support\n";
+#endif
   }
 #ifdef DEBUG
   if (udata.showstats) {
@@ -369,7 +378,7 @@ int main(int argc, char* argv[]) {
   A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
   if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
   BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
-  if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
+  if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
   // Set the sparsity pattern to be fixed
   retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
   if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
@@ -883,8 +892,8 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
-  realtype TUnit = udata->TimeUnits;
 #ifdef RAJA_CUDA
+  realtype TUnit = udata->TimeUnits;
   Jdata = SUNMatrix_cuSparse_Data(Jac);
   if (check_flag((void *) Jdata, "SUNMatrix_cuSparse_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNMatrix_cuSparse_NNZ(Jac);
@@ -895,7 +904,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   Jdata = SUNSparseMatrix_Data(Jac);
   if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
-  for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= TUnit;
+  for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= udata->TimeUnits;
 #endif
 
   // stop timer and return
@@ -906,6 +915,8 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
+  long int i, j, k, l, cidx, fidx;
+
   // start timer
   EulerData *udata = (EulerData*) user_data;
   int retval = udata->profile[PR_RHSSLOW].start();
@@ -943,13 +954,14 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // fill dimensionless total fluid energy field (internal energy + kinetic energy)
   realtype EUnitScale = ONE/udata->EnergyUnits;
-  for (int k=0; k<udata->nzl; k++)
-    for (int j=0; j<udata->nyl; j++)
-      for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const realtype ge = chem[cidx] * EUnitScale;   // convert from physical units to code units
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[fidx] = ge + 0.5/rho[fidx]*(pow(mx[fidx],2) + pow(my[fidx],2) + pow(mz[fidx],2));
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++) {
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        realtype ge = chem[cidx];
+        ge *= EUnitScale;   // convert from physical units to code units
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
 #ifndef DISABLE_HYDRO
@@ -969,11 +981,11 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
 //  realtype TUnitScale = ONE/udata->TimeUnits;
   realtype TUnitScale = ONE;
-  for (int k=0; k<udata->nzl; k++)
-    for (int j=0; j<udata->nyl; j++)
-      for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+  for (k=0; k<udata->nzl; k++)
+    for (j=0; j<udata->nyl; j++)
+      for (i=0; i<udata->nxl; i++) {
+        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }
@@ -997,6 +1009,7 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 {
   // start timer
   EulerData *udata = (EulerData*) user_data;
+  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
   int retval = udata->profile[PR_POSTFAST].start();
   if (check_flag(&retval, "Profile::start (PostprocessStep)", 1)) return(-1);
 

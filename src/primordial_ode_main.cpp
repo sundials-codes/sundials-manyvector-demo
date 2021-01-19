@@ -155,6 +155,17 @@ int main(int argc, char* argv[]) {
     cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
+#ifdef USERAJA
+#ifdef RAJA_CUDA
+    cout << "Executable built with RAJA+CUDA support\n";
+#elif RAJA_SERIAL
+    cout << "Executable built with RAJA+SERIAL support\n";
+#else
+    cout << "Executable built with RAJA+HIP support\n";
+#endif
+#else
+    cout << "Executable built without RAJA support\n";
+#endif
   }
 
   // open solver diagnostics output file for writing

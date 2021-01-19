@@ -69,6 +69,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 {
 
   // access data fields
+  long int i, j, k, idx;
   int retval;
   realtype *rho = N_VGetSubvectorArrayPointer_MPIManyVector(w,0);
   if (check_flag((void *) rho, "N_VGetSubvectorArrayPointer (initial_conditions)", 0)) return -1;
@@ -92,8 +93,8 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   }
   realtype *chem = NULL;
   if (udata.nchem > 0) {
-    chem = N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5));
-    if (check_flag((void *) chem, "N_VGetDeviceArrayPointer (initial_conditions)", 0)) return -1;
+    chem = N_VGetArrayPointer(N_VGetSubvector_MPIManyVector(w,5));
+    if (check_flag((void *) chem, "N_VGetArrayPointer (initial_conditions)", 0)) return -1;
   }
 
 #ifndef USERAJA
@@ -119,7 +120,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
 
     // fill clump information
-    for (long int i=0; i<nclumps; i++) {
+    for (i=0; i<nclumps; i++) {
 
       // global (x,y,z) coordinates for this clump center
       clump_data[5*i+0] = cx_d(gen);
@@ -140,6 +141,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   retval = MPI_Bcast(clump_data, nclumps*5, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
 
+
   // output clump information
   if (udata.myid == 0) {
     cout << "\nInitializing problem with " << nclumps << " clumps\n";
@@ -155,36 +157,35 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
     //      << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
   }
 
+
   // initial condition values -- essentially-neutral primordial gas
-  const realtype tiny = 1e-40;
-  const realtype small = 1e-12;
-  //const realtype small = 1e-16;
-  const realtype mH = 1.67e-24;
-  const realtype Hfrac = 0.76;
-  const realtype HI_weight = 1.00794 * mH;
-  const realtype HII_weight = 1.00794 * mH;
-  const realtype HM_weight = 1.00794 * mH;
-  const realtype HeI_weight = 4.002602 * mH;
-  const realtype HeII_weight = 4.002602 * mH;
-  const realtype HeIII_weight = 4.002602 * mH;
-  const realtype H2I_weight = 2*HI_weight;
-  const realtype H2II_weight = 2*HI_weight;
-  const realtype kboltz = 1.3806488e-16;
-  const realtype m_amu = 1.66053904e-24;
-  const realtype density0 = 1e2 * mH;   // in g/cm^{-3}
-  const realtype vx0 = 0.0;   // in cm/s
-  const realtype vy0 = 0.0;
-  const realtype vz0 = 0.0;
+  realtype tiny = 1e-40;
+  realtype small = 1e-12;
+  //realtype small = 1e-16;
+  realtype mH = 1.67e-24;
+  realtype Hfrac = 0.76;
+  realtype HI_weight = 1.00794 * mH;
+  realtype HII_weight = 1.00794 * mH;
+  realtype HM_weight = 1.00794 * mH;
+  realtype HeI_weight = 4.002602 * mH;
+  realtype HeII_weight = 4.002602 * mH;
+  realtype HeIII_weight = 4.002602 * mH;
+  realtype H2I_weight = 2*HI_weight;
+  realtype H2II_weight = 2*HI_weight;
+  realtype kboltz = 1.3806488e-16;
+  realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
+  realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
+  realtype m_amu = 1.66053904e-24;
+  realtype density0 = 1e2 * mH;   // in g/cm^{-3}
+  realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
+  realtype vx0 = 0.0;   // in cm/s
+  realtype vy0 = 0.0;
+  realtype vz0 = 0.0;
 
   // iterate over subdomain, setting initial conditions
-  for (int k=0; k<udata.nzl; k++)
-    for (int j=0; j<udata.nyl; j++)
-      for (int i=0; i<udata.nxl; i++) {
-
-        // cell-specific local variables
-        realtype H2I, H2II, HI, HII, HM, HeI, HeII, HeIII, de, T, ge;
-        realtype nH2I, nH2II, nHI, nHII, nHM, nHeI, nHeII, nHeIII, ndens;
-        realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
+  for (k=0; k<udata.nzl; k++)
+    for (j=0; j<udata.nyl; j++)
+      for (i=0; i<udata.nxl; i++) {
 
         // determine cell center
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
@@ -193,12 +194,12 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // determine density in this cell (via loop over clumps)
         density = ONE;
-        for (int l=0; l<nclumps; l++) {
-          cx = clump_data[5*l+0];
-          cy = clump_data[5*l+1];
-          cz = clump_data[5*l+2];
-          cr = clump_data[5*l+3]*udata.dx;
-          cs = clump_data[5*l+4];
+        for (idx=0; idx<nclumps; idx++) {
+          cx = clump_data[5*idx+0];
+          cy = clump_data[5*idx+1];
+          cz = clump_data[5*idx+2];
+          cr = clump_data[5*idx+3]*udata.dx;
+          cs = clump_data[5*idx+4];
           //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
           //ydist = min( abs(yloc-cy), min( abs(yloc-cy+udata.yr), abs(yloc-cy-udata.yr) ) );
           //zdist = min( abs(zloc-cz), min( abs(zloc-cz+udata.zr), abs(zloc-cz-udata.zr) ) );
@@ -270,7 +271,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // insert chemical fields into initial condition vector,
         // converting to 'dimensionless' electron number density
-        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         chem[idx+0] = nH2I;
         chem[idx+1] = nH2II;
         chem[idx+2] = nHI;
@@ -297,6 +298,8 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   // ensure that chemistry values are synchronized to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
+
+  free(clump_data);
 
   return 0;
 }
@@ -374,10 +377,10 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
   // access network_data scaling arrays
 #ifdef USERAJA
   realtype *sc = network_data->scale;
-  realtype *isc = network_data->scale;
+  realtype *isc = network_data->inv_scale;
 #else
   realtype *sc = network_data->scale[0];
-  realtype *isc = network_data->scale[0];
+  realtype *isc = network_data->inv_scale[0];
 #endif
 
   // move current chemical solution values into 'network_data->scale' structure
@@ -393,7 +396,7 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
                                [=] RAJA_DEVICE (int k, int j, int i) {
     for (int l=0; l<nchem; l++) {
       scview(k,j,i,l) = cview(k,j,i,l);
-      iscview(k,j,i,l) = ONE / cview(k,j,i,l);
+      iscview(k,j,i,l) = ONE / scview(k,j,i,l);
       cview(k,j,i,l) = ONE;
     }
    });
