@@ -96,7 +96,8 @@ using namespace std;
 #define  PR_DTSTAB    12
 #define  PR_LSETUP    13
 #define  PR_LSOLVE    14
-#define  PR_TOTAL     15
+#define  PR_LATIMES   15
+#define  PR_TOTAL     16
 
 
 // Utility routine to check function return values:
@@ -246,21 +247,24 @@ public:
   realtype *Bsend;
   MPI_Request req[12];  // MPI requests for neighbor exchange
 
+  //// vector to save last fast RHS eval for use in ATimes
+  N_Vector ffastcur;
+
   ///// class operations /////
 
   // constructor
   EulerData() :
-      RxNetData(NULL), nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0),
-      zl(0.0), zr(1.0), t0(0.0), tf(1.0), xlbc(BC_PERIODIC), xrbc(BC_PERIODIC),
-      ylbc(BC_PERIODIC), yrbc(BC_PERIODIC), zlbc(BC_PERIODIC), zrbc(BC_PERIODIC),
-      is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1), nxl(-1), nyl(-1), nzl(-1),
-      comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
-      Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
-      Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
-      ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
-      xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0), MassUnits(1.0),
-      LengthUnits(1.0), TimeUnits(1.0), DensityUnits(1.0), MomentumUnits(1.0),
-      EnergyUnits(1.0)
+    RxNetData(NULL), nx(3), ny(3), nz(3), xl(0.0), xr(1.0), yl(0.0), yr(1.0),
+    zl(0.0), zr(1.0), t0(0.0), tf(1.0), xlbc(BC_PERIODIC), xrbc(BC_PERIODIC),
+    ylbc(BC_PERIODIC), yrbc(BC_PERIODIC), zlbc(BC_PERIODIC), zrbc(BC_PERIODIC),
+    is(-1), ie(-1), js(-1), je(-1), ks(-1), ke(-1), nxl(-1), nyl(-1), nzl(-1),
+    comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
+    Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
+    Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
+    ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
+    xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0), MassUnits(1.0),
+    LengthUnits(1.0), TimeUnits(1.0), DensityUnits(1.0), MomentumUnits(1.0),
+    EnergyUnits(1.0), ffastcur(NULL)
   {
     nchem = (NVAR) - 5;
   };
@@ -283,6 +287,7 @@ public:
     if (yflux != NULL)  delete[] yflux;
     if (zflux != NULL)  delete[] zflux;
     if (RxNetData != NULL)  free(RxNetData);
+    if (ffastcur != NULL) N_VDestroy(ffastcur);
   };
 
   // Update derived unit scaling factors from base factors

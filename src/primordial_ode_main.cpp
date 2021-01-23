@@ -768,9 +768,9 @@ int main(int argc, char* argv[]) {
 
   // Print some final statistics
   long int nst, nst_a, nfe, nfi, netf, nni, ncf;
-  long int nls, njevals, nliters, nlcfails, nfevalsLS;
+  long int nls, nje, nli, nlcf, nfls;
   nst = nst_a = nfe = nfi = netf = nni = ncf = 0;
-  nls = njevals = nliters = nlcfails = nfevalsLS = 0;
+  nls = nje = nli = nlcf = nfls = 0;
 #ifdef USE_CVODE
   retval = CVodeGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "CVodeGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -782,13 +782,13 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "CVodeGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = CVodeGetNumLinSolvSetups(arkode_mem, &nls);
   if (check_flag(&retval, "CVodeGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumJacEvals(arkode_mem, &njevals);
+  retval = CVodeGetNumJacEvals(arkode_mem, &nje);
   if (check_flag(&retval, "CVodeGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinIters(arkode_mem, &nliters);
+  retval = CVodeGetNumLinIters(arkode_mem, &nli);
   if (check_flag(&retval, "CVodeGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinConvFails(arkode_mem, &nlcfails);
+  retval = CVodeGetNumLinConvFails(arkode_mem, &nlcf);
   if (check_flag(&retval, "CVodeGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinRhsEvals(arkode_mem, &nfevalsLS);
+  retval = CVodeGetNumLinRhsEvals(arkode_mem, &nfls);
   if (check_flag(&retval, "CVodeGetNumLinRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
@@ -803,13 +803,13 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
   if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumJacEvals(arkode_mem, &njevals);
+  retval = ARKStepGetNumJacEvals(arkode_mem, &nje);
   if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinIters(arkode_mem, &nliters);
+  retval = ARKStepGetNumLinIters(arkode_mem, &nli);
   if (check_flag(&retval, "ARKStepGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinConvFails(arkode_mem, &nlcfails);
+  retval = ARKStepGetNumLinConvFails(arkode_mem, &nlcf);
   if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinRhsEvals(arkode_mem, &nfevalsLS);
+  retval = ARKStepGetNumLinRhsEvals(arkode_mem, &nfls);
   if (check_flag(&retval, "ARKStepGetNumLinRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
 
@@ -818,13 +818,13 @@ int main(int argc, char* argv[]) {
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    if (opts.iterative && nliters > 0) {
-      cout << "   Total number of lin iters = " << nliters << "\n";
-      cout << "   Total number of lin conv fails = " << nlcfails << "\n";
-      cout << "   Total number of lin RHS evals = " << nfevalsLS << "\n";
+    if (opts.iterative && nli > 0) {
+      cout << "   Total number of lin iters = " << nli << "\n";
+      cout << "   Total number of lin conv fails = " << nlcf << "\n";
+      cout << "   Total number of lin RHS evals = " << nfls << "\n";
     } else if (nls > 0) {
       cout << "   Total number of lin solv setups = " << nls << "\n";
-      cout << "   Total number of Jac eavls = " << njevals << "\n";
+      cout << "   Total number of Jac eavls = " << nje << "\n";
     }
     if (nni > 0) {
       cout << "   Total number of nonlin iters = " << nni << "\n";

@@ -58,6 +58,7 @@
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
 #endif
+#include <sunlinsol/sunlinsol_spgmr.h>
 
 #ifdef DEBUG
 #include "fenv.h"
@@ -99,22 +100,31 @@ typedef struct _BDMPIMVContent {
   sunindextype    subvec;
   sunindextype    lastflag;
   EulerData*      udata;
+  void*           inner_arkode_mem;
+  N_Vector        work;
+  long int        nfeDQ;
 } *BDMPIMVContent;
 #define BDMPIMV_CONTENT(S)  ( (BDMPIMVContent)(S->content) )
 #define BDMPIMV_BLS(S)      ( BDMPIMV_CONTENT(S)->blockLS )
 #define BDMPIMV_SUBVEC(S)   ( BDMPIMV_CONTENT(S)->subvec )
 #define BDMPIMV_LASTFLAG(S) ( BDMPIMV_CONTENT(S)->lastflag )
 #define BDMPIMV_UDATA(S)    ( BDMPIMV_CONTENT(S)->udata )
+#define BDMPIMV_WORK(S)     ( BDMPIMV_CONTENT(S)->work )
+#define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
-                                  sunindextype subvec, EulerData* udata);
+                                  sunindextype subvec, EulerData* udata,
+                                  void *inner_arkode_mem,
+                                  ARKodeParameters& opts);
 SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
 int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
                            N_Vector x, N_Vector b, realtype tol);
+int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data,
+                               ATimesFn ATimes);
+int ATimes_BDMPIMV(void* arkode_mem, N_Vector v, N_Vector z);
 sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
-
-
+int SUNLinSolFree_BDMPIMV(SUNLinearSolver S);
 
 // Main Program
 int main(int argc, char* argv[]) {
@@ -125,7 +135,6 @@ int main(int argc, char* argv[]) {
 
   // general problem variables
   long int N, Ntot, i, j, k, l;
-  long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nls, nni, ncf, nje;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
@@ -383,33 +392,43 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetUserData(inner_arkode_mem, (void *) (&udata));
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // create the fast integrator linear solver module, and attach to ARKStep
+  // create the fast integrator local linear solver
+  if (opts.iterative) {
+    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters);
+    if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
+  } else {
 #ifdef RAJA_CUDA
-  // Initialize cuSOLVER and cuSPARSE handles
-  cusparseCreate(&cusp_handle);
-  cusolverSpCreate(&cusol_handle);
-  A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
-  if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-  BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
-  if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
-  // Set the sparsity pattern to be fixed
-  retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
-  if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
-  // Initialiize the Jacobian with the fixed sparsity pattern
-  retval = initialize_sparse_jacobian_cvklu(A, &udata);
-  if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
+    // Initialize cuSOLVER and cuSPARSE handles
+    cusparseCreate(&cusp_handle);
+    cusolverSpCreate(&cusol_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
+    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
+    if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
+    // Set the sparsity pattern to be fixed
+    retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
+    if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
+    // Initialiize the Jacobian with the fixed sparsity pattern
+    retval = initialize_sparse_jacobian_cvklu(A, &udata);
+    if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-  A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
-  if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-  BLS = SUNLinSol_KLU(wsubvecs[5], A);
-  if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
+    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
+    if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
+    BLS = SUNLinSol_KLU(wsubvecs[5], A);
+    if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
-  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata);
+  }
+
+  // create linear solver wrapper and attach the matrix and linear solver to the
+  // integrator and set the Jacobian for direct linear solvers
+  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, inner_arkode_mem, opts);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
-  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (!opts.iterative) {
+    retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
+    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
 
   // set diagnostics file
   if (udata.showstats && outproc) {
@@ -599,7 +618,10 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
     if (outproc) {
-      nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
+      long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nni, ncf;
+      long int nls, nje, nli, nlcf;
+      nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nni = ncf = 0;
+      nls = nje = nli = nlcf = 0;
       retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
       if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
@@ -612,19 +634,29 @@ int main(int argc, char* argv[]) {
       if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
       if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
-      if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
       if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
+      if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
       if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumLinIters(inner_arkode_mem, &nli);
+      if (check_flag(&retval, "ARKStepGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
+      retval = ARKStepGetNumLinConvFails(inner_arkode_mem, &nlcf);
+      if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
       cout << "\nTransient portion of simulation complete:\n";
       cout << "   Slow solver steps = " << nsts << "\n";
       cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
       cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
       cout << "   Total number of fast error test failures = " << netf << "\n";
-      if (nls > 0)
+      if (opts.iterative && nli > 0) {
+        cout << "   Total number of fast lin iters = " << nli << "\n";
+        cout << "   Total number of fast lin conv fails = " << nlcf << "\n";
+        cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(BLS) << "\n";
+      } else if (nls > 0) {
         cout << "   Total number of fast lin solv setups = " << nls << "\n";
+        cout << "   Total number of fast Jac eavls = " << nje << "\n";
+      }
       if (nni > 0) {
         cout << "   Total number of fast nonlin iters = " << nni << "\n";
         cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
@@ -644,6 +676,7 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
     udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
     udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
+    udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
     // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
     udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
     udata.profile[PR_TRANS].print_cumulative_times("trans");
@@ -772,7 +805,10 @@ int main(int argc, char* argv[]) {
 
   // Print some final statistics
   if (outproc) {
-    nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nls = nni = ncf = nje = 0;
+    long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nni, ncf;
+    long int nls, nje, nli, nlcf;
+    nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nni = ncf = 0;
+    nls = nje = nli = nlcf = 0;
     retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
     if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
@@ -785,19 +821,29 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
     if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
-    if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
     if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
+    if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
     if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumLinIters(inner_arkode_mem, &nli);
+    if (check_flag(&retval, "ARKStepGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = ARKStepGetNumLinConvFails(inner_arkode_mem, &nlcf);
+    if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
     cout << "\nOverall Solver Statistics:\n";
     cout << "   Slow solver steps = " << nsts << "\n";
     cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
     cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
     cout << "   Total number of fast error test failures = " << netf << "\n";
-    if (nls > 0)
+    if (opts.iterative && nli > 0) {
+      cout << "   Total number of fast lin iters = " << nli << "\n";
+      cout << "   Total number of fast lin conv fails = " << nlcf << "\n";
+      cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(BLS) << "\n";
+    } else if (nls > 0) {
       cout << "   Total number of fast lin solv setups = " << nls << "\n";
+      cout << "   Total number of fast Jac eavls = " << nje << "\n";
+    }
     if (nni > 0) {
       cout << "   Total number of fast nonlin iters = " << nni << "\n";
       cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
@@ -834,8 +880,10 @@ int main(int argc, char* argv[]) {
           BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
 #ifdef RAJA_CUDA
   // Destroy the cuSOLVER and cuSPARSE handles
-  cusparseDestroy(cusp_handle);
-  cusolverSpDestroy(cusol_handle);
+  if (!opts.iterative) {
+    cusparseDestroy(cusp_handle);
+    cusolverSpDestroy(cusol_handle);
+  }
 #endif
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
@@ -876,6 +924,9 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // scale wchemdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, wchemdot, wchemdot);
+
+  // save chem RHS for use in ATimes (iterative linear solvers)
+  if (udata->ffastcur) N_VScale(ONE, wchemdot, udata->ffastcur);
 
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
@@ -1079,18 +1130,17 @@ void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, EulerData& udata,
 
 //---- custom SUNLinearSolver module ----
 
-SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x, sunindextype subvec, EulerData* udata)
+SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
+                                  sunindextype subvec, EulerData* udata,
+                                  void* inner_arkode_mem,
+                                  ARKodeParameters& opts)
 {
-  SUNLinearSolver S;
-  BDMPIMVContent content;
-
   // Check compatibility with supplied N_Vector
   if (N_VGetVectorID(x) != SUNDIALS_NVEC_MPIMANYVECTOR) return(NULL);
   if (subvec >= N_VGetNumSubvectors_MPIManyVector(x)) return(NULL);
 
   // Create an empty linear solver
-  S = NULL;
-  S = SUNLinSolNewEmpty();
+  SUNLinearSolver S = SUNLinSolNewEmpty();
   if (S == NULL) return(NULL);
 
   // Attach operations (use defaults whenever possible)
@@ -1099,14 +1149,26 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x, sunindextype 
   S->ops->setup      = SUNLinSolSetup_BDMPIMV;
   S->ops->solve      = SUNLinSolSolve_BDMPIMV;
   S->ops->lastflag   = SUNLinSolLastFlag_BDMPIMV;
+  S->ops->setatimes  = SUNLinSolSetATimes_BDMPIMV;
+  S->ops->free       = SUNLinSolFree_BDMPIMV;
 
   // Create, fill and attach content
-  content = NULL;
+  BDMPIMVContent content = NULL;
   content = (BDMPIMVContent) malloc(sizeof *content);
   if (content == NULL) { SUNLinSolFree(S); return(NULL); }
-  content->blockLS = BLS;
-  content->subvec  = subvec;
-  content->udata   = udata;
+
+  content->blockLS          = BLS;
+  content->subvec           = subvec;
+  content->udata            = udata;
+  content->inner_arkode_mem = inner_arkode_mem;
+  content->nfeDQ            = 0;
+  if (opts.iterative) {
+    content->work   = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
+    udata->ffastcur = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
+  } else {
+    content->work   = NULL;
+    udata->ffastcur = NULL;
+  }
   S->content = content;
 
   return(S);
@@ -1114,7 +1176,10 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x, sunindextype 
 
 SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S)
 {
-  return(SUNLINEARSOLVER_DIRECT);
+  if (BDMPIMV_WORK(S))
+    return(SUNLINEARSOLVER_ITERATIVE);
+  else
+    return(SUNLINEARSOLVER_DIRECT);
 }
 
 int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S)
@@ -1160,10 +1225,87 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   return(BDMPIMV_LASTFLAG(S));
 }
 
+int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
+{
+  // Ignore the input ARKODE ATimes function and attach a custom ATimes function
+  BDMPIMV_LASTFLAG(S) = SUNLinSolSetATimes(BDMPIMV_BLS(S), BDMPIMV_CONTENT(S),
+                                           ATimes_BDMPIMV);
+  return(BDMPIMV_LASTFLAG(S));
+}
+
+int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
+{
+  // Access the linear solver content
+  BDMPIMVContent content = (BDMPIMVContent) A_data;
+
+  // Shortcuts to content
+  EulerData* udata            = content->udata;
+  void*      inner_arkode_mem = content->inner_arkode_mem;
+
+  // Get the current time, gamma, error weights, and rhs
+  realtype tcur;
+  int retval = ARKStepGetCurrentTime(inner_arkode_mem, &tcur);
+  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes)", 1)) return(-1);
+
+  N_Vector ycur;
+  retval = ARKStepGetCurrentState(inner_arkode_mem, &ycur);
+  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes)", 1)) return(-1);
+
+  realtype gamma;
+  retval = ARKStepGetCurrentGamma(inner_arkode_mem, &gamma);
+  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes)", 1)) return(-1);
+
+  N_Vector work = content->work;
+  retval = ARKStepGetErrWeights(inner_arkode_mem, work);
+  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes)", 1)) return(-1);
+
+  // Start timer
+  retval = udata->profile[PR_LATIMES].start();
+  if (check_flag(&retval, "Profile::start (Atimes)", 1)) return(-1);
+
+  // Set perturbation to 1/||v||
+  realtype sig = ONE / N_VWrmsNorm(v, work);
+
+  // Set work = y + sig * v
+  N_VLinearSum(sig, v, ONE, ycur, work);
+
+  // Set z = ffast(t, y + sig * v)
+  retval = calculate_rhs_cvklu(tcur, work, z, udata->RxNetData);
+  content->nfeDQ++;
+  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
+
+  // scale wchemdot by TimeUnits to handle step size nondimensionalization
+  N_VScale(udata->TimeUnits, z, z);
+
+  // Compute Jv approximation: z = (z - ffastcur) / sig
+  realtype siginv = ONE / sig;
+  N_VLinearSum(siginv, z, -siginv, udata->ffastcur, z);
+
+  // Compute Av approximation: z = (I - gamma J) v
+  N_VLinearSum(ONE, v, -gamma, z, z);
+
+  // Stop timer and return
+  retval = udata->profile[PR_LATIMES].stop();
+  if (check_flag(&retval, "Profile::stop (Atimes)", 1)) return(-1);
+
+  return(0);
+}
+
 sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
 }
 
+
+int SUNLinSolFree_BDMPIMV(SUNLinearSolver S)
+{
+  BDMPIMVContent content = BDMPIMV_CONTENT(S);
+  if (content == NULL) return(0);
+  if (content->work) N_VDestroy(content->work);
+  free(S->ops);
+  free(S->content);
+  free(S);
+  return(0);
+}
 
 //---- end of file ----
