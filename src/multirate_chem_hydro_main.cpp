@@ -652,7 +652,7 @@ int main(int argc, char* argv[]) {
       if (opts.iterative && nli > 0) {
         cout << "   Total number of fast lin iters = " << nli << "\n";
         cout << "   Total number of fast lin conv fails = " << nlcf << "\n";
-        cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(BLS) << "\n";
+        cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
       } else if (nls > 0) {
         cout << "   Total number of fast lin solv setups = " << nls << "\n";
         cout << "   Total number of fast Jac eavls = " << nje << "\n";
@@ -839,7 +839,7 @@ int main(int argc, char* argv[]) {
     if (opts.iterative && nli > 0) {
       cout << "   Total number of fast lin iters = " << nli << "\n";
       cout << "   Total number of fast lin conv fails = " << nlcf << "\n";
-      cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(BLS) << "\n";
+      cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
     } else if (nls > 0) {
       cout << "   Total number of fast lin solv setups = " << nls << "\n";
       cout << "   Total number of fast Jac eavls = " << nje << "\n";
