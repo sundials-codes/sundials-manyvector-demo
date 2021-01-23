@@ -43,7 +43,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 {
   int retval;
   double dbuff[28];
-  long int ibuff[25];
+  long int ibuff[27];
 
   // disable 'restart' by default
   restart = -1;
@@ -54,15 +54,16 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     cout << "Reading command-line options\n";
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 55;
+    const int nopt = 57;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
-                itf, igam, imun, ilun, itun, inx, iny, inz, ixlb, 
+                itf, igam, imun, ilun, itun, inx, iny, inz, ixlb,
                 ixrb, iylb, iyrb, izlb, izrb, icfl, inout, ishow,
                 iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
                 isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
                 iemaf, ih0, ihmin, ihmax, ifixed, ihtrans, irtol,
-                iatol, irest, ipred, imxnit, inlcoef, ifk, ilr };
+                iatol, irest, ipred, imxnit, inlcoef, ifk, ilr,
+                iils, imxlit };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -127,6 +128,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[inlcoef].long_name = "nlconvcoef";
     options[ifk].long_name = "fusedkernels";
     options[ilr].long_name = "localreduce";
+    options[iils].long_name = "iterative";
+    options[imxlit].long_name = "maxliters";
     argc = gopt(argv, options);
 
     // handle help request
@@ -197,6 +200,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "\nAvailable N_Vector options (and the default if not provided):\n"
            << "   --fusedkernels=<int>   (" << opts.fusedkernels << ")\n"
            << "   --localreduce=<int>    (" << opts.localreduce << ")\n"
+           << "   --iterative=<int>      (" << opts.iterative << ")\n"
+           << "   --maxliters=<int>      (" << opts.maxliters << ")\n"
            << "\nAlternately, all of these options may be specified in a single\n"
            << "input file (with command-line arguments taking precedence if an\n"
            << "option is multiply-defined) via:"
@@ -274,6 +279,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"nlconvcoef = %lf", &opts.nlconvcoef);
         retval += sscanf(line,"fusedkernels = %i", &opts.fusedkernels);
         retval += sscanf(line,"localreduce = %i", &opts.localreduce);
+        retval += sscanf(line,"iterative = %i", &opts.iterative);
+        retval += sscanf(line,"maxliters = %i", &opts.maxliters);
 
         /* if unable to read the line (and it looks suspicious) issue a warning */
         if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
@@ -339,6 +346,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[inlcoef].count) opts.nlconvcoef   = atof(options[inlcoef].argument);
     if (options[ifk].count)     opts.fusedkernels = atoi(options[ifk].argument);
     if (options[ilr].count)     opts.localreduce  = atoi(options[ilr].argument);
+    if (options[iils].count)    opts.iterative    = atoi(options[iils].argument);
+    if (options[imxlit].count)  opts.maxliters    = atoi(options[imxlit].argument);
 
     // pack buffers with final parameter values
     ibuff[0]  = (long int) udata.nx;
@@ -366,6 +375,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     ibuff[22] = (long int) opts.fixedstep;
     ibuff[23] = (long int) opts.fusedkernels;
     ibuff[24] = (long int) opts.localreduce;
+    ibuff[25] = (long int) opts.iterative;
+    ibuff[26] = (long int) opts.maxliters;
 
     dbuff[0]  = (double) udata.xl;
     dbuff[1]  = (double) udata.xr;
@@ -430,6 +441,8 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.fixedstep = ibuff[22];
   opts.fusedkernels = ibuff[23];
   opts.localreduce = ibuff[24];
+  opts.iterative = ibuff[25];
+  opts.maxliters = ibuff[26];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -463,7 +476,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // setup any derived unit scaling factors
   retval = udata.UpdateUnits();
   if (check_flag(&retval, "UpdateUnits (load_inputs)", 1)) return(retval);
-  
+
   // return with success
   return(0);
 }
@@ -673,6 +686,8 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "atol = " ESYM "\n", opts.atol);
     fprintf(UFID, "fusedkernels = %i\n", opts.fusedkernels);
     fprintf(UFID, "localreduce = %i\n", opts.localreduce);
+    fprintf(UFID, "iterative = %i\n", opts.iterative);
+    fprintf(UFID, "maxliters = %i\n", opts.maxliters);
     fprintf(UFID, "restart = %i\n", iout);
     fclose(UFID);
   }
@@ -858,7 +873,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   N_VScale(udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,2), N_VGetSubvector_MPIManyVector(w,2));
   N_VScale(udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,3), N_VGetSubvector_MPIManyVector(w,3));
   N_VScale(udata.EnergyUnits,   N_VGetSubvector_MPIManyVector(w,4), N_VGetSubvector_MPIManyVector(w,4));
-  
+
   // write each fluid field to disk, and close the associated dataset
   for (v=0; v<5; v++) {
     W = NULL;
@@ -874,7 +889,7 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
   N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,2), N_VGetSubvector_MPIManyVector(w,2));
   N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,3), N_VGetSubvector_MPIManyVector(w,3));
   N_VScale(ONE/udata.EnergyUnits,   N_VGetSubvector_MPIManyVector(w,4), N_VGetSubvector_MPIManyVector(w,4));
-  
+
   // write each chemical field to disk, and close the associated dataset
   // (note: we first copy these to be contiguous over this MPI task)
   if (udata.nchem > 0) {
@@ -1117,7 +1132,7 @@ int read_restart(const int& restart, realtype& t, N_Vector w, const EulerData& u
   N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,2), N_VGetSubvector_MPIManyVector(w,2));
   N_VScale(ONE/udata.MomentumUnits, N_VGetSubvector_MPIManyVector(w,3), N_VGetSubvector_MPIManyVector(w,3));
   N_VScale(ONE/udata.EnergyUnits,   N_VGetSubvector_MPIManyVector(w,4), N_VGetSubvector_MPIManyVector(w,4));
-  
+
   // clean up and close the file
   H5Sclose(memspace);
   H5Fclose(file_identifier);

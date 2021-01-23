@@ -136,6 +136,8 @@ public:
   double atol;         // absolute solution tolerance (0 => default)
   int fusedkernels;    // flag for fused N_Vector operations (0 disabled, 1 enabled)
   int localreduce;     // flag for N_Vector local reduction operations (0 disabled, 1 enabled)
+  int iterative;       // flag to use an iterative linear solver (0 direct, 1 iteraive)
+  int maxliters;       // max number of linear iterations (0 => default)
 
   // constructor (with default values)
   ARKodeParameters() :
@@ -144,7 +146,7 @@ public:
     growth(0.0), pq(0), k1(0.0), k2(0.0), k3(0.0), etamx1(0.0),
     etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), fixedstep(0), htrans(0.0),
     predictor(0), maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12),
-    fusedkernels(1), localreduce(1)
+    fusedkernels(1), localreduce(1), iterative(0), maxliters(0)
   {};
 
 };   // end ARKodeParameters;

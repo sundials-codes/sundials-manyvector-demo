@@ -34,6 +34,7 @@
 #include <sunmatrix/sunmatrix_dense.h>
 #include <sunlinsol/sunlinsol_dense.h>
 #endif
+#include <sunlinsol/sunlinsol_spgmr.h>
 
 #ifdef USE_CVODE
 #include <cvode/cvode.h>
@@ -482,42 +483,53 @@ int main(int argc, char* argv[]) {
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 
-  // create matrix and linear solver modules, and attach to ARKStep
+  // create matrix and linear solver modules
+  if (opts.iterative) {
+    LS = SUNLinSol_SPGMR(w, PREC_NONE, opts.maxliters);
+    if(check_flag((void*) LS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
+  } else {
 #if defined RAJA_CUDA
-  // Initialize cuSOLVER and cuSPARSE handles
-  cusparseCreate(&cusp_handle);
-  cusolverSpCreate(&cusol_handle);
-  A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
-  if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-  LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle);
-  if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
-  // Set the sparsity pattern to be fixed
-  retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
-  if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
-  // Initialiize the Jacobian with the fixed sparsity pattern
-  retval = initialize_sparse_jacobian_cvklu(A, &udata);
-  if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
+    // Initialize cuSOLVER and cuSPARSE handles
+    cusparseCreate(&cusp_handle);
+    cusolverSpCreate(&cusol_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
+    LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle);
+    if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
+    // Set the sparsity pattern to be fixed
+    retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
+    if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
+    // Initialiize the Jacobian with the fixed sparsity pattern
+    retval = initialize_sparse_jacobian_cvklu(A, &udata);
+    if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #elif defined CVKLU
-  A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT);
-  if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-  LS = SUNLinSol_KLU(w, A);
-  if (check_flag((void*) LS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
+    A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT);
+    if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
+    LS = SUNLinSol_KLU(w, A);
+    if (check_flag((void*) LS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-  A  = SUNDenseMatrix(N, N);
-  if (check_flag((void*) A, "SUNDenseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-  LS = SUNLinSol_Dense(w, A);
-  if (check_flag((void*) LS, "SUNLinSol_Dense (main)", 0)) MPI_Abort(udata.comm, 1);
+    A  = SUNDenseMatrix(N, N);
+    if (check_flag((void*) A, "SUNDenseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
+    LS = SUNLinSol_Dense(w, A);
+    if (check_flag((void*) LS, "SUNLinSol_Dense (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
+  }
+
+  // attach matrix and linear solver to the integrator
 #ifdef USE_CVODE
   retval = CVodeSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "CVodeSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
-  if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (!opts.iterative) {
+    retval = CVodeSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
+    if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
 #else
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
-  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  if (!opts.iterative) {
+    retval = ARKStepSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
+    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
 #endif
 
   // setup the ARKStep integrator based on inputs
@@ -755,8 +767,10 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // Print some final statistics
-  long int nst, nst_a, nfe, nfi, netf, nls, nni, ncf;
-  nst = nst_a = nfe = nfi = netf = nls = nni = ncf = 0;
+  long int nst, nst_a, nfe, nfi, netf, nni, ncf;
+  long int nls, njevals, nliters, nlcfails, nfevalsLS;
+  nst = nst_a = nfe = nfi = netf = nni = ncf = 0;
+  nls = njevals = nliters = nlcfails = nfevalsLS = 0;
 #ifdef USE_CVODE
   retval = CVodeGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "CVodeGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -764,12 +778,18 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "CVodeGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = CVodeGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "CVodeGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+  if (check_flag(&retval, "CVodeGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = CVodeGetNumLinSolvSetups(arkode_mem, &nls);
   if (check_flag(&retval, "CVodeGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumNonlinSolvIters(arkode_mem, &nni);
-  if (check_flag(&retval, "CVodeGetNumNonlinSolvIters (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumNonlinSolvConvFails(arkode_mem, &ncf);
-  if (check_flag(&retval, "CVodeGetNumNonlinSolvConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumJacEvals(arkode_mem, &njevals);
+  if (check_flag(&retval, "CVodeGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumLinIters(arkode_mem, &nliters);
+  if (check_flag(&retval, "CVodeGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumLinConvFails(arkode_mem, &nlcfails);
+  if (check_flag(&retval, "CVodeGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = CVodeGetNumLinRhsEvals(arkode_mem, &nfevalsLS);
+  if (check_flag(&retval, "CVodeGetNumLinRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -779,10 +799,18 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
   if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
-  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
   if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
+  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumJacEvals(arkode_mem, &njevals);
+  if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinIters(arkode_mem, &nliters);
+  if (check_flag(&retval, "ARKStepGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinConvFails(arkode_mem, &nlcfails);
+  if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinRhsEvals(arkode_mem, &nfevalsLS);
+  if (check_flag(&retval, "ARKStepGetNumLinRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
 
   if (outproc) {
@@ -790,8 +818,14 @@ int main(int argc, char* argv[]) {
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    if (nls > 0)
+    if (opts.iterative && nliters > 0) {
+      cout << "   Total number of lin iters = " << nliters << "\n";
+      cout << "   Total number of lin conv fails = " << nlcfails << "\n";
+      cout << "   Total number of lin RHS evals = " << nfevalsLS << "\n";
+    } else if (nls > 0) {
       cout << "   Total number of lin solv setups = " << nls << "\n";
+      cout << "   Total number of Jac eavls = " << njevals << "\n";
+    }
     if (nni > 0) {
       cout << "   Total number of nonlin iters = " << nni << "\n";
       cout << "   Total number of nonlin conv fails = " << ncf << "\n";
@@ -817,8 +851,10 @@ int main(int argc, char* argv[]) {
   SUNLinSolFree(LS);              // Free matrix and linear solver
   SUNMatDestroy(A);
 #ifdef RAJA_CUDA
-  cusparseDestroy(cusp_handle);   // Destroy the cuSOLVER and cuSPARSE handles
-  cusolverSpDestroy(cusol_handle);
+  if (!opts.iterative) {
+    cusparseDestroy(cusp_handle);   // Destroy the cuSOLVER and cuSPARSE handles
+    cusolverSpDestroy(cusol_handle);
+  }
 #endif
 #ifdef USE_CVODE
   CVodeFree(&arkode_mem);         // Free integrator memory
