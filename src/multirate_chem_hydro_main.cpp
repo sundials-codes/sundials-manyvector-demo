@@ -1163,7 +1163,7 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   content->inner_arkode_mem = inner_arkode_mem;
   content->nfeDQ            = 0;
   if (opts.iterative) {
-    content->work   = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
+    content->work   = N_VClone(x);
     udata->ffastcur = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
   } else {
     content->work   = NULL;
@@ -1242,7 +1242,7 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   EulerData* udata            = content->udata;
   void*      inner_arkode_mem = content->inner_arkode_mem;
 
-  // Get the current time, gamma, error weights, and rhs
+  // Get the current time, gamma, and error weights
   realtype tcur;
   int retval = ARKStepGetCurrentTime(inner_arkode_mem, &tcur);
   if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes)", 1)) return(-1);
@@ -1259,18 +1259,22 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   retval = ARKStepGetErrWeights(inner_arkode_mem, work);
   if (check_flag(&retval, "ARKStepGetErrWeights (Atimes)", 1)) return(-1);
 
+  // Get ycur and weight vector for chem species
+  N_Vector y = N_VGetSubvector_MPIManyVector(ycur, content->subvec);
+  N_Vector w = N_VGetSubvector_MPIManyVector(work, content->subvec);
+
   // Start timer
   retval = udata->profile[PR_LATIMES].start();
   if (check_flag(&retval, "Profile::start (Atimes)", 1)) return(-1);
 
   // Set perturbation to 1/||v||
-  realtype sig = ONE / N_VWrmsNorm(v, work);
+  realtype sig = ONE / N_VWrmsNorm(v, w);
 
   // Set work = y + sig * v
-  N_VLinearSum(sig, v, ONE, ycur, work);
+  N_VLinearSum(sig, v, ONE, y, w);
 
   // Set z = ffast(t, y + sig * v)
-  retval = calculate_rhs_cvklu(tcur, work, z, udata->RxNetData);
+  retval = calculate_rhs_cvklu(tcur, w, z, udata->RxNetData);
   content->nfeDQ++;
   if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
 
