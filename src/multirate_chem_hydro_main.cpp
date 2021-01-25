@@ -134,7 +134,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot, i, j, k, l;
+  long int N, Ntot;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID

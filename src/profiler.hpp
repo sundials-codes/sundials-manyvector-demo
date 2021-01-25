@@ -34,7 +34,7 @@ public:
 
   static const int PRINT_ALL_RANKS = -1;
 
-  Profile(): stime(-1.0), time(0.0), count(0), description("") {};
+  Profile(): description(""), stime(-1.0), time(0.0), count(0) {};
 
   void desc(const std::string& str)
   {
