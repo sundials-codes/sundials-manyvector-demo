@@ -100,7 +100,7 @@ typedef struct _BDMPIMVContent {
   sunindextype    subvec;
   sunindextype    lastflag;
   EulerData*      udata;
-  void*           inner_arkode_mem;
+  void*           arkode_mem;
   N_Vector        work;
   long int        nfeDQ;
 } *BDMPIMVContent;
@@ -113,8 +113,7 @@ typedef struct _BDMPIMVContent {
 #define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void *inner_arkode_mem,
-                                  ARKodeParameters& opts);
+                                  void *arkode_mem, ARKodeParameters& opts);
 SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
@@ -125,6 +124,7 @@ int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data,
 int ATimes_BDMPIMV(void* arkode_mem, N_Vector v, N_Vector z);
 sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolFree_BDMPIMV(SUNLinearSolver S);
+
 
 // Main Program
 int main(int argc, char* argv[]) {
@@ -308,7 +308,7 @@ int main(int argc, char* argv[]) {
   Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
-  for (i=0; i<5; i++) {
+  for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
@@ -863,6 +863,7 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
   udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
+  udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
   // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
@@ -926,7 +927,7 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   N_VScale(udata->TimeUnits, wchemdot, wchemdot);
 
   // save chem RHS for use in ATimes (iterative linear solvers)
-  if (udata->ffastcur) N_VScale(ONE, wchemdot, udata->ffastcur);
+  if (udata->fchemcur) N_VScale(ONE, wchemdot, udata->fchemcur);
 
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
@@ -1132,7 +1133,7 @@ void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, EulerData& udata,
 
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void* inner_arkode_mem,
+                                  void* arkode_mem,
                                   ARKodeParameters& opts)
 {
   // Check compatibility with supplied N_Vector
@@ -1157,17 +1158,17 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   content = (BDMPIMVContent) malloc(sizeof *content);
   if (content == NULL) { SUNLinSolFree(S); return(NULL); }
 
-  content->blockLS          = BLS;
-  content->subvec           = subvec;
-  content->udata            = udata;
-  content->inner_arkode_mem = inner_arkode_mem;
-  content->nfeDQ            = 0;
+  content->blockLS    = BLS;
+  content->subvec     = subvec;
+  content->udata      = udata;
+  content->arkode_mem = arkode_mem;
+  content->nfeDQ      = 0;
   if (opts.iterative) {
     content->work   = N_VClone(x);
-    udata->ffastcur = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
+    udata->fchemcur = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
   } else {
     content->work   = NULL;
-    udata->ffastcur = NULL;
+    udata->fchemcur = NULL;
   }
   S->content = content;
 
@@ -1239,24 +1240,24 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   BDMPIMVContent content = (BDMPIMVContent) A_data;
 
   // Shortcuts to content
-  EulerData* udata            = content->udata;
-  void*      inner_arkode_mem = content->inner_arkode_mem;
+  EulerData* udata      = content->udata;
+  void*      arkode_mem = content->arkode_mem;
 
   // Get the current time, gamma, and error weights
   realtype tcur;
-  int retval = ARKStepGetCurrentTime(inner_arkode_mem, &tcur);
+  int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
   if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes)", 1)) return(-1);
 
   N_Vector ycur;
-  retval = ARKStepGetCurrentState(inner_arkode_mem, &ycur);
+  retval = ARKStepGetCurrentState(arkode_mem, &ycur);
   if (check_flag(&retval, "ARKStepGetCurrentState (Atimes)", 1)) return(-1);
 
   realtype gamma;
-  retval = ARKStepGetCurrentGamma(inner_arkode_mem, &gamma);
+  retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
   if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes)", 1)) return(-1);
 
   N_Vector work = content->work;
-  retval = ARKStepGetErrWeights(inner_arkode_mem, work);
+  retval = ARKStepGetErrWeights(arkode_mem, work);
   if (check_flag(&retval, "ARKStepGetErrWeights (Atimes)", 1)) return(-1);
 
   // Get ycur and weight vector for chem species
@@ -1281,9 +1282,9 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   // scale wchemdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, z, z);
 
-  // Compute Jv approximation: z = (z - ffastcur) / sig
+  // Compute Jv approximation: z = (z - fchemcur) / sig
   realtype siginv = ONE / sig;
-  N_VLinearSum(siginv, z, -siginv, udata->ffastcur, z);
+  N_VLinearSum(siginv, z, -siginv, udata->fchemcur, z);
 
   // Compute Av approximation: z = (I - gamma J) v
   N_VLinearSum(ONE, v, -gamma, z, z);

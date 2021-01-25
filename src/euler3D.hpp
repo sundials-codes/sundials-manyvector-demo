@@ -247,8 +247,8 @@ public:
   realtype *Bsend;
   MPI_Request req[12];  // MPI requests for neighbor exchange
 
-  //// vector to save last fast RHS eval for use in ATimes
-  N_Vector ffastcur;
+  //// vector to save last chemistry RHS eval for use in ATimes
+  N_Vector fchemcur;
 
   ///// class operations /////
 
@@ -264,7 +264,7 @@ public:
     ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1), gamma(1.4), cfl(0.0),
     xflux(NULL), yflux(NULL), zflux(NULL), nout(10), showstats(0), MassUnits(1.0),
     LengthUnits(1.0), TimeUnits(1.0), DensityUnits(1.0), MomentumUnits(1.0),
-    EnergyUnits(1.0), ffastcur(NULL)
+    EnergyUnits(1.0), fchemcur(NULL)
   {
     nchem = (NVAR) - 5;
   };
@@ -287,7 +287,7 @@ public:
     if (yflux != NULL)  delete[] yflux;
     if (zflux != NULL)  delete[] zflux;
     if (RxNetData != NULL)  free(RxNetData);
-    if (ffastcur != NULL) N_VDestroy(ffastcur);
+    if (fchemcur != NULL) N_VDestroy(fchemcur);
   };
 
   // Update derived unit scaling factors from base factors
