@@ -1,58 +1,127 @@
 # SUNDIALS ManyVector+Multirate Demo
 
-[Note: this project is in active development; do not expect
-executables to run correctly (or even compile) at present.]
+[Note: this project is in active development.]
 
-This is a SUNDIALS-based demonstration application to assess and
-demonstrate the large-scale parallel performance of new capabilities
-that have been added to SUNDIALS in recent years.  Namely:
+This is a SUNDIALS-based demonstration application to assess and demonstrate the
+large-scale parallel performance of new capabilities that have been added to
+SUNDIALS in recent years. Namely:
 
-1. SUNDIALS' new MPIManyVector module, that allows extreme flexibility
-   in how a solution "vector" is staged on computational resources.
+1. The new SUNDIALS MPIManyVector module, that allows extreme flexibility in how
+   a solution "vector" is staged on computational resources.
 
-2. ARKode's new multirate integration module, MRIStep, allowing
-   high-order accurate calculations that subcycle "fast" processes
-   within "slow" ones.
+2. The new ARKODE multirate integration module, MRIStep, allowing high-order
+   accurate calculations that subcycle "fast" processes within "slow" ones.
 
-3. (eventually) SUNDIALS' new flexible linear solver interfaces, to
-   enable streamlined use of scalable linear solver libraries (e.g.,
-   *hypre*, PETSc and Trilinos).
+3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined use
+   of scalable linear solver libraries (e.g., *hypre*, PETSc and Trilinos).
 
-Steps showing the process to download this demo code, install the
-relevant dependencies, and build the demo in a Linux or OS X
-environment are as follows.  To compile this code you will need modern
-C and C++ compilers.  All dependencies (SUNDIALS, KLU and HDF5) for the demo
-are installed in-place using [Spack](https://github.com/spack/spack).
+## Building
+
+Steps showing the process to download this demo code, install the relevant
+dependencies, and build the demo in a Linux or OS X environment are as follows.
+
+To compile this code you will need:
+
+* modern C and C++ compilers
+
+* [CMake](https://cmake.org) 3.12 or newer
+
+* an MPI library e.g., [OpenMPI](https://www.open-mpi.org/),
+  [MPICH](https://www.mpich.org/), etc.
+
+* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
+  integrators and nonlinear solvers
+
+* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
+  of sparse direct linear solvers (specifically KLU)
+
+* the [HDF5](https://www.hdfgroup.org/) high-performance data management and
+  storage suite
+
+For running on systems with GPUs you will additionally need:
+
+* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the nvcc
+  compiler and cuSPRASE library)
+
+* the [RAJA](https://github.com/LLNL/RAJA) performance portability library
+
+All of the dependencies for this demo code can be installed using the
+[Spack](https://github.com/spack/spack) package management tool e.g.,
 
 ```bash
-   git clone https://github.com/drreynolds/sundials-manyvector-demo.git
-   cd sundials-manyvector-demo
-   git clone https://github.com/spack/spack.git .spack
-   .spack/bin/spack install hdf5 +mpi +pic +szip
-   .spack/bin/spack install sundials +int64 +klu +mpi ~examples-f77 ~examples-install ~examples-c ~CVODE ~CVODES ~IDA ~IDAS ~KINSOL
-   .spack/bin/spack view symlink hdf5 hdf5
-   .spack/bin/spack view symlink sundials sundials
-   .spack/bin/spack view symlink mpi mpi
-   make
+   git clone https://github.com/spack/spack.git
+   spack/bin/spack install mpi
+   spack/bin/spack install hdf5 +mpi +pic +szip
+   spack/bin/spack isntall suitesparse
+   spack/bin/spack install raja +cuda
+   spack/bin/spack install sundials +klu +mpi +raja +cuda
 ```
 
-The above steps will build all codes in 'production' mode, with
-optimization enabled, and both OpenMP and debugging symbols turned
-off.
+Alternately, the `scripts` directory contains shell scripts for setting up the
+environment on various systems and installing some of the required libraries
+(SUNDIALS, SuiteSparse, and RAJA).
 
-Alternately, if you already have MPI, SUNDIALS, parallel HDF5, and
-KLU/SuiteSparse installed, you can edit the file `Makefile.in` to
-specify these installations, and skip the Spack-related steps above.
+The following CMake variables can be used to configure the build, enable various
+options, and specify the location of the external libraries:
 
-Additionally, you may edit the `Makefile.opts` file to switch between
-an optimized/debugging build, and to enable/disable OpenMP prior to
-running `make` above.  Also, HDF5-based I/O may be disabled entirely
-(e.g., if HDF5 is unavailable on a given machine) by setting `USEHDF5
-= 0` in `Makefile.opts`.
+* `CMAKE_INSTALL_PREFIX` - the path where executables and input files should be
+  installed e.g., `path/to/myinstall/`. The executables will be installed in the
+  `bin` directory and input files in the `tests` directory under the given path.
 
+* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`
 
+* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`
 
-## (Current) Documentation
+* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`
+
+* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`
+
+* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`
+
+* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`
+
+* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
+  the value of the `SUNDIALS_ROOT` environment variable
+
+* `ENABLE_RAJA` - build with RAJA support, defaults to `OFF`
+
+* `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
+  value of the `RAJA_ROOT` environment variable
+
+* `RAJA_BACKEND` - set the RAJA backend to use in the demo code, defaults to
+   `CUDA`
+
+* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`
+
+* `HDF5_ROOT` - the root directory of the HDF5 installation, defaults to the
+  value of the `HDF5_ROOT` environment variable
+
+* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
+
+For example the following the following commands can be used to download and
+build the demo code with RAJA support targeting NVIDIA Tesla V100 GPUs:
+
+```bash
+   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
+   cd sundials-manyvector-demo
+   mkdir build
+   cd build
+   cmake ../. \
+     -DCMAKE_INSTALL_PREFIX="path/to/myworkspace" \
+     -DCMAKE_C_COMPILER=mpicc \
+     -DCMAKE_C_FLAGS="-g -O2" \
+     -DCMAKE_CXX_COMPILER=mpicxx \
+     -DCMAKE_CXX_FLAGS="-g -O2" \
+     -DSUNDIALS_ROOT="path/to/mylibs/sundials-5.6.1" \
+     -ENABLE_RAJA="ON" \
+     -DRAJA_ROOT="path/to/mylibs/raja-0.13.0" \
+     -DENABLE_HDF5="ON" \
+     -DHDF5_ROOT="path/to/mylibs/hdf5-1.10.4"
+  make
+  make install
+```
+
+## Documentation
 
 This code simulates a 3D nonlinear inviscid compressible Euler
 equation with advection and reaction of chemical species,
@@ -185,7 +254,7 @@ corresponding to the number of unknowns at any spatial location.
 Hence, the [default] minimum value for `NVAR` is 5, so for a
 calculation with 4 chemical species the code should be compiled with
 the preprocessor flag `-DNVAR=9`.  An example of this is provided in
-the `Makefile` when building `compile_test.exe`, and may be emulated
+`src/CMakeLists.txt` when building `compile_test.exe`, and may be emulated
 for user-defined problems.
 
 Example input files are provided in the `inputs/` folder -- these are
@@ -264,7 +333,7 @@ communication, or the results from `UserData::ExchangeStart` /
 the same frequency as the solution is output to disk.
 
 To supply these auxiliary source code file(s), add this to the
-`Makefile` in a similar manner as the existing test problems are built
+`src/CMakeLists.txt` in a similar manner as the existing test problems are built
 (e.g. `hurricane_yz.exe`).
 
 As stated above, this code uses parallel HDF5 to store solution
