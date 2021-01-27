@@ -1221,12 +1221,32 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
     return(BDMPIMV_LASTFLAG(S));
   }
 
-  // pass solve call down to block linear solver
-  BDMPIMV_LASTFLAG(S) = SUNLinSolSolve(BDMPIMV_BLS(S), A,
-                                       xsub, bsub, tol);
+  // pass solve call down to the block linear solver
+  int ierr = SUNLinSolSolve(BDMPIMV_BLS(S), A, xsub, bsub, tol);
+
+  // check if any of the block solvers failed
+  int global_ierr;
+
+  retval = MPI_Allreduce(&ierr, &global_ierr, 1, MPI_INT, MPI_MIN,
+                         BDMPIMV_UDATA(S)->comm);
+  if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
+
+  // an unrecoverable failure occured
+  BDMPIMV_LASTFLAG(S) = global_ierr;
+  if (global_ierr < 0) return(global_ierr);
+
+  retval = MPI_Allreduce(&ierr, &global_ierr, 1, MPI_INT, MPI_MAX,
+                         BDMPIMV_UDATA(S)->comm);
+  if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
+
+  // either success or a recoverable failure occured
+  BDMPIMV_LASTFLAG(S) = global_ierr;
+
+  // stop profiling timer
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
   if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
-  return(BDMPIMV_LASTFLAG(S));
+
+  return(global_ierr);
 }
 
 int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
