@@ -1,7 +1,7 @@
 #!/bin/bash
-# --------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Programmer(s): David J. Gardner @ LLNL
-# --------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # SUNDIALS Copyright Start
 # Copyright (c) 2002-2019, Lawrence Livermore National Security
 # and Southern Methodist University.
@@ -11,11 +11,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 # SUNDIALS Copyright End
-# --------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Script to setup Summit environment
-# --------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 #
-# Usage: source ./setup_summit.sh
+# Usage: source ./setup_summit.sh [compiler spec] [build type] [cuda version]
+#
+#   * compiler spec - the compiler name and version separated by @ to use when
+#     building e.g., gcc@8.1.0, xl@16.1.1-5, etc.
+#
+#   * build type - configure thrid-party libraries to build an optimized (opt)
+#     or debugging (dbg) version of the library.
+#
+#   * cuda version - the version of the NVIDIA CUDA Toolkit to build with.
 #
 # To see environment variables set by a module:
 #   module show <module name>
@@ -28,7 +36,10 @@
 #   5) lsf-tools/2.0
 #   6) darshan-runtime/3.1.7
 #   7) DefApps
-# --------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# location to install third-party libraries
+export PROJHOME=/ccs/proj/csc317
 
 # set compiler spec
 compiler="gcc@8.1.1"
@@ -109,26 +120,23 @@ export CFLAGS='-g -Wall'
 export CXXFLAGS='-g -Wall'
 export FCFLAGS='-g'
 
-# set environment variables
-export HOST=summit
-export PROJHOME=/ccs/proj/csc317
-
-# load other modules
+# load some modules
 module load cmake
 module load essl
 module load metis
 module load hdf5
 module load cuda/${cudaver}
-#module load hip
 module load hpctoolkit
 
-# unload modules (needed to build KLU)
+# unload some modules (needed to build KLU)
 module unload xalt
 
 # list currently loaded modules
 module list
 
 # set environment variables for library installs
+export HOST=summit
+
 export BLAS_LIB="${OLCF_ESSL_ROOT}/lib64/libessl.so"
 export LAPACK_LIB="${OLCF_ESSL_ROOT}/lib64/libessl.so"
 
@@ -147,6 +155,3 @@ export SUNDIALS_INDEX_SIZE=32
 export SUNDIALS_CUDA_STATUS=ON
 export SUNDIALS_RAJA_STATUS=ON
 export SUNDIALS_ROOT="${PROJHOME}/${COMPILERNAME}/sundials-5.6.1-int${SUNDIALS_INDEX_SIZE}-cuda-${cudaver}-${bldtype}"
-
-# user workspace for installing/running the demo
-export SUNDIALS_DEMO_WORKSPACE=${MEMBERWORK}/csc317/sundials-demo
