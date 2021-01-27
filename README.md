@@ -7,121 +7,25 @@ large-scale parallel performance of new capabilities that have been added to
 SUNDIALS in recent years. Namely:
 
 1. The new SUNDIALS MPIManyVector module, that allows extreme flexibility in how
-   a solution "vector" is staged on computational resources.
+   a solution "vector" is staged on computational resources (e.g., CPUs and
+   GPUs).
 
 2. The new ARKODE multirate integration module, MRIStep, allowing high-order
    accurate calculations that subcycle "fast" processes within "slow" ones.
 
 3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined use
-   of scalable linear solver libraries (e.g., *hypre*, PETSc and Trilinos).
+   of problem specific and scalable linear solver libraries (e.g., *hypre*,
+   PETSc and Trilinos).
 
-## Building
+## Table of Contents
 
-Steps showing the process to download this demo code, install the relevant
-dependencies, and build the demo in a Linux or OS X environment are as follows.
+* [Model Equations](#model-equations)
+* [Discretization](#discretization)
+* [Building](#building)
+* [Running](#running)
+* [Authors](#authors)
 
-To compile this code you will need:
-
-* modern C and C++ compilers
-
-* [CMake](https://cmake.org) 3.12 or newer
-
-* an MPI library e.g., [OpenMPI](https://www.open-mpi.org/),
-  [MPICH](https://www.mpich.org/), etc.
-
-* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
-  integrators and nonlinear solvers
-
-* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
-  of sparse direct linear solvers (specifically KLU)
-
-* the [HDF5](https://www.hdfgroup.org/) high-performance data management and
-  storage suite
-
-For running on systems with GPUs you will additionally need:
-
-* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the nvcc
-  compiler and cuSPRASE library)
-
-* the [RAJA](https://github.com/LLNL/RAJA) performance portability library
-
-All of the dependencies for this demo code can be installed using the
-[Spack](https://github.com/spack/spack) package management tool e.g.,
-
-```bash
-   git clone https://github.com/spack/spack.git
-   spack/bin/spack install mpi
-   spack/bin/spack install hdf5 +mpi +pic +szip
-   spack/bin/spack isntall suitesparse
-   spack/bin/spack install raja +cuda
-   spack/bin/spack install sundials +klu +mpi +raja +cuda
-```
-
-Alternately, the `scripts` directory contains shell scripts for setting up the
-environment on various systems and installing some of the required libraries
-(SUNDIALS, SuiteSparse, and RAJA).
-
-The following CMake variables can be used to configure the build, enable various
-options, and specify the location of the external libraries:
-
-* `CMAKE_INSTALL_PREFIX` - the path where executables and input files should be
-  installed e.g., `path/to/myinstall/`. The executables will be installed in the
-  `bin` directory and input files in the `tests` directory under the given path.
-
-* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`
-
-* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`
-
-* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`
-
-* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`
-
-* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`
-
-* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`
-
-* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
-  the value of the `SUNDIALS_ROOT` environment variable
-
-* `ENABLE_RAJA` - build with RAJA support, defaults to `OFF`
-
-* `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
-  value of the `RAJA_ROOT` environment variable
-
-* `RAJA_BACKEND` - set the RAJA backend to use in the demo code, defaults to
-   `CUDA`
-
-* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`
-
-* `HDF5_ROOT` - the root directory of the HDF5 installation, defaults to the
-  value of the `HDF5_ROOT` environment variable
-
-* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
-
-For example the following the following commands can be used to download and
-build the demo code with RAJA support targeting NVIDIA Tesla V100 GPUs:
-
-```bash
-   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
-   cd sundials-manyvector-demo
-   mkdir build
-   cd build
-   cmake ../. \
-     -DCMAKE_INSTALL_PREFIX="path/to/myworkspace" \
-     -DCMAKE_C_COMPILER=mpicc \
-     -DCMAKE_C_FLAGS="-g -O2" \
-     -DCMAKE_CXX_COMPILER=mpicxx \
-     -DCMAKE_CXX_FLAGS="-g -O2" \
-     -DSUNDIALS_ROOT="path/to/mylibs/sundials-5.6.1" \
-     -ENABLE_RAJA="ON" \
-     -DRAJA_ROOT="path/to/mylibs/raja-0.13.0" \
-     -DENABLE_HDF5="ON" \
-     -DHDF5_ROOT="path/to/mylibs/hdf5-1.10.4"
-  make
-  make install
-```
-
-## Documentation
+## Model Equations
 
 This code simulates a 3D nonlinear inviscid compressible Euler
 equation with advection and reaction of chemical species,
@@ -166,8 +70,8 @@ We have the physical parameters:
 
 * R is the specific ideal gas constant (287.14 J/kg/K).
 
-* <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/> is the specific heat capacity at constant volume (717.5
-  J/kg/K),
+* <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/>
+is the specific heat capacity at constant volume (717.5 J/kg/K),
 
 * <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/f8415659af3e4a9e110591f46cc2875e.svg?invert_in_darkmode&sanitize=true" align=middle width=113.34245999999997pt height=28.670654099999997pt/> (1.4),
 
@@ -183,41 +87,165 @@ units these would be:
 
 * [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
-* [\mathbf{c}_i] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+* [c_i] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
 Note: the fluid portion of the above description follows section 7.3.1-7.3.3 of
 https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
+## Discretization
+
 This program solves the above problem using a finite volume spatial
-semi-discretization over a uniform grid of dimensions
-`nx` x `ny` x `nz`, with fluxes calculated using a 5th-order FD-WENO
-reconstruction. The spatial domain uses a 3D domain decomposition
-approach for parallelism over `nprocs` MPI processes, with layout
-`npx` x `npy` x `npz` defined automatically via the `MPI_Dims_create`
-utility routine.  The minimum size for any dimension is 3, so to run a
-two-dimensional test in the yz-plane, one could specify `nx=3` and
-`ny=nz=200` -- when run in parallel, only 'active' spatial dimensions
-(those with extent greater than 3) will be parallelized.  Each fluid
-field (<img src="/tex/6dec54c48a0438a5fcde6053bdb9d712.svg?invert_in_darkmode&sanitize=true" align=middle width=8.49888434999999pt height=14.15524440000002pt/>, <img src="/tex/f8eec81a1374c2e08228fb574a0e5fdf.svg?invert_in_darkmode&sanitize=true" align=middle width=21.88747274999999pt height=14.15524440000002pt/>, <img src="/tex/e4c6c96061743e44c44edafd6e06abe7.svg?invert_in_darkmode&sanitize=true" align=middle width=21.512706599999987pt height=14.15524440000002pt/>, <img src="/tex/b9034568c7237b47ca94b79611bd9fd9.svg?invert_in_darkmode&sanitize=true" align=middle width=21.18545879999999pt height=14.15524440000002pt/> and <img src="/tex/71c0437a67c94e48f18cc11d0c17a38c.svg?invert_in_darkmode&sanitize=true" align=middle width=12.61992929999999pt height=14.15524440000002pt/>) is stored in its own
-parallel `N_Vector` object.  Chemical species at all spatial
-locations over a single MPI rank are collocated into a single serial
-`N_Vector` object.  The five fluid vectors and the chemical species
-vector are combined together to form the full "solution" vector <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/>
-using the `MPIManyVector` `N_Vector` module.  For non-reactive flows,
-the resulting initial-value problem is solved using a
-temporally-adaptive explicit Runge Kutta method from ARKode's ARKStep
-module.  For problems involving [typically stiff] chemical reactions,
-the multirate initial-value problem is solved using ARKode's MRIStep
-module, wherein the gas dynamics equations are evolved explicitly at
-the 'slow' time scale, while the chemical kinetics are evolved
-using a temporally-adaptive, diagonally-implicit Runge--Kutta method
-from ARKode's ARKStep module.  These MPI rank-local implicit systems
-are solved using the default modified Newton nonlinear solver, with a
-custom linear solver that solves each rank-local linear system using
-the SUNLinSol_KLU sparse-direct linear solver module.  Solutions are
-output to disk using parallel HDF5, solution statistics are
-optionally output to the screen at specified frequencies, and run
-statistics are printed at the end of the simulation.
+semi-discretization over a uniform grid of dimensions `nx` x `ny` x `nz`, with
+fluxes calculated using a 5th-order FD-WENO reconstruction. The spatial domain
+uses a 3D domain decomposition approach for parallelism over `nprocs` MPI
+processes, with layout `npx` x `npy` x `npz` defined automatically via the
+`MPI_Dims_create` utility routine.  The minimum size for any dimension is 3, so
+to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
+`ny = nz = 200` when run in parallel, only 'active' spatial dimensions (those
+with extent greater than 3) will be parallelized.
+
+Each fluid field
+(<img src="/tex/6dec54c48a0438a5fcde6053bdb9d712.svg?invert_in_darkmode&sanitize=true" align=middle width=8.49888434999999pt height=14.15524440000002pt/>, <img src="/tex/f8eec81a1374c2e08228fb574a0e5fdf.svg?invert_in_darkmode&sanitize=true" align=middle width=21.88747274999999pt height=14.15524440000002pt/>, <img src="/tex/e4c6c96061743e44c44edafd6e06abe7.svg?invert_in_darkmode&sanitize=true" align=middle width=21.512706599999987pt height=14.15524440000002pt/>, <img src="/tex/b9034568c7237b47ca94b79611bd9fd9.svg?invert_in_darkmode&sanitize=true" align=middle width=21.18545879999999pt height=14.15524440000002pt/> and <img src="/tex/71c0437a67c94e48f18cc11d0c17a38c.svg?invert_in_darkmode&sanitize=true" align=middle width=12.61992929999999pt height=14.15524440000002pt/>)
+is stored in its own parallel `N_Vector` object. Chemical species at all spatial
+locations over a single MPI rank are collocated into a single serial or RAJA
+`N_Vector` object when running on the CPU or GPU respectively. The five fluid
+vectors and the chemical species vector are combined together to form the full
+"solution" vector
+ <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/>
+using the `MPIManyVector` `N_Vector` module.
+
+For non-reactive flows, the resulting initial-value problem is evolved in times
+using an adaptive step explicit Runge-Kutta method from the ARKStep module in
+ARKODE. For problems involving (typically stiff) chemical reactions, the
+multirate initial-value problem is solved using the MRIStep module in ARKODE,
+wherein the gas dynamics equations are evolved explicitly at the 'slow' time
+scale, while the chemical kinetics are evolved using a temporally-adaptive,
+diagonally-implicit Runge-Kutta method from the ARKStep module.  The MPI
+rank-local implicit systems are solved using the default (modified or inexact)
+Newton nonlinear solver, with a custom linear solver that solves each rank-local
+linear system using either the KLU, cuSPRASE batched-QR, or GMRES
+SUNLinaerSolver linear solver module.
+
+## Building
+
+Steps showing the process to download this demo code, install the relevant
+dependencies, and build the demo in a Linux or OS X environment are as follows.
+
+To compile this code you will need:
+
+* modern C and C++ compilers
+
+* [CMake](https://cmake.org) 3.12 or newer
+
+* an MPI library e.g., [OpenMPI](https://www.open-mpi.org/),
+  [MPICH](https://www.mpich.org/), etc.
+
+* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
+  integrators and nonlinear solvers
+
+* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
+  of sparse direct linear solvers (specifically KLU)
+
+* the [HDF5](https://www.hdfgroup.org/) high-performance data management and
+  storage suite
+
+For running on systems with GPUs you will additionally need:
+
+* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the nvcc
+  compiler and cuSPRASE library)
+
+* the [RAJA](https://github.com/LLNL/RAJA) performance portability library
+
+All of the dependencies for this demo code can be installed using the
+[Spack](https://github.com/spack/spack) package management tool e.g.,
+
+```bash
+   git clone https://github.com/spack/spack.git
+   spack/bin/spack install mpi
+   spack/bin/spack install hdf5 +mpi +pic +szip
+   spack/bin/spack isntall suitesparse
+   spack/bin/spack install raja +cuda
+   spack/bin/spack install sundials +klu +mpi +raja +cuda
+```
+
+Alternately, shell scripts to setup the environment on various systems and
+install some of the required libraries e.g., SUNDIALS, SuiteSparse, and RAJA.
+For more information see the README file in the [scripts](./scripts) directory.
+
+The following CMake variables can be used to enable various options, specify the
+location of the external libraries, and configure the build:
+
+* `CMAKE_INSTALL_PREFIX` - the path where executables and input files should be
+  installed e.g., `path/to/myinstall`. The executables will be installed in the
+  `bin` directory and input files in the `tests` directory under the given path.
+
+* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`
+
+* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`
+
+* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`
+
+* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`
+
+* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`
+
+* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`
+
+* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
+  the value of the `SUNDIALS_ROOT` environment variable
+
+* `ENABLE_RAJA` - build with RAJA support, defaults to `OFF`
+
+* `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
+  value of the `RAJA_ROOT` environment variable
+
+* `RAJA_BACKEND` - set the RAJA backend to use in the demo code, defaults to
+   `CUDA`
+
+* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`
+
+* `HDF5_ROOT` - the root directory of the HDF5 installation, defaults to the
+  value of the `HDF5_ROOT` environment variable
+
+When RAJA is enabled with the CUDA backend the following additional variables
+may also be set:
+
+* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`
+
+* `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use
+
+* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
+
+In-source builds are not permitted and as such the demo code should be
+configured and built from a separate build directory. For example the following
+the following commands can be used to download and build the demo code with RAJA
+support targeting NVIDIA Tesla V100 GPUs and HDF5 output enabled:
+
+```bash
+   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
+   cd sundials-manyvector-demo
+   mkdir build
+   cd build
+   cmake ../. \
+     -DCMAKE_INSTALL_PREFIX="path/to/myworkspace" \
+     -DCMAKE_C_COMPILER=mpicc \
+     -DCMAKE_C_FLAGS="-g -O2" \
+     -DCMAKE_CXX_COMPILER=mpicxx \
+     -DCMAKE_CXX_FLAGS="-g -O2" \
+     -DSUNDIALS_ROOT="path/to/mylibs/sundials-5.6.1" \
+     -ENABLE_RAJA="ON" \
+     -DRAJA_ROOT="path/to/mylibs/raja-0.13.0" \
+     -DENABLE_HDF5="ON" \
+     -DHDF5_ROOT="path/to/mylibs/hdf5-1.10.4"
+  make
+  make install
+```
+
+## Running
+
+Solutions are output to disk using parallel HDF5, solution statistics
+are optionally output to the screen at specified frequencies, and run statistics
+are printed at the end of the simulation.
 
 Individual test problems are uniquely specified through an input
 file and auxiliarly source code file(s) that should be linked with
@@ -237,7 +265,7 @@ case some have been added since this `README` was last updated).  To
 specify an input file to the executable, the input filename should be
 provided using the `-f` flag, e.g.
 ```bash
-   <executable> -f <input_file>
+  <executable> -f <input_file>
 ```
 This input file contains parameters to set up the physical problem:
 
@@ -254,12 +282,12 @@ This input file contains parameters to set up the physical problem:
 parameters to control the execution of the code:
 
 * desired cfl fraction -- `cfl` (if set to zero, then the time step is
-  chosen purely using temporal adaptivity).
+ chosen purely using temporal adaptivity).
 
 * number of desired solution outputs -- `nout`
 
 * a flag to enable optional output of RMS averages for each field at
-  the frequency spefied via `nout` -- `showstats`
+ the frequency spefied via `nout` -- `showstats`
 
 as well as parameters to control how time integration is performed
 (these are passed directly to ARKode).  For further information on the
@@ -270,7 +298,7 @@ http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html.
 Additionally, any input parameters may also be specified on the
 command line, e.g.
 ```bash
-   <executable> --nx=100 --ny=100 --nz=400
+  <executable> --nx=100 --ny=100 --nz=400
 ```
 
 The auxiliary source code files must contain three functions.  Each of
@@ -279,20 +307,20 @@ these must return an integer flag indicating success (0) or failure
 signature:
 
 ```C++
-   int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
+  int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
 ```
 
 and the forcing function <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> must have the signature
 
 ```C++
-   int external_forces(const realtype& t, N_Vector G, const UserData& udata);
+  int external_forces(const realtype& t, N_Vector G, const UserData& udata);
 ```
 
 Additionally, a function must be supplied to compute/output any
 desired solution diagnostic information:
 
 ```C++
-   int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata);
+  int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata);
 ```
 
 If no diagnostics information is desired, then this routine may just
@@ -322,3 +350,7 @@ from an uninterrupted run since other internal ARKStep time adaptivity
 parameters cannot be reused.  We note that the restart must use the
 same spatial grid size and number of chemical tracers as the original
 run, but it may use a different number of MPI tasks if desired.
+
+## Authors
+
+[Daniel R. Reynolds](http://faculty.smu.edu/reynolds)
