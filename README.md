@@ -249,7 +249,7 @@ CUDA and HDF5 output enabled:
     -DCMAKE_C_FLAGS="-g -O2" \
     -DCMAKE_CXX_COMPILER=mpicxx \
     -DCMAKE_CXX_FLAGS="-g -O2" \
-    -ENABLE_RAJA="ON" \
+    -DENABLE_RAJA="ON" \
     -DENABLE_HDF5="ON"
   make
   make install
