@@ -57,8 +57,9 @@ fluid.  The fluxes are given by
 <p align="center"><img src="/tex/3a03e5f8f13d64219de34f4e89ece974.svg?invert_in_darkmode&sanitize=true" align=middle width=425.4109365pt height=23.5253469pt/></p>
 <p align="center"><img src="/tex/6de6c35f4b2af691b7c615d7455c9eb9.svg?invert_in_darkmode&sanitize=true" align=middle width=423.2250824999999pt height=23.9085792pt/></p>
 <p align="center"><img src="/tex/9ab5c11c75414d0f6469ee8b93a5d46b.svg?invert_in_darkmode&sanitize=true" align=middle width=429.71667914999995pt height=23.5253469pt/></p>
-The external force <img src="/tex/fdd8b43797ed57d5386562a0b6c3a124.svg?invert_in_darkmode&sanitize=true" align=middle width=72.46420829999998pt height=24.65753399999998pt/> is test-problem-dependent, and the ideal
-gas equation of state gives
+The external force 
+<p align="center"><img src="/tex/fdd8b43797ed57d5386562a0b6c3a124.svg?invert_in_darkmode&sanitize=true" align=middle width=72.46420829999998pt height=24.65753399999998pt/></p>
+is test-problem-dependent, and the ideal gas equation of state gives
 <p align="center"><img src="/tex/272a02648ae7ce4db259539aa98655dc.svg?invert_in_darkmode&sanitize=true" align=middle width=218.4856146pt height=36.09514755pt/></p>
 and
 <p align="center"><img src="/tex/fcab1314e35d6d578ef90227b587c829.svg?invert_in_darkmode&sanitize=true" align=middle width=200.67741375pt height=29.47417935pt/></p>
@@ -71,8 +72,8 @@ We have the physical parameters:
 
 * R is the specific ideal gas constant (287.14 J/kg/K).
 
-* <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/>
-is the specific heat capacity at constant volume (717.5 J/kg/K),
+* <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/> is
+the specific heat capacity at constant volume (717.5 J/kg/K),
 
 * <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/f8415659af3e4a9e110591f46cc2875e.svg?invert_in_darkmode&sanitize=true" align=middle width=113.34245999999997pt height=28.670654099999997pt/> (1.4),
 
