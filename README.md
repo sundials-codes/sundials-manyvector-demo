@@ -57,7 +57,7 @@ fluid.  The fluxes are given by
 <p align="center"><img src="/tex/3a03e5f8f13d64219de34f4e89ece974.svg?invert_in_darkmode&sanitize=true" align=middle width=425.4109365pt height=23.5253469pt/></p>
 <p align="center"><img src="/tex/6de6c35f4b2af691b7c615d7455c9eb9.svg?invert_in_darkmode&sanitize=true" align=middle width=423.2250824999999pt height=23.9085792pt/></p>
 <p align="center"><img src="/tex/9ab5c11c75414d0f6469ee8b93a5d46b.svg?invert_in_darkmode&sanitize=true" align=middle width=429.71667914999995pt height=23.5253469pt/></p>
-The external force 
+The external force
 <p align="center"><img src="/tex/fdd8b43797ed57d5386562a0b6c3a124.svg?invert_in_darkmode&sanitize=true" align=middle width=72.46420829999998pt height=24.65753399999998pt/></p>
 is test-problem-dependent, and the ideal gas equation of state gives
 <p align="center"><img src="/tex/272a02648ae7ce4db259539aa98655dc.svg?invert_in_darkmode&sanitize=true" align=middle width=218.4856146pt height=36.09514755pt/></p>
@@ -177,7 +177,7 @@ used to setup the environment and install the necessary dependencies:
   ./build-sundials.sh
 ```
 
-Where `[projid]` is the Summit project ID. For more information on the setup and
+Where `[projid]` is a Summit project ID. For more information on the setup and
 build scripts see the README file in the [scripts](./scripts) directory. As an
 alternative, any of the dependencies for the demonstration code can be installed
 with the [Spack](https://github.com/spack/spack) package manager e.g.,
@@ -256,8 +256,8 @@ CUDA and HDF5 output enabled:
   make install
 ```
 
-The test executables and input files are installed in the member work space for
-the Summit project ID given by `[projid]`.
+The test executables and input files are installed under the `sundials-demo`
+directory in the member work space for the Summit project ID `[projid]`.
 
 **Note:** In this example, since the environment was configured using the Summit
 setup script, the values for `SUNDIALS_ROOT`, `RAJA_ROOT`, and `HDF5_ROOT` can
