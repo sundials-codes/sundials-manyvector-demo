@@ -169,16 +169,17 @@ used to setup the environment and install the necessary dependencies:
 
 ```bash
   cd sundials-manyvector-demo/scripts
+  export PROJHOME=/css/proj/[projid]
   source setup_summit.sh
   ./build-klu.sh
   ./build-raja.sh
   ./build-sundials.sh
 ```
 
-For more information on the setup and build scripts see the README file in the
-[scripts](./scripts) directory. Alternatively, any of the dependencies for the
-demonstration code can be installed with [Spack](https://github.com/spack/spack)
-e.g.,
+Where `[projid]` is the Summit project ID. For more information on the setup and
+build scripts see the README file in the [scripts](./scripts) directory. As an
+alternative, any of the dependencies for the demonstration code can be installed
+with the [Spack](https://github.com/spack/spack) package manager e.g.,
 
 ```bash
   git clone https://github.com/spack/spack.git
@@ -234,34 +235,33 @@ may also be set:
 * `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
 
 In-source builds are not permitted and as such the code should be configured and
-built from a separate build directory. For example, the following commands can
-be used to build with RAJA support targeting NVIDIA Tesla V100 GPUs and HDF5
-output enabled:
+built from a separate build directory. For example, continuing with the Summit
+case from above, the following commands can be used to build with RAJA targeting
+CUDA and HDF5 output enabled:
 
 ```bash
   cd sundials-manyvector-demo
   mkdir build
   cd build
   cmake ../. \
-    -DCMAKE_INSTALL_PREFIX="path/to/myworkspace" \
+    -DCMAKE_INSTALL_PREFIX="${MEMBERWORK}/[projid]/sundials-demo" \
     -DCMAKE_C_COMPILER=mpicc \
     -DCMAKE_C_FLAGS="-g -O2" \
     -DCMAKE_CXX_COMPILER=mpicxx \
     -DCMAKE_CXX_FLAGS="-g -O2" \
-    -DSUNDIALS_ROOT="path/to/mylibs/sundials-5.6.1" \
     -ENABLE_RAJA="ON" \
-    -DRAJA_ROOT="path/to/mylibs/raja-0.13.0" \
-    -DENABLE_HDF5="ON" \
-    -DHDF5_ROOT="path/to/mylibs/hdf5-1.10.4"
+    -DENABLE_HDF5="ON"
   make
   make install
 ```
 
-**Note:** If the environment was configured using one of the setup scripts
-provided (e.g., `setup_summit.sh` as illustrated above), then the values for
-`SUNDIALS_ROOT`, `RAJA_ROOT`, and `HDF5_ROOT` can be picked up automatically
-from the corresponding environment variables defined by the setup script and
-thus may be omitted from the `cmake` command above.
+The test executables and input files are installed in the member work space for
+the Summit project ID given by `[projid]`.
+
+**Note:** In this example, since the environment was configured using the Summit
+setup script, the values for `SUNDIALS_ROOT`, `RAJA_ROOT`, and `HDF5_ROOT` can
+be omitted from the `cmake` command as these values are automatically set from
+the corresponding environment variables defined by the setup script.
 
 ## Running
 
@@ -312,19 +312,19 @@ command line e.g.,
   <executable> --nx=100 --ny=100 --nz=400
 ```
 
-For example, in the case of the Summit setup and build examples described above
-the primordial blast test can be run on one Summit node using four cores and
-four GPUs with the following commands:
+For example, continuing with the Summit case from above, the primordial blast
+test can be run on one Summit node using four cores and four GPUs with the
+following commands:
 
 ```bash
-  cd path/to/myworkspace/tests/primordial_blast
-  bsub -q debug -nnodes 1 -W 0:10 -P MYPROJECT -Is $SHELL
-  jsrun -n4 -a1 -c1 -g1 ./primordial_blast_mr.exe -f input_primordial_blast_mr_gpu.txt
+  cd ${MEMBERWORK}/[projid]/sundials-demo/tests/primordial_blast
+  bsub -q debug -nnodes 1 -W 0:10 -P [projid] -Is $SHELL
+  jsrun -n4 -a1 -c1 -g1 ../../bin/primordial_blast_mr.exe -f input_primordial_blast_mr_gpu.txt
 ```
 
 The `bsub` command above will submit a request for an interactive job to the
 debug queue allocating one node for 10 minutes with the compute time charged to
-`MYPROJECT`. Once the interactive session starts the test case is launched using
+`[projid]`. Once the interactive session starts the test case is launched using
 the `jsrun` command. Solutions are output to disk using parallel HDF5, solution
 statistics are optionally output to the screen at specified frequencies, and run
 statistics are printed at the end of the simulation.
