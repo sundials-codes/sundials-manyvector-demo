@@ -1,4 +1,4 @@
-# SUNDIALS ManyVector+Multirate Demo
+# SUNDIALS ManyVector+Multirate Demonstration Code
 
 [Note: this project is in active development.]
 
@@ -23,6 +23,7 @@ SUNDIALS in recent years. Namely:
 * [Discretization](#discretization)
 * [Building](#building)
 * [Running](#running)
+* [Adding New Tests](#adding-new-tests)
 * [Authors](#authors)
 
 ## Model Equations
@@ -128,10 +129,15 @@ SUNLinaerSolver linear solver module.
 
 ## Building
 
-Steps showing the process to download this demo code, install the relevant
-dependencies, and build the demo in a Linux or OS X environment are as follows.
+Steps showing the process to download this demonstration code, install the
+relevant dependencies, and build the code in a Linux or OS X environment are as
+follows. To obtain the demonstration code simply clone this repository with Git:
 
-To compile this code you will need:
+```bash
+  git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
+```
+
+To compile the code you will need:
 
 * modern C and C++ compilers
 
@@ -156,24 +162,35 @@ For running on systems with GPUs you will additionally need:
 
 * the [RAJA](https://github.com/LLNL/RAJA) performance portability library
 
-All of the dependencies for this demo code can be installed using the
-[Spack](https://github.com/spack/spack) package management tool e.g.,
+To assist in building the code the [scripts](./scripts) directory contains shell
+to setup the environment on specific systems and install some of the required
+dependencies. For example, if working on Summit the following commands may be
+used to setup the environment and install the necessary dependencies:
 
 ```bash
-   git clone https://github.com/spack/spack.git
-   spack/bin/spack install mpi
-   spack/bin/spack install hdf5 +mpi +pic +szip
-   spack/bin/spack isntall suitesparse
-   spack/bin/spack install raja +cuda
-   spack/bin/spack install sundials +klu +mpi +raja +cuda
+  cd sundials-manyvector-demo/scripts
+  source setup_summit.sh
+  ./build-klu.sh
+  ./build-raja.sh
+  ./build-sundials.sh
 ```
 
-Alternately, shell scripts to setup the environment on various systems and
-install some of the required libraries e.g., SUNDIALS, SuiteSparse, and RAJA.
-For more information see the README file in the [scripts](./scripts) directory.
+For more information on the setup and build scripts see the README file in the
+[scripts](./scripts) directory. Alternatively, any of the dependencies for the
+demonstration code can be installed with [Spack](https://github.com/spack/spack)
+e.g.,
 
-The following CMake variables can be used to enable various options, specify the
-location of the external libraries, and configure the build:
+```bash
+  git clone https://github.com/spack/spack.git
+  spack/bin/spack install mpi
+  spack/bin/spack install hdf5 +mpi +pic +szip
+  spack/bin/spack isntall suitesparse
+  spack/bin/spack install raja +cuda
+  spack/bin/spack install sundials +klu +mpi +raja +cuda
+```
+
+Once the necessary dependencies are installed, the following CMake variables can
+be used to configure the demonstration code build:
 
 * `CMAKE_INSTALL_PREFIX` - the path where executables and input files should be
   installed e.g., `path/to/myinstall`. The executables will be installed in the
@@ -199,8 +216,8 @@ location of the external libraries, and configure the build:
 * `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
   value of the `RAJA_ROOT` environment variable
 
-* `RAJA_BACKEND` - set the RAJA backend to use in the demo code, defaults to
-   `CUDA`
+* `RAJA_BACKEND` - set the RAJA backend to use with the demonstration code,
+  defaults to `CUDA`
 
 * `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`
 
@@ -216,58 +233,45 @@ may also be set:
 
 * `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
 
-In-source builds are not permitted and as such the demo code should be
-configured and built from a separate build directory. For example the following
-the following commands can be used to download and build the demo code with RAJA
-support targeting NVIDIA Tesla V100 GPUs and HDF5 output enabled:
+In-source builds are not permitted and as such the code should be configured and
+built from a separate build directory. For example, the following commands can
+be used to build with RAJA support targeting NVIDIA Tesla V100 GPUs and HDF5
+output enabled:
 
 ```bash
-   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
-   cd sundials-manyvector-demo
-   mkdir build
-   cd build
-   cmake ../. \
-     -DCMAKE_INSTALL_PREFIX="path/to/myworkspace" \
-     -DCMAKE_C_COMPILER=mpicc \
-     -DCMAKE_C_FLAGS="-g -O2" \
-     -DCMAKE_CXX_COMPILER=mpicxx \
-     -DCMAKE_CXX_FLAGS="-g -O2" \
-     -DSUNDIALS_ROOT="path/to/mylibs/sundials-5.6.1" \
-     -ENABLE_RAJA="ON" \
-     -DRAJA_ROOT="path/to/mylibs/raja-0.13.0" \
-     -DENABLE_HDF5="ON" \
-     -DHDF5_ROOT="path/to/mylibs/hdf5-1.10.4"
+  cd sundials-manyvector-demo
+  mkdir build
+  cd build
+  cmake ../. \
+    -DCMAKE_INSTALL_PREFIX="path/to/myworkspace" \
+    -DCMAKE_C_COMPILER=mpicc \
+    -DCMAKE_C_FLAGS="-g -O2" \
+    -DCMAKE_CXX_COMPILER=mpicxx \
+    -DCMAKE_CXX_FLAGS="-g -O2" \
+    -DSUNDIALS_ROOT="path/to/mylibs/sundials-5.6.1" \
+    -ENABLE_RAJA="ON" \
+    -DRAJA_ROOT="path/to/mylibs/raja-0.13.0" \
+    -DENABLE_HDF5="ON" \
+    -DHDF5_ROOT="path/to/mylibs/hdf5-1.10.4"
   make
   make install
 ```
 
+**Note:** If the environment was configured using one of the setup scripts
+provided (e.g., `setup_summit.sh` as illustrated above), then the values for
+`SUNDIALS_ROOT`, `RAJA_ROOT`, and `HDF5_ROOT` can be picked up automatically
+from the corresponding environment variables defined by the setup script and
+thus may be omitted from the `cmake` command above.
+
 ## Running
 
-Solutions are output to disk using parallel HDF5, solution statistics
-are optionally output to the screen at specified frequencies, and run statistics
-are printed at the end of the simulation.
+Several test cases are included with the code and the necessary input files for
+each case are contained in the subdirectories within the [tests](./tests)
+directory. Each input file is internally documented to discuss all possible
+input parameters (in case some have been added since this `README` was last
+updated).
 
-Individual test problems are uniquely specified through an input
-file and auxiliarly source code file(s) that should be linked with
-this main routine at compile time.  By default, all codes are built
-with no chemical species; however, this may be controlled at
-compilation time using the `NVAR` preprocessor directive,
-corresponding to the number of unknowns at any spatial location.
-Hence, the [default] minimum value for `NVAR` is 5, so for a
-calculation with 4 chemical species the code should be compiled with
-the preprocessor flag `-DNVAR=9`.  An example of this is provided in
-`src/CMakeLists.txt` when building `compile_test.exe`, and may be emulated
-for user-defined problems.
-
-Example input files are provided in the `inputs/` folder -- these are
-internally documented to discuss all possible input parameters (in
-case some have been added since this `README` was last updated).  To
-specify an input file to the executable, the input filename should be
-provided using the `-f` flag, e.g.
-```bash
-  <executable> -f <input_file>
-```
-This input file contains parameters to set up the physical problem:
+The input files contain parameters to set up the physical problem:
 
 * spatial domain, <img src="/tex/9432d83304c1eb0dcb05f092d30a767f.svg?invert_in_darkmode&sanitize=true" align=middle width=11.87217899999999pt height=22.465723500000017pt/> -- `xl`, `xr`, `yl`, `yr`, `zl`, `zr`
 
@@ -279,7 +283,7 @@ This input file contains parameters to set up the physical problem:
 
 * boundary condition types -- `xlbc`, `xrbc`, `ylbc`, `yrbc`, `zlbc`, `zrbc`
 
-parameters to control the execution of the code:
+Parameters to control the execution of the code:
 
 * desired cfl fraction -- `cfl` (if set to zero, then the time step is
  chosen purely using temporal adaptivity).
@@ -289,67 +293,104 @@ parameters to control the execution of the code:
 * a flag to enable optional output of RMS averages for each field at
  the frequency spefied via `nout` -- `showstats`
 
-as well as parameters to control how time integration is performed
-(these are passed directly to ARKode).  For further information on the
-ARKode solver parameters and the meaning of individual values, see the
-ARKode documentation,
-http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html.
+Numerous parameters are also provided to control how time integration is
+performed (these are passed directly to ARKODE). For further information on the
+ARKODE solver parameters and the meaning of individual values, see the
+[ARKODE documentation](http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html).
+
+To specify an input file to the executable, the input filename should be
+provided using the `-f` flag e.g.,
+
+```bash
+  <executable> -f <input_file>
+```
 
 Additionally, any input parameters may also be specified on the
-command line, e.g.
+command line e.g.,
+
 ```bash
   <executable> --nx=100 --ny=100 --nz=400
 ```
 
-The auxiliary source code files must contain three functions.  Each of
-these must return an integer flag indicating success (0) or failure
-(nonzero). The initial condition function <img src="/tex/d3cb4393199b89ca003e78d3486fa147.svg?invert_in_darkmode&sanitize=true" align=middle width=46.837068299999984pt height=24.65753399999998pt/> must have the
-signature:
+For example, in the case of the Summit setup and build examples described above
+the primordial blast test can be run on one Summit node using four cores and
+four GPUs with the following commands:
+
+```bash
+  cd path/to/myworkspace/tests/primordial_blast
+  bsub -q debug -nnodes 1 -W 0:10 -P MYPROJECT -Is $SHELL
+  jsrun -n4 -a1 -c1 -g1 ./primordial_blast_mr.exe -f input_primordial_blast_mr_gpu.txt
+```
+
+The `bsub` command above will submit a request for an interactive job to the
+debug queue allocating one node for 10 minutes with the compute time charged to
+`MYPROJECT`. Once the interactive session starts the test case is launched using
+the `jsrun` command. Solutions are output to disk using parallel HDF5, solution
+statistics are optionally output to the screen at specified frequencies, and run
+statistics are printed at the end of the simulation.
+
+The parallel HDF5 to solution snapshots are written at the frequency specified
+by `nout`.  Accompanying these `output-#######.hdf5` files is an automatically
+generated input file, `restart_parameters.txt` that stores a complete set of
+input parameters to restart the simulation from the most recently generated
+output file. This is a "warm" restart, in that it will pick up the calculation
+where the previous one left off, using the same initial time step size as
+ARKStep would use. This restart may differ slightly from an uninterrupted run
+since other internal ARKStep time adaptivity parameters cannot be reused.  We
+note that the restart must use the same spatial grid size and number of chemical
+tracers as the original run, but it may use a different number of MPI tasks if
+desired.
+
+## Adding New Tests
+
+Individual test problems are uniquely specified through an input file and
+auxiliary source code file(s) that should be linked with the main routine at
+compile time. By default, all codes are built with no chemical species; however,
+this may be controlled at compilation time using the `NVAR` preprocessor
+directive, corresponding to the number of unknowns at any spatial location.
+Hence, the (default) minimum value for `NVAR` is 5, so for a calculation with 4
+chemical species the code should be compiled with the preprocessor directive
+`NVAR=9`. See [src/CMakeLists.txt](./src/CMakeLists.txt) for examples of how to
+specify `NVAR` when adding a new test/executable.
+
+The auxiliary source code files for creating a new test must contain three
+functions. Each of these must return an integer flag indicating success (0) or
+failure (nonzero). The initial condition function
+<img src="/tex/d3cb4393199b89ca003e78d3486fa147.svg?invert_in_darkmode&sanitize=true" align=middle width=46.837068299999984pt height=24.65753399999998pt/>
+must have the signature
 
 ```C++
   int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
 ```
 
-and the forcing function <img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/> must have the signature
+and the forcing function
+<img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/>
+must have the signature
 
 ```C++
   int external_forces(const realtype& t, N_Vector G, const UserData& udata);
 ```
 
 Additionally, a function must be supplied to compute/output any
-desired solution diagnostic information:
+desired solution diagnostic information with the signature
 
 ```C++
   int output_diagnostics(const realtype& t, const N_Vector w, const UserData& udata);
 ```
 
-If no diagnostics information is desired, then this routine may just
-return 0.
+If no diagnostics information is desired, then this routine may just return 0.
 
-Here, the `initial_conditions` routine will be called once when the
-simulation begins, `external_forces` will be called on every
-evaluation of the ODE right-hand side function for the Euler
-equations (it is assumed that this does not require parallel
-communication, or the results from `UserData::ExchangeStart` /
-`UserData::ExchangeEnd`), and `output_diagnostics` will be called at
-the same frequency as the solution is output to disk.
+Here, the `initial_conditions` routine will be called once when the simulation
+begins, `external_forces` will be called on every evaluation of the ODE
+right-hand side function for the Euler equations (it is assumed that this does
+not require parallel communication or the results from `UserData::ExchangeStart`
+/ `UserData::ExchangeEnd`), and `output_diagnostics` will be called at the same
+frequency as the solution is output to disk.
 
-To supply these auxiliary source code file(s), add this to
-`src/CMakeLists.txt` in a similar manner as the existing test problems are built
-(e.g. `hurricane_yz.exe`).
-
-As stated above, this code uses parallel HDF5 to store solution
-snapshots at the frequency specified by `nout`.  Accompanying these
-`output-#######.hdf5` files is an automatically-generated input file,
-`restart_parameters.txt` that stores a complete set of input
-parameters to restart the simulation from the most recently-generated
-output file.  This is a "warm" restart, in that it will pick up the
-calculation where the previous one left off, using the same initial
-time step size as ARKStep would use.  This restart may differ slightly
-from an uninterrupted run since other internal ARKStep time adaptivity
-parameters cannot be reused.  We note that the restart must use the
-same spatial grid size and number of chemical tracers as the original
-run, but it may use a different number of MPI tasks if desired.
+To add a new executable using these auxiliary source code file(s), update
+[src/CMakeLists.txt](./src/CMakeLists.txt) to include a new call to
+`sundemo_add_executable` in a similar manner as the existing test problems e.g.,
+`hurricane_yz.exe`.
 
 ## Authors
 
