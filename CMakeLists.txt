@@ -132,11 +132,17 @@ add_subdirectory(src)
 # install test files
 # -------------------
 
-# Install all text files, input data files, and job scripts from the tests
+# Install all text files, input data files, and scripts from the tests
 # directory (and subdirectories) excluding any results files or directories.
 install(DIRECTORY tests DESTINATION ${CMAKE_INSTALL_PREFIX}
   FILES_MATCHING
   PATTERN "*.txt"
   PATTERN "*.h5"
   PATTERN "*.lsf"
+  PATTERN "*.sh"
+  PATTERN "*.py"
   PATTERN "*results*" EXCLUDE)
+
+# Install additional helpful scripts to the installed bin directory
+install(FILES bin/cleanup.sh TYPE BIN)
+install(FILES bin/utilities_euler3D.py TYPE BIN)
