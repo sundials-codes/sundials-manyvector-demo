@@ -20,7 +20,7 @@ if [ "$#" -gt 0 ]; then
     srcdir=$1
 else
     wget https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v5.8.1.tar.gz
-    tar -xzf SuiteSparse-5.8.1.tar.gz
+    tar -xzf v5.8.1.tar.gz
     srcdir=${PWD}/SuiteSparse-5.8.1
 fi
 
