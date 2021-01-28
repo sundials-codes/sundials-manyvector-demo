@@ -39,7 +39,7 @@
 # ------------------------------------------------------------------------------
 
 # location to install third-party libraries
-export PROJHOME=/ccs/proj/csc317
+export PROJHOME=${PROJHOME:-"/css/proj/csc317"}
 
 # set compiler spec
 compiler="gcc@8.1.1"
