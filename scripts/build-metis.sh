@@ -15,12 +15,14 @@
 # Script to build Metis
 # --------------------------------------------------------------------------
 
-# check for correct number of inputs
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Path to source required"
-    exit 1
+# location of source to build
+if [ "$#" -gt 0 ]; then
+    srcdir=$1
+else
+    wget glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz
+    tar -xzf metis-5.1.0.tar.gz
+    srcdir=${PWD}/metis-5.1.0
 fi
-srcdir=$1
 
 # build threads
 bldthreads=12

@@ -16,11 +16,14 @@
 # --------------------------------------------------------------------------
 
 # check for correct number of inputs
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Path to source required"
-    exit 1
+# location of source to build
+if [ "$#" -gt 0 ]; then
+    srcdir=$1
+else
+    wget https://github.com/LLNL/RAJA/releases/download/v0.13.0/RAJA-v0.13.0.tar.gz
+    tar -xzf RAJA-v0.13.0.tar.gz
+    srcdir=${PWD}/RAJA-v0.13.0
 fi
-srcdir=$1
 
 # build threads
 bldthreads=12

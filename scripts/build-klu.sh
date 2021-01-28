@@ -15,12 +15,14 @@
 # Script to build KLU
 # --------------------------------------------------------------------------
 
-# check for correct number of inputs
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Path to source required"
-    exit 1
+# location of source to build
+if [ "$#" -gt 0 ]; then
+    srcdir=$1
+else
+    wget https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/v5.8.1.tar.gz
+    tar -xzf SuiteSparse-5.8.1.tar.gz
+    srcdir=${PWD}/SuiteSparse-5.8.1
 fi
-srcdir=$1
 
 # build threads
 bldthreads=12

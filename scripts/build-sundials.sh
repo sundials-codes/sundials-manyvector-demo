@@ -15,12 +15,14 @@
 # Script to build SUNDIALS
 # --------------------------------------------------------------------------
 
-# check for correct number of inputs
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Path to source required"
-    exit 1
+# location of source to build
+if [ "$#" -gt 0 ]; then
+    srcdir=$1
+else
+    wget https://github.com/LLNL/sundials/releases/download/v5.6.1/sundials-5.6.1.tar.gz
+    tar -xzf sundials-v5.6.1
+    srcdir=${PWD}/sundials-v5.6.1
 fi
-srcdir=$1
 
 # build threads
 bldthreads=12
