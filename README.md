@@ -330,8 +330,8 @@ the `jsrun` command. Solutions are output to disk using parallel HDF5, solution
 statistics are optionally output to the screen at specified frequencies, and run
 statistics are printed at the end of the simulation.
 
-The parallel HDF5 to solution snapshots are written at the frequency specified
-by `nout`.  Accompanying these `output-#######.hdf5` files is an automatically
+The parallel HDF5 solution snapshots are written at the frequency specified by
+`nout`.  Accompanying these `output-#######.hdf5` files is an automatically
 generated input file, `restart_parameters.txt` that stores a complete set of
 input parameters to restart the simulation from the most recently generated
 output file. This is a "warm" restart, in that it will pick up the calculation
