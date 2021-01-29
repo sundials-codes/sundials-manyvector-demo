@@ -144,13 +144,13 @@ using an adaptive step explicit Runge-Kutta method from the ARKStep module in
 ARKODE. For problems involving (typically stiff) chemical reactions, the problem
 may be solved using one of two approaches.
 
-#. It may be treated as a multirate initial-value problem, that is solved using
+1. It may be treated as a multirate initial-value problem, that is solved using
    the MRIStep module in ARKODE, wherein the gas dynamics equations are evolved
    explicitly at the 'slow' time scale, while the chemical kinetics are evolved
    at a faster time scale using a temporally-adaptive, diagonally-implicit
    Runge-Kutta method from the ARKStep module.
 
-#. It may be treated using mixed implicit-explicit (IMEX) methods at a single
+2. It may be treated using mixed implicit-explicit (IMEX) methods at a single
    time scale.  Here, the gas dynamics equations are treated explicitly, while
    the chemical kinetics are treated implicitly, using an additive Runge-Kutta
    method from the ARKStep module.
