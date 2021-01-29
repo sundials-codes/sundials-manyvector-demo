@@ -85,9 +85,9 @@ units these would be:
 
 * [rho] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>,
 
-* [vx] = [vy] = [vz] = m/s, which implies that [mx] = [my] = [mz] = kg / m<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/> / s, and
+* [vx] = [vy] = [vz] = m/s, which implies that [mx] = [my] = [mz] = kg / m<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/> / s
 
-* [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+* [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>, and
 
 * [c_i] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
 
@@ -126,7 +126,7 @@ diagonally-implicit Runge-Kutta method from the ARKStep module.  The MPI
 rank-local implicit systems are solved using the default (modified or inexact)
 Newton nonlinear solver, with a custom linear solver that solves each rank-local
 linear system using either the KLU, cuSPRASE batched-QR, or GMRES
-SUNLinaerSolver linear solver module.
+SUNLinearSolver linear solver module.
 
 ## Building
 
@@ -286,13 +286,11 @@ The input files contain parameters to set up the physical problem:
 
 Parameters to control the execution of the code:
 
-* desired cfl fraction -- `cfl` (if set to zero, then the time step is
- chosen purely using temporal adaptivity).
+* desired cfl fraction -- `cfl` (if set to zero, then the time step is chosen purely using temporal adaptivity).
 
 * number of desired solution outputs -- `nout`
 
-* a flag to enable optional output of RMS averages for each field at
- the frequency spefied via `nout` -- `showstats`
+* a flag to enable optional output of RMS averages for each field at the frequency spefied via `nout` -- `showstats`
 
 Numerous parameters are also provided to control how time integration is
 performed (these are passed directly to ARKODE). For further information on the
@@ -395,4 +393,5 @@ To add a new executable using these auxiliary source code file(s), update
 
 ## Authors
 
-[Daniel R. Reynolds](http://faculty.smu.edu/reynolds)
+[Daniel R. Reynolds](http://faculty.smu.edu/reynolds) and
+[David J. Gardner](https://people.llnl.gov/gardner48)
