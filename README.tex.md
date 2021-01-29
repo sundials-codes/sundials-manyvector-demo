@@ -126,11 +126,11 @@ uses a 3D domain decomposition approach for parallelism over `nprocs` MPI
 processes, with layout `npx` x `npy` x `npz` defined automatically via the
 `MPI_Dims_create` utility routine.  The minimum size for any dimension is 3, so
 to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
-`ny = nz = 200` when run in parallel, only 'active' spatial dimensions (those
+`ny = nz = 200`.  When run in parallel, only 'active' spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
 Each fluid field
-($\rho$, $m_x$, $m_y$, $m_z$ and $e_t$) 
+($\rho$, $m_x$, $m_y$, $m_z$ and $e_t$)
 is stored in its own parallel `N_Vector` object. Chemical species at all spatial
 locations over a single MPI rank are collocated into a single serial or RAJA
 `N_Vector` object when running on the CPU or GPU respectively. The five fluid
@@ -141,15 +141,25 @@ using the `MPIManyVector` `N_Vector` module.
 
 For non-reactive flows, the resulting initial-value problem is evolved in times
 using an adaptive step explicit Runge-Kutta method from the ARKStep module in
-ARKODE. For problems involving (typically stiff) chemical reactions, the
-multirate initial-value problem is solved using the MRIStep module in ARKODE,
-wherein the gas dynamics equations are evolved explicitly at the 'slow' time
-scale, while the chemical kinetics are evolved using a temporally-adaptive,
-diagonally-implicit Runge-Kutta method from the ARKStep module.  The MPI
-rank-local implicit systems are solved using the default (modified or inexact)
-Newton nonlinear solver, with a custom linear solver that solves each rank-local
-linear system using either the KLU, cuSPRASE batched-QR, or GMRES
-SUNLinearSolver linear solver module.
+ARKODE. For problems involving (typically stiff) chemical reactions, the problem
+may be solved using one of two approaches.
+
+#. It may be treated as a multirate initial-value problem, that is solved using
+   the MRIStep module in ARKODE, wherein the gas dynamics equations are evolved
+   explicitly at the 'slow' time scale, while the chemical kinetics are evolved
+   at a faster time scale using a temporally-adaptive, diagonally-implicit
+   Runge-Kutta method from the ARKStep module.
+
+#. It may be treated using mixed implicit-explicit (IMEX) methods at a single
+   time scale.  Here, the gas dynamics equations are treated explicitly, while
+   the chemical kinetics are treated implicitly, using an additive Runge-Kutta
+   method from the ARKStep module.
+
+In both of the approaches above, the resulting MPI rank-local implicit systems
+are solved using the default (modified or inexact) Newton nonlinear solver,
+with a custom linear solver that solves each rank-local linear system using
+either the KLU, cuSPRASE batched-QR, or GMRES SUNLinearSolver linear solver module.
+
 
 ## Building
 
@@ -187,7 +197,7 @@ For running on systems with GPUs you will additionally need:
 * the [RAJA](https://github.com/LLNL/RAJA) performance portability library
 
 To assist in building the code the [scripts](./scripts) directory contains shell
-to setup the environment on specific systems and install some of the required
+scripts to setup the environment on specific systems and install some of the required
 dependencies. For example, if working on Summit the following commands may be
 used to setup the environment and install the necessary dependencies:
 
@@ -313,7 +323,7 @@ Parameters to control the execution of the code:
 
 * number of desired solution outputs -- `nout`
 
-* a flag to enable optional output of RMS averages for each field at the frequency spefied via `nout` -- `showstats`
+* a flag to enable optional output of RMS averages for each field at the frequency specified via `nout` -- `showstats`
 
 Numerous parameters are also provided to control how time integration is
 performed (these are passed directly to ARKODE). For further information on the
@@ -377,7 +387,7 @@ specify `NVAR` when adding a new test/executable.
 
 The auxiliary source code files for creating a new test must contain three
 functions. Each of these must return an integer flag indicating success (0) or
-failure (nonzero). The initial condition function 
+failure (nonzero). The initial condition function
 $w_0(X)$
 must have the signature
 
@@ -405,7 +415,7 @@ If no diagnostics information is desired, then this routine may just return 0.
 Here, the `initial_conditions` routine will be called once when the simulation
 begins, `external_forces` will be called on every evaluation of the ODE
 right-hand side function for the Euler equations (it is assumed that this does
-not require parallel communication or the results from `UserData::ExchangeStart`
+not require the results from `UserData::ExchangeStart`
 / `UserData::ExchangeEnd`), and `output_diagnostics` will be called at the same
 frequency as the solution is output to disk.
 
