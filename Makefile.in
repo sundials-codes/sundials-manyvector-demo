@@ -40,7 +40,7 @@ ifeq ($(HOST),longclaw)
   CXX = /usr/local/mpich-3.3/gnu/bin/mpicxx --std=c++11
   OMPFLAGS = -fopenmp
 
-#    behmoth
+#    behemoth
 else ifeq ($(HOST),behemoth)
   ifeq ($(LIBTYPE),OPT)
     SUNDIR = /home/dreynolds/research/Sundials/install_opt_int32
