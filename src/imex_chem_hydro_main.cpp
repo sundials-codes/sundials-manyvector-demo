@@ -39,13 +39,32 @@
  ---------------------------------------------------------------*/
 
 // Header files
+//    Physics
 #include <euler3D.hpp>
 #ifdef USERAJA
 #include <raja_primordial_network.hpp>
 #else
 #include <dengo_primordial_network.hpp>
 #endif
+
+// HIP vs RAJA vs serial
+#if defined(RAJA_CUDA)
+#define HIP_OR_CUDA(a,b) b
+#include <sunmemory/sunmemory_cuda.h>
+#elif defined(RAJA_HIP)
+#define HIP_OR_CUDA(a,b) a
+#include <sunmemory/sunmemory_hip.h>
+#else
+#define HIP_OR_CUDA(a,b) ((void)0);
+#endif
+
+//    SUNDIALS
 #include <arkode/arkode_arkstep.h>
+#include <sunlinsol/sunlinsol_spgmr.h>
+#ifdef USEMAGMA
+#include <sunmatrix/sunmatrix_magmadense.h>
+#include <sunlinsol/sunlinsol_magmadense.h>
+#else
 #ifdef RAJA_CUDA
 #include <sunmatrix/sunmatrix_cusparse.h>
 #include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
@@ -53,7 +72,7 @@
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
 #endif
-#include <sunlinsol/sunlinsol_spgmr.h>
+#endif
 
 #ifdef DEBUG
 #include "fenv.h"
@@ -145,7 +164,9 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
-#ifdef RAJA_CUDA
+  SUNMemoryHelper memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip();,
+                                           SUNMemoryHelper_Cuda(); )
+#if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
 #endif
@@ -263,9 +284,12 @@ int main(int argc, char* argv[]) {
     cout << "Hydrodynamics is turned OFF\n";
 #endif
 #ifdef USERAJA
-#ifdef RAJA_CUDA
+#ifdef USEMAGMA
+    cout << "Executable built using MAGMA block linear solver\n";
+#endif
+#if defined(RAJA_CUDA)
     cout << "Executable built with RAJA+CUDA support\n";
-#elif RAJA_SERIAL
+#elif defined(RAJA_SERIAL)
     cout << "Executable built with RAJA+SERIAL support\n";
 #else
     cout << "Executable built with RAJA+HIP support\n";
@@ -386,6 +410,15 @@ int main(int argc, char* argv[]) {
     BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters);
     if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
+#ifdef USEMAGMA
+  // Create SUNMatrix for use in linear solves
+  A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, memhelper, NULL);
+  if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
+
+  // Create the SUNLinearSolver object
+  LS = SUNLinSol_MagmaDense(wsubvecs[5], A);
+  if(check_flag((void *)LS, "SUNLinSol_MagmaDense", 0)) return(1);
+#else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
@@ -405,6 +438,7 @@ int main(int argc, char* argv[]) {
     if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
     BLS = SUNLinSol_KLU(wsubvecs[5], A);
     if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
+#endif
 #endif
   }
 
@@ -853,7 +887,7 @@ int main(int argc, char* argv[]) {
 
   // Clean up, finalize MPI, and return with successful completion
   cleanup(&arkode_mem, udata, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) && !defined(USEMAGMA)
   // Destroy the cuSOLVER and cuSPARSE handles
   if (!opts.iterative) {
     cusparseDestroy(cusp_handle);
@@ -937,9 +971,14 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
 
-  // call Dengo Jacobian routine
+  // call Jacobian routine
+#ifdef USEMAGMA
+  retval = calculate_denseblock_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
+                                               tmp1chem, tmp2chem, tmp3chem);
+#else
   retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
                                            tmp1chem, tmp2chem, tmp3chem);
+#endif
 
   // NOTE: if fluid fields were rescaled to physical units above, they
   // must be converted back to code units here
@@ -947,6 +986,9 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   realtype TUnit = udata->TimeUnits;
+#ifdef USEMAGMA
+
+#else
 #ifdef RAJA_CUDA
   Jdata = SUNMatrix_cuSparse_Data(Jac);
   if (check_flag((void *) Jdata, "SUNMatrix_cuSparse_Data (Jimpl)", 0)) return(-1);
@@ -959,6 +1001,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= TUnit;
+#endif
 #endif
 
 
@@ -1002,7 +1045,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (fexpl)", 1)) return(-1);
 
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
@@ -1045,7 +1088,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         etdot[fidx] = ZERO;
       }
 
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
   // ensure that chemistry rate-of-change data is synchronized back to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(wdot,5));
 #endif
@@ -1086,7 +1129,7 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (PostprocessStep)", 1)) return(-1);
 
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif

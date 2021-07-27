@@ -12,6 +12,18 @@
 #include <raja_primordial_network.hpp>
 
 
+// HIP vs RAJA vs serial
+#if defined(RAJA_CUDA)
+#define HIP_OR_CUDA(a,b) b
+#include <sunmemory/sunmemory_cuda.h>
+#elif defined(RAJA_HIP)
+#define HIP_OR_CUDA(a,b) a
+#include <sunmemory/sunmemory_hip.h>
+#else
+#define HIP_OR_CUDA(a,b) ((void)0);
+#endif
+
+
 cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
 {
 
@@ -20,7 +32,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
   // Description: Initialize a data object that stores the reaction/ cooling rate data
   //-----------------------------------------------------
 
-  cvklu_data *data;
+  cvklu_data *data = NULL;
 #ifdef RAJA_SERIAL
   data = (cvklu_data *) malloc(sizeof(cvklu_data));
 #elif RAJA_CUDA
@@ -268,11 +280,14 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
   cvklu_read_gamma(data);
 
   // ensure that problem structures are synchronized between host/device device memory
-#ifdef RAJA_CUDA
-  cudaDeviceSynchronize();
-#elif RAJA_HIP
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    std::cerr << ">>> ERROR in cvklu_setup_data: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return NULL;
+  }
 
   return data;
 
@@ -1070,6 +1085,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
 
 
+#ifndef USEMAGMA
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
 {
 #ifdef RAJA_CUDA
@@ -1292,9 +1308,19 @@ int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
 
   return 0;
 }
+#endif
 
 
 
+#ifdef USEMAGMA
+int calculate_denseblock_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
+                                        SUNMatrix J, void *user_data,
+                                        N_Vector tmp1, N_Vector tmp2,
+                                        N_Vector tmp3)
+{
+  return 0;
+}
+#else
 int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                                     SUNMatrix J, void *user_data,
                                     N_Vector tmp1, N_Vector tmp2,
@@ -1790,6 +1816,7 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   return 0;
 }
+#endif
 
 
 

@@ -122,6 +122,12 @@ if(ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
   set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 endif()
 
+# -----
+# MAGMA
+# -----
+
+option(ENABLE_MAGMA "Enable MAGMA" OFF)
+
 # ---------------------
 # add source directory
 # ---------------------

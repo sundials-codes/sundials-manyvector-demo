@@ -279,6 +279,11 @@ int calculate_sparse_jacobian_cvklu( realtype t,
                                      SUNMatrix J, void *user_data,
                                      N_Vector tmp1, N_Vector tmp2,
                                      N_Vector tmp3);
+int calculate_denseblock_jacobian_cvklu( realtype t,
+                                         N_Vector y, N_Vector fy,
+                                         SUNMatrix J, void *user_data,
+                                         N_Vector tmp1, N_Vector tmp2,
+                                         N_Vector tmp3);
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data);
 
 

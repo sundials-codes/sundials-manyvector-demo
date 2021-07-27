@@ -67,6 +67,13 @@ foreach(nvar ${_nvar_values})
       USEHDF5)
   endif()
 
+  # add MAGMA
+  if (ENABLE_MAGMA)
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      USEMAGMA)
+  endif()
+
   # add RAJA
   if(ENABLE_RAJA)
     target_link_libraries(${_shared_obj}
@@ -100,16 +107,21 @@ foreach(nvar ${_nvar_values})
     endif()
   endif()
 
+
 endforeach()
 
 # set the filename for chemistry routines and linear solvers depending on the
-# RAJA backend selected
+# RAJA backend selected (and optional use of MAGMA)
 if(ENABLE_RAJA)
   set(_chem_solver raja_primordial_network.cpp)
-  if(RAJA_BACKEND MATCHES "CUDA")
-    set(_linear_solver SUNDIALS::sunmatrixcusparse SUNDIALS::sunlinsolcusolversp)
+  if(ENABLE_MAGMA)
+    set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
   else()
-    set(_linear_solver SUNDIALS::sunlinsolklu)
+    if(RAJA_BACKEND MATCHES "CUDA")
+      set(_linear_solver SUNDIALS::sunmatrixcusparse SUNDIALS::sunlinsolcusolversp)
+    elseif(RAJA_BACKEND MATCHES "HIP")
+      set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
+    endif()
   endif()
 else()
   set(_chem_solver dengo_primordial_network.cpp)

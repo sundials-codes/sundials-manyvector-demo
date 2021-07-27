@@ -15,32 +15,48 @@
  ---------------------------------------------------------------*/
 
 // Header files
+//    Physics
 #include <random>
 #include <euler3D.hpp>
-
 #ifdef USERAJA
 #include <raja_primordial_network.hpp>
 #else
 #include <dengo_primordial_network.hpp>
 #endif
 
-#if defined RAJA_CUDA
+// HIP vs RAJA vs serial
+#if defined(RAJA_CUDA)
+#define HIP_OR_CUDA(a,b) b
+#include <sunmemory/sunmemory_cuda.h>
+#elif defined(RAJA_HIP)
+#define HIP_OR_CUDA(a,b) a
+#include <sunmemory/sunmemory_hip.h>
+#else
+#define HIP_OR_CUDA(a,b) ((void)0);
+#endif
+
+//    SUNDIALS
+#ifdef USE_CVODE
+#include <cvode/cvode.h>
+#include <cvode/cvode_ls.h>
+#else
+#include <arkode/arkode_arkstep.h>
+#endif
+#include <sunlinsol/sunlinsol_spgmr.h>
+#ifdef USEMAGMA
+#include <sunmatrix/sunmatrix_magmadense.h>
+#include <sunlinsol/sunlinsol_magmadense.h>
+#else
+#if defined(RAJA_CUDA)
 #include <sunmatrix/sunmatrix_cusparse.h>
 #include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
-#elif defined CVKLU
+#elif defined(CVKLU)
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
 #else
 #include <sunmatrix/sunmatrix_dense.h>
 #include <sunlinsol/sunlinsol_dense.h>
 #endif
-#include <sunlinsol/sunlinsol_spgmr.h>
-
-#ifdef USE_CVODE
-#include <cvode/cvode.h>
-#include <cvode/cvode_ls.h>
-#else
-#include <arkode/arkode_arkstep.h>
 #endif
 
 #ifdef DEBUG
@@ -94,10 +110,14 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
-#if defined RAJA_CUDA
+  SUNMemoryHelper memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip();,
+                                           SUNMemoryHelper_Cuda(); )
+#if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
 #endif
+
+  //--- General Initialization ---//
 
   // initialize MPI
   retval = MPI_Init(&argc, &argv);
@@ -157,9 +177,12 @@ int main(int argc, char* argv[]) {
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
 #ifdef USERAJA
-#ifdef RAJA_CUDA
+#ifdef USEMAGMA
+    cout << "Executable built using MAGMA block linear solver\n";
+#endif
+#if defined(RAJA_CUDA)
     cout << "Executable built with RAJA+CUDA support\n";
-#elif RAJA_SERIAL
+#elif defined(RAJA_SERIAL)
     cout << "Executable built with RAJA+SERIAL support\n";
 #else
     cout << "Executable built with RAJA+HIP support\n";
@@ -205,6 +228,8 @@ int main(int argc, char* argv[]) {
   double *clump_data;
 #ifdef RAJA_CUDA
   cudaMallocManaged((void**)&(clump_data), nclumps * 5 * sizeof(double));
+#elif RAJA_HIP
+#error RAJA HIP chemistry interface is currently unimplemented
 #else
   clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
 #endif
@@ -241,11 +266,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
 
   // ensure that clump data is synchronized between host/device device memory
-#ifdef RAJA_CUDA
-  cudaDeviceSynchronize();
-#elif RAJA_HIP
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
 
   // output clump information
   if (udata.myid == 0) {
@@ -488,6 +509,15 @@ int main(int argc, char* argv[]) {
     LS = SUNLinSol_SPGMR(w, PREC_NONE, opts.maxliters);
     if(check_flag((void*) LS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
+#ifdef USEMAGMA
+  // Create SUNMatrix for use in linear solves
+  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, memhelper, NULL);
+  if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
+
+  // Create the SUNLinearSolver object
+  LS = SUNLinSol_MagmaDense(w, A);
+  if(check_flag((void *)LS, "SUNLinSol_MagmaDense", 0)) return(1);
+#else
 #if defined RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
@@ -513,6 +543,7 @@ int main(int argc, char* argv[]) {
     LS = SUNLinSol_Dense(w, A);
     if (check_flag((void*) LS, "SUNLinSol_Dense (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
+#endif
   }
 
   // attach matrix and linear solver to the integrator
@@ -520,14 +551,22 @@ int main(int argc, char* argv[]) {
   retval = CVodeSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "CVodeSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
+#ifdef USEMAGMA
+    retval = CVodeSetJacFn(arkode_mem, calculate_denseblock_jacobian_cvklu);
+#else
     retval = CVodeSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
+#endif
     if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 #else
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
+#ifdef USEMAGMA
+    retval = ARKStepSetJacFn(arkode_mem, calculate_denseblock_jacobian_cvklu);
+#else
     retval = ARKStepSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
+#endif
     if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 #endif
@@ -845,12 +884,14 @@ int main(int argc, char* argv[]) {
   free(clump_data);
 #elif RAJA_CUDA
   cudaFree(clump_data);
+#else
+  // RAJA_HIP is not implemented
 #endif
   N_VDestroy(w);                  // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
   SUNLinSolFree(LS);              // Free matrix and linear solver
   SUNMatDestroy(A);
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) && !defined(USEMAGMA)
   if (!opts.iterative) {
     cusparseDestroy(cusp_handle);   // Destroy the cuSOLVER and cuSPARSE handles
     cusolverSpDestroy(cusol_handle);
