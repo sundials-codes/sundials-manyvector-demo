@@ -1005,7 +1005,12 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   realtype *Jdata = NULL;
   realtype TUnit = udata->TimeUnits;
 #ifdef USEMAGMA
-
+  Jdata = SUNMatrix_MagmaDense_Data(Jac);
+  if (check_flag((void *) Jdata, "SUNMatrix_MagmaDense_Data (Jimpl)", 0)) return(-1);
+  long int ldata = SUNMatrix_MagmaDense_LData(Jac);
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ldata), [=] RAJA_DEVICE (long int i) {
+    Jdata[i] *= TUnit;
+  });
 #else
 #ifdef RAJA_CUDA
   Jdata = SUNMatrix_cuSparse_Data(Jac);
