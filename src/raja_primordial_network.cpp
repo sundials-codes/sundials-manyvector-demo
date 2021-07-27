@@ -11,7 +11,6 @@
 
 #include <raja_primordial_network.hpp>
 
-
 // HIP vs RAJA vs serial
 #if defined(RAJA_CUDA)
 #define HIP_OR_CUDA(a,b) b
@@ -23,6 +22,15 @@
 #define HIP_OR_CUDA(a,b) ((void)0);
 #endif
 
+// sparse vs dense
+#define NSPARSE 64
+#if defined(USEMAGMA)
+#define SPARSE_OR_DENSE(a,b) b
+#else
+#define SPARSE_OR_DENSE(a,b) a
+#endif
+#define SPARSEIDX(blk,off) (blk*NSPARSE + off)
+#define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
 
 cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
 {
@@ -279,7 +287,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
   cvklu_read_cooling_tables(data);
   cvklu_read_gamma(data);
 
-  // ensure that problem structures are synchronized between host/device device memory
+  // ensure that problem structures are synchronized between host/device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
   HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
                cudaError_t cuerr = cudaGetLastError(); )
@@ -1080,6 +1088,16 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
   });
 
+  // synchronize device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    std::cerr << ">>> ERROR in calculate_rhs_cvklu: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return(-1);
+  }
+
   return 0;
 }
 
@@ -1089,12 +1107,10 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
 {
 #ifdef RAJA_CUDA
-  const int NSPARSE = 64;
 
   // Access CSR sparse matrix structures, and zero out data
   sunindextype rowptrs[11];
   sunindextype colvals[NSPARSE];
-  //  SUNMatZero(J);
 
   // H2_1 by H2_1
   colvals[0] = 0 ;
@@ -1312,28 +1328,22 @@ int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
 
 
 
-#ifdef USEMAGMA
-int calculate_denseblock_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
-                                        SUNMatrix J, void *user_data,
-                                        N_Vector tmp1, N_Vector tmp2,
-                                        N_Vector tmp3)
-{
-  return 0;
-}
-#else
-int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
-                                    SUNMatrix J, void *user_data,
-                                    N_Vector tmp1, N_Vector tmp2,
-                                    N_Vector tmp3)
+int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
+                             SUNMatrix J, void *user_data,
+                             N_Vector tmp1, N_Vector tmp2,
+                             N_Vector tmp3)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
-  const int NSPARSE   = 64;
   const double z      = data->current_z;
   double *scale       = data->scale;
   double *inv_scale   = data->inv_scale;
   const double *ydata = N_VGetDeviceArrayPointer(y);
   long int nstrip     = data->nstrip;
 
+  // Access dense matrix structures, and zero out data
+#ifdef USEMAGMA
+  realtype *matrix_data = SUNMatrix_MagmaDense_Data(J);
+#else
   // Access CSR sparse matrix structures, and zero out data
 #ifdef RAJA_CUDA
   realtype *matrix_data = SUNMatrix_cuSparse_Data(J);
@@ -1343,12 +1353,11 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   realtype *matrix_data = SUNSparseMatrix_Data(J);
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
   sunindextype *colvals = SUNSparseMatrix_IndexValues(J);
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
+#endif
 #endif
   SUNMatZero(J);
 
-  // Loop over data, filling in sparse Jacobian
+  // Loop over data, filling in Jacobian
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     // Set up some temporaries
@@ -1449,287 +1458,424 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     const double h2_optical_depth_approx  = data->h2_optical_depth_approx[i];
     const double cie_optical_depth_approx = data->cie_optical_depth_approx[i];
 
-    j = i * NSPARSE;
+    long int idx;
 
     // H2_1 by H2_1
-    matrix_data[ j + 0 ] = -k11*H_2 - k12*de - k13*H_1 + k21*pow(H_1, 2);
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,0), DENSEIDX(i,0,0));
+    matrix_data[ idx ] = -k11*H_2 - k12*de - k13*H_1 + k21*pow(H_1, 2);
+    matrix_data[ idx ] *=  (inv_scale[ j + 0 ]*scale[ j + 0 ]);
 
     // H2_1 by H2_2
-    matrix_data[ j + 1 ] = k10*H_1 + k19*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,1), DENSEIDX(i,0,1));
+    matrix_data[ idx ] = k10*H_1 + k19*H_m0;
+    matrix_data[ idx ] *=  (inv_scale[ j + 0 ]*scale[ j + 1 ]);
 
     // H2_1 by H_1
-    matrix_data[ j + 2 ] = k08*H_m0 + k10*H2_2 - k13*H2_1 + 2*k21*H2_1*H_1 + 3*k22*pow(H_1, 2);
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,2), DENSEIDX(i,0,2));
+    matrix_data[ idx ] = k08*H_m0 + k10*H2_2 - k13*H2_1 + 2*k21*H2_1*H_1 + 3*k22*pow(H_1, 2);
+    matrix_data[ idx ] *=  (inv_scale[ j + 0 ]*scale[ j + 2 ]);
 
     // H2_1 by H_2
-    matrix_data[ j + 3 ] = -k11*H2_1;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,3), DENSEIDX(i,0,3));
+    matrix_data[ idx ] = -k11*H2_1;
+    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 3 ]);
 
     // H2_1 by H_m0
-    matrix_data[ j + 4 ] = k08*H_1 + k19*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,4), DENSEIDX(i,0,4));
+    matrix_data[ idx ] = k08*H_1 + k19*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 4 ]);
 
     // H2_1 by de
-    matrix_data[ j + 5 ] = -k12*H2_1;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,5), DENSEIDX(i,0,8));
+    matrix_data[ idx ] = -k12*H2_1;
+    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 8 ]);
 
     // H2_1 by ge
-    matrix_data[ j + 6 ] = rk08*H_1*H_m0 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk12*H2_1*de - rk13*H2_1*H_1 + rk19*H2_2*H_m0 + rk21*H2_1*H_1*H_1 + rk22*H_1*H_1*H_1;
-    matrix_data[ j + 6] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,6), DENSEIDX(i,0,9));
+    matrix_data[ idx ] = rk08*H_1*H_m0 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk12*H2_1*de - rk13*H2_1*H_1 + rk19*H2_2*H_m0 + rk21*H2_1*H_1*H_1 + rk22*H_1*H_1*H_1;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 9 ]);
+
 
     // H2_2 by H2_1
-    matrix_data[ j + 7 ] = k11*H_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,7), DENSEIDX(i,1,0));
+    matrix_data[ idx ] = k11*H_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 0 ]);
 
     // H2_2 by H2_2
-    matrix_data[ j + 8 ] = -k10*H_1 - k18*de - k19*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,8), DENSEIDX(i,1,1));
+    matrix_data[ idx ] = -k10*H_1 - k18*de - k19*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 1 ]);
 
     // H2_2 by H_1
-    matrix_data[ j + 9 ] = k09*H_2 - k10*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,9), DENSEIDX(i,1,2));
+    matrix_data[ idx ] = k09*H_2 - k10*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 2 ]);
 
     // H2_2 by H_2
-    matrix_data[ j + 10 ] = k09*H_1 + k11*H2_1 + k17*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,10), DENSEIDX(i,1,3));
+    matrix_data[ idx ] = k09*H_1 + k11*H2_1 + k17*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 3 ]);
 
     // H2_2 by H_m0
-    matrix_data[ j + 11 ] = k17*H_2 - k19*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,11), DENSEIDX(i,1,4));
+    matrix_data[ idx ] = k17*H_2 - k19*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 4 ]);
 
     // H2_2 by de
-    matrix_data[ j + 12 ] = -k18*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,12), DENSEIDX(i,1,8));
+    matrix_data[ idx ] = -k18*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 8 ]);
 
     // H2_2 by ge
-    matrix_data[ j + 13 ] = rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + rk17*H_2*H_m0 - rk18*H2_2*de - rk19*H2_2*H_m0;
-    matrix_data[ j + 13] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,13), DENSEIDX(i,1,9));
+    matrix_data[ idx ] = rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + rk17*H_2*H_m0 - rk18*H2_2*de - rk19*H2_2*H_m0;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 9 ]);
+
 
     // H_1 by H2_1
-    matrix_data[ j + 14 ] = k11*H_2 + 2*k12*de + 2*k13*H_1 - 2*k21*pow(H_1, 2);
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,14), DENSEIDX(i,2,0));
+    matrix_data[ idx ] = k11*H_2 + 2*k12*de + 2*k13*H_1 - 2*k21*pow(H_1, 2);
+    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 0 ]);
 
     // H_1 by H2_2
-    matrix_data[ j + 15 ] = -k10*H_1 + 2*k18*de + k19*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,15), DENSEIDX(i,2,1));
+    matrix_data[ idx ] = -k10*H_1 + 2*k18*de + k19*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 1 ]);
 
     // H_1 by H_1
-    matrix_data[ j + 16 ] = -k01*de - k07*de - k08*H_m0 - k09*H_2 - k10*H2_2 + 2*k13*H2_1 + k15*H_m0 - 4*k21*H2_1*H_1 - 6*k22*pow(H_1, 2);
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,16), DENSEIDX(i,2,2));
+    matrix_data[ idx ] = -k01*de - k07*de - k08*H_m0 - k09*H_2 - k10*H2_2 + 2*k13*H2_1 + k15*H_m0 - 4*k21*H2_1*H_1 - 6*k22*pow(H_1, 2);
+    matrix_data[ idx ]  *= (inv_scale[ j + 2 ]*scale[ j + 2 ]);
 
     // H_1 by H_2
-    matrix_data[ j + 17 ] = k02*de - k09*H_1 + k11*H2_1 + 2*k16*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,17), DENSEIDX(i,2,3));
+    matrix_data[ idx ] = k02*de - k09*H_1 + k11*H2_1 + 2*k16*H_m0;
+    matrix_data[ idx ]  *= (inv_scale[ j + 2 ]*scale[ j + 3 ]);
 
     // H_1 by H_m0
-    matrix_data[ j + 18 ] = -k08*H_1 + k14*de + k15*H_1 + 2*k16*H_2 + k19*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,18), DENSEIDX(i,2,4));
+    matrix_data[ idx ] = -k08*H_1 + k14*de + k15*H_1 + 2*k16*H_2 + k19*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 4 ]);
 
     // H_1 by de
-    matrix_data[ j + 19 ] = -k01*H_1 + k02*H_2 - k07*H_1 + 2*k12*H2_1 + k14*H_m0 + 2*k18*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,19), DENSEIDX(i,2,8));
+    matrix_data[ idx ] = -k01*H_1 + k02*H_2 - k07*H_1 + 2*k12*H2_1 + k14*H_m0 + 2*k18*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 8 ]);
 
     // H_1 by ge
-    matrix_data[ j + 20 ] = -rk01*H_1*de + rk02*H_2*de - rk07*H_1*de - rk08*H_1*H_m0 - rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + 2*rk12*H2_1*de + 2*rk13*H2_1*H_1 + rk14*H_m0*de + rk15*H_1*H_m0 + 2*rk16*H_2*H_m0 + 2*rk18*H2_2*de + rk19*H2_2*H_m0 - 2*rk21*H2_1*H_1*H_1 - 2*rk22*H_1*H_1*H_1;
-    matrix_data[ j + 20] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,20), DENSEIDX(i,2,9));
+    matrix_data[ idx ] = -rk01*H_1*de + rk02*H_2*de - rk07*H_1*de - rk08*H_1*H_m0 - rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + 2*rk12*H2_1*de + 2*rk13*H2_1*H_1 + rk14*H_m0*de + rk15*H_1*H_m0 + 2*rk16*H_2*H_m0 + 2*rk18*H2_2*de + rk19*H2_2*H_m0 - 2*rk21*H2_1*H_1*H_1 - 2*rk22*H_1*H_1*H_1;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 9 ]);
+
 
     // H_2 by H2_1
-    matrix_data[ j + 21 ] = -k11*H_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,21), DENSEIDX(i,3,0));
+    matrix_data[ idx ] = -k11*H_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 0 ]);
 
     // H_2 by H2_2
-    matrix_data[ j + 22 ] = k10*H_1;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,22), DENSEIDX(i,3,1));
+    matrix_data[ idx ] = k10*H_1;
+    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 1 ]);
 
     // H_2 by H_1
-    matrix_data[ j + 23 ] = k01*de - k09*H_2 + k10*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,23), DENSEIDX(i,3,2));
+    matrix_data[ idx ] = k01*de - k09*H_2 + k10*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 2 ]);
 
     // H_2 by H_2
-    matrix_data[ j + 24 ] = -k02*de - k09*H_1 - k11*H2_1 - k16*H_m0 - k17*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,24), DENSEIDX(i,3,3));
+    matrix_data[ idx ] = -k02*de - k09*H_1 - k11*H2_1 - k16*H_m0 - k17*H_m0;
+    matrix_data[ idx ]  *= (inv_scale[ j + 3 ]*scale[ j + 3 ]);
 
     // H_2 by H_m0
-    matrix_data[ j + 25 ] = -k16*H_2 - k17*H_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,25), DENSEIDX(i,3,4));
+    matrix_data[ idx ] = -k16*H_2 - k17*H_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 4 ]);
 
     // H_2 by de
-    matrix_data[ j + 26 ] = k01*H_1 - k02*H_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,26), DENSEIDX(i,3,8));
+    matrix_data[ idx ] = k01*H_1 - k02*H_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 8 ]);
 
     // H_2 by ge
-    matrix_data[ j + 27 ] = rk01*H_1*de - rk02*H_2*de - rk09*H_1*H_2 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk16*H_2*H_m0 - rk17*H_2*H_m0;
-    matrix_data[ j + 27] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,27), DENSEIDX(i,3,9));
+    matrix_data[ idx ] = rk01*H_1*de - rk02*H_2*de - rk09*H_1*H_2 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk16*H_2*H_m0 - rk17*H_2*H_m0;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 9 ]);
+
 
     // H_m0 by H2_2
-    matrix_data[ j + 28 ] = -k19*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,28), DENSEIDX(i,4,1));
+    matrix_data[ idx ] = -k19*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 1 ]);
 
     // H_m0 by H_1
-    matrix_data[ j + 29 ] = k07*de - k08*H_m0 - k15*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,29), DENSEIDX(i,4,2));
+    matrix_data[ idx ] = k07*de - k08*H_m0 - k15*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 2 ]);
 
     // H_m0 by H_2
-    matrix_data[ j + 30 ] = -k16*H_m0 - k17*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,30), DENSEIDX(i,4,3));
+    matrix_data[ idx ] = -k16*H_m0 - k17*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 3 ]);
 
     // H_m0 by H_m0
-    matrix_data[ j + 31 ] = -k08*H_1 - k14*de - k15*H_1 - k16*H_2 - k17*H_2 - k19*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,31), DENSEIDX(i,4,4));
+    matrix_data[ idx ] = -k08*H_1 - k14*de - k15*H_1 - k16*H_2 - k17*H_2 - k19*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 4 ]);
 
     // H_m0 by de
-    matrix_data[ j + 32 ] = k07*H_1 - k14*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,32), DENSEIDX(i,4,8));
+    matrix_data[ idx ] = k07*H_1 - k14*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 8 ]);
 
     // H_m0 by ge
-    matrix_data[ j + 33 ] = rk07*H_1*de - rk08*H_1*H_m0 - rk14*H_m0*de - rk15*H_1*H_m0 - rk16*H_2*H_m0 - rk17*H_2*H_m0 - rk19*H2_2*H_m0;
-    matrix_data[ j + 33] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,33), DENSEIDX(i,4,9));
+    matrix_data[ idx ] = rk07*H_1*de - rk08*H_1*H_m0 - rk14*H_m0*de - rk15*H_1*H_m0 - rk16*H_2*H_m0 - rk17*H_2*H_m0 - rk19*H2_2*H_m0;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 9 ]);
+
 
     // He_1 by He_1
-    matrix_data[ j + 34 ] = -k03*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,34), DENSEIDX(i,5,5));
+    matrix_data[ idx ] = -k03*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 5 ]);
 
     // He_1 by He_2
-    matrix_data[ j + 35 ] = k04*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,35), DENSEIDX(i,5,6));
+    matrix_data[ idx ] = k04*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 6 ]);
 
     // He_1 by de
-    matrix_data[ j + 36 ] = -k03*He_1 + k04*He_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,36), DENSEIDX(i,5,8));
+    matrix_data[ idx ] = -k03*He_1 + k04*He_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 8 ]);
 
     // He_1 by ge
-    matrix_data[ j + 37 ] = -rk03*He_1*de + rk04*He_2*de;
-    matrix_data[ j + 37] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,37), DENSEIDX(i,5,9));
+    matrix_data[ idx ] = -rk03*He_1*de + rk04*He_2*de;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 9 ]);
+
 
     // He_2 by He_1
-    matrix_data[ j + 38 ] = k03*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,38), DENSEIDX(i,6,5));
+    matrix_data[ idx ] = k03*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 5 ]);
 
     // He_2 by He_2
-    matrix_data[ j + 39 ] = -k04*de - k05*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,39), DENSEIDX(i,6,6));
+    matrix_data[ idx ] = -k04*de - k05*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 6 ]);
 
     // He_2 by He_3
-    matrix_data[ j + 40 ] = k06*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,40), DENSEIDX(i,6,7));
+    matrix_data[ idx ] = k06*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 7 ]);
 
     // He_2 by de
-    matrix_data[ j + 41 ] = k03*He_1 - k04*He_2 - k05*He_2 + k06*He_3;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,41), DENSEIDX(i,6,8));
+    matrix_data[ idx ] = k03*He_1 - k04*He_2 - k05*He_2 + k06*He_3;
+    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 8 ]);
 
     // He_2 by ge
-    matrix_data[ j + 42 ] = rk03*He_1*de - rk04*He_2*de - rk05*He_2*de + rk06*He_3*de;
-    matrix_data[ j + 42] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,42), DENSEIDX(i,6,9));
+    matrix_data[ idx ] = rk03*He_1*de - rk04*He_2*de - rk05*He_2*de + rk06*He_3*de;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 9 ]);
+
 
     // He_3 by He_2
-    matrix_data[ j + 43 ] = k05*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,43), DENSEIDX(i,7,6));
+    matrix_data[ idx ] = k05*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 6 ]);
 
     // He_3 by He_3
-    matrix_data[ j + 44 ] = -k06*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,44), DENSEIDX(i,7,7));
+    matrix_data[ idx ] = -k06*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 7 ]);
 
     // He_3 by de
-    matrix_data[ j + 45 ] = k05*He_2 - k06*He_3;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,45), DENSEIDX(i,7,8));
+    matrix_data[ idx ] = k05*He_2 - k06*He_3;
+    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 8 ]);
 
     // He_3 by ge
-    matrix_data[ j + 46 ] = rk05*He_2*de - rk06*He_3*de;
-    matrix_data[ j + 46] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,46), DENSEIDX(i,7,9));
+    matrix_data[ idx ] = rk05*He_2*de - rk06*He_3*de;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 9 ]);
+
 
     // de by H2_2
-    matrix_data[ j + 47 ] = -k18*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,47), DENSEIDX(i,8,1));
+    matrix_data[ idx ] = -k18*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 1 ]);
 
     // de by H_1
-    matrix_data[ j + 48 ] = k01*de - k07*de + k08*H_m0 + k15*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,48), DENSEIDX(i,8,2));
+    matrix_data[ idx ] = k01*de - k07*de + k08*H_m0 + k15*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 2 ]);
 
     // de by H_2
-    matrix_data[ j + 49 ] = -k02*de + k17*H_m0;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,49), DENSEIDX(i,8,3));
+    matrix_data[ idx ] = -k02*de + k17*H_m0;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 3 ]);
 
     // de by H_m0
-    matrix_data[ j + 50 ] = k08*H_1 + k14*de + k15*H_1 + k17*H_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,50), DENSEIDX(i,8,4));
+    matrix_data[ idx ] = k08*H_1 + k14*de + k15*H_1 + k17*H_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 4 ]);
 
     // de by He_1
-    matrix_data[ j + 51 ] = k03*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,51), DENSEIDX(i,8,5));
+    matrix_data[ idx ] = k03*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 5 ]);
 
     // de by He_2
-    matrix_data[ j + 52 ] = -k04*de + k05*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,52), DENSEIDX(i,8,6));
+    matrix_data[ idx ] = -k04*de + k05*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 6 ]);
 
     // de by He_3
-    matrix_data[ j + 53 ] = -k06*de;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,53), DENSEIDX(i,8,7));
+    matrix_data[ idx ] = -k06*de;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 7 ]);
 
     // de by de
-    matrix_data[ j + 54 ] = k01*H_1 - k02*H_2 + k03*He_1 - k04*He_2 + k05*He_2 - k06*He_3 - k07*H_1 + k14*H_m0 - k18*H2_2;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,54), DENSEIDX(i,8,8));
+    matrix_data[ idx ] = k01*H_1 - k02*H_2 + k03*He_1 - k04*He_2 + k05*He_2 - k06*He_3 - k07*H_1 + k14*H_m0 - k18*H2_2;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 8 ]);
 
     // de by ge
-    matrix_data[ j + 55 ] = rk01*H_1*de - rk02*H_2*de + rk03*He_1*de - rk04*He_2*de + rk05*He_2*de - rk06*He_3*de - rk07*H_1*de + rk08*H_1*H_m0 + rk14*H_m0*de + rk15*H_1*H_m0 + rk17*H_2*H_m0 - rk18*H2_2*de;
-    matrix_data[ j + 55] *= Tge;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,55), DENSEIDX(i,8,9));
+    matrix_data[ idx ] = rk01*H_1*de - rk02*H_2*de + rk03*He_1*de - rk04*He_2*de + rk05*He_2*de - rk06*He_3*de - rk07*H_1*de + rk08*H_1*H_m0 + rk14*H_m0*de + rk15*H_1*H_m0 + rk17*H_2*H_m0 - rk18*H2_2*de;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 9 ]);
+
 
     // ge by H2_1
-    matrix_data[ j + 56 ] = -H2_1*gloverabel08_gaH2*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - 0.5*H_1*h2formation_h2mcool*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0) - 2.0158800000000001*cie_cooling_cieco*mdensity - gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*h2formation_ncrd2*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2);
-    matrix_data[j + 56] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,56), DENSEIDX(i,9,0));
+    matrix_data[ idx ] = -H2_1*gloverabel08_gaH2*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - 0.5*H_1*h2formation_h2mcool*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0) - 2.0158800000000001*cie_cooling_cieco*mdensity - gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*h2formation_ncrd2*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2);
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 0 ]);
 
     // ge by H_1
-    matrix_data[ j + 57 ] = -H2_1*gloverabel08_gaHI*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ceHI_ceHI*de - ciHI_ciHI*de + 0.5*h2formation_ncrd1*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) + 0.5*(-H2_1*h2formation_h2mcool + 3*pow(H_1, 2)*h2formation_h2mheat)*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0);
-    matrix_data[j + 57] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,57), DENSEIDX(i,9,2));
+    matrix_data[ idx ] = -H2_1*gloverabel08_gaHI*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ceHI_ceHI*de - ciHI_ciHI*de + 0.5*h2formation_ncrd1*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) + 0.5*(-H2_1*h2formation_h2mcool + 3*pow(H_1, 2)*h2formation_h2mheat)*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0);
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 2 ]);
 
     // ge by H_2
-    matrix_data[ j + 58 ] = -H2_1*gloverabel08_gaHp*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - brem_brem*de - de*reHII_reHII;
-    matrix_data[j + 58] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,58), DENSEIDX(i,9,3));
+    matrix_data[ idx ] = -H2_1*gloverabel08_gaHp*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - brem_brem*de - de*reHII_reHII;
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 3 ]);
 
     // ge by He_1
-    matrix_data[ j + 59 ] = -H2_1*gloverabel08_gaHe*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ciHeI_ciHeI*de;
-    matrix_data[j + 59] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,59), DENSEIDX(i,9,5));
+    matrix_data[ idx ] = -H2_1*gloverabel08_gaHe*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ciHeI_ciHeI*de;
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 5 ]);
 
     // ge by He_2
-    matrix_data[ j + 60 ] = -brem_brem*de - ceHeII_ceHeII*de - ceHeI_ceHeI*pow(de, 2) - ciHeII_ciHeII*de - ciHeIS_ciHeIS*pow(de, 2) - de*reHeII1_reHeII1 - de*reHeII2_reHeII2;
-    matrix_data[j + 60] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,60), DENSEIDX(i,9,6));
+    matrix_data[ idx ] = -brem_brem*de - ceHeII_ceHeII*de - ceHeI_ceHeI*pow(de, 2) - ciHeII_ciHeII*de - ciHeIS_ciHeIS*pow(de, 2) - de*reHeII1_reHeII1 - de*reHeII2_reHeII2;
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 6 ]);
 
     // ge by He_3
-    matrix_data[ j + 61 ] = -4.0*brem_brem*de - de*reHeIII_reHeIII;
-    matrix_data[j + 61] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,61), DENSEIDX(i,9,7));
+    matrix_data[ idx ] = -4.0*brem_brem*de - de*reHeIII_reHeIII;
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 7 ]);
 
     // ge by de
-    matrix_data[ j + 62 ] = -H2_1*gloverabel08_gael*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - H_1*ceHI_ceHI - H_1*ciHI_ciHI - H_2*reHII_reHII - He_1*ciHeI_ciHeI - He_2*ceHeII_ceHeII - 2*He_2*ceHeI_ceHeI*de - He_2*ciHeII_ciHeII - 2*He_2*ciHeIS_ciHeIS*de - He_2*reHeII1_reHeII1 - He_2*reHeII2_reHeII2 - He_3*reHeIII_reHeIII - brem_brem*(H_2 + He_2 + 4.0*He_3) - compton_comp_*pow(z + 1.0, 4)*(T - 2.73*z - 2.73);
-    matrix_data[j + 62] *= inv_mdensity;
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,62), DENSEIDX(i,9,8));
+    matrix_data[ idx ] = -H2_1*gloverabel08_gael*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - H_1*ceHI_ceHI - H_1*ciHI_ciHI - H_2*reHII_reHII - He_1*ciHeI_ciHeI - He_2*ceHeII_ceHeII - 2*He_2*ceHeI_ceHeI*de - He_2*ciHeII_ciHeII - 2*He_2*ciHeIS_ciHeIS*de - He_2*reHeII1_reHeII1 - He_2*reHeII2_reHeII2 - He_3*reHeIII_reHeIII - brem_brem*(H_2 + He_2 + 4.0*He_3) - compton_comp_*pow(z + 1.0, 4)*(T - 2.73*z - 2.73);
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 8 ]);
 
     // ge by ge
-    matrix_data[ j + 63 ] = -2.0158800000000001*H2_1*cie_cooling_cieco*cie_optical_depth_approx*mdensity - H2_1*cie_optical_depth_approx*gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) - H_1*ceHI_ceHI*cie_optical_depth_approx*de - H_1*ciHI_ciHI*cie_optical_depth_approx*de - H_2*cie_optical_depth_approx*de*reHII_reHII - He_1*ciHeI_ciHeI*cie_optical_depth_approx*de - He_2*ceHeII_ceHeII*cie_optical_depth_approx*de - He_2*ceHeI_ceHeI*cie_optical_depth_approx*pow(de, 2) - He_2*ciHeII_ciHeII*cie_optical_depth_approx*de - He_2*ciHeIS_ciHeIS*cie_optical_depth_approx*pow(de, 2) - He_2*cie_optical_depth_approx*de*reHeII1_reHeII1 - He_2*cie_optical_depth_approx*de*reHeII2_reHeII2 - He_3*cie_optical_depth_approx*de*reHeIII_reHeIII - brem_brem*cie_optical_depth_approx*de*(H_2 + He_2 + 4.0*He_3) - cie_optical_depth_approx*compton_comp_*de*pow(z + 1.0, 4)*(T - 2.73*z - 2.73) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat);
+    idx = SPARSE_OR_DENSE(SPARSEIDX(i,63), DENSEIDX(i,9,9));
+    matrix_data[ idx ] = -2.0158800000000001*H2_1*cie_cooling_cieco*cie_optical_depth_approx*mdensity - H2_1*cie_optical_depth_approx*gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) - H_1*ceHI_ceHI*cie_optical_depth_approx*de - H_1*ciHI_ciHI*cie_optical_depth_approx*de - H_2*cie_optical_depth_approx*de*reHII_reHII - He_1*ciHeI_ciHeI*cie_optical_depth_approx*de - He_2*ceHeII_ceHeII*cie_optical_depth_approx*de - He_2*ceHeI_ceHeI*cie_optical_depth_approx*pow(de, 2) - He_2*ciHeII_ciHeII*cie_optical_depth_approx*de - He_2*ciHeIS_ciHeIS*cie_optical_depth_approx*pow(de, 2) - He_2*cie_optical_depth_approx*de*reHeII1_reHeII1 - He_2*cie_optical_depth_approx*de*reHeII2_reHeII2 - He_3*cie_optical_depth_approx*de*reHeIII_reHeIII - brem_brem*cie_optical_depth_approx*de*(H_2 + He_2 + 4.0*He_3) - cie_optical_depth_approx*compton_comp_*de*pow(z + 1.0, 4)*(T - 2.73*z - 2.73) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat);
 
     // ad-hoc extra term of f_ge by ge
     // considering ONLY the h2formation/ and continuum cooling
-    matrix_data[ j + 63] = -H2_1*gloverabel08_h2lte*h2_optical_depth_approx*(-gloverabel08_h2lte*(-H2_1*rgloverabel08_gaH2 - H_1*rgloverabel08_gaHI - H_2*rgloverabel08_gaHp - He_1*rgloverabel08_gaHe - de*rgloverabel08_gael)/pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2) - rgloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael))/pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2) - H2_1*h2_optical_depth_approx*rgloverabel08_h2lte/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)*(-1.0*h2formation_ncrn*(-H2_1*rh2formation_ncrd2 - H_1*rh2formation_ncrd1)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) - 1.0*rh2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1)) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*rh2formation_h2mcool + pow(H_1, 3)*rh2formation_h2mheat);
-    matrix_data[ j + 63] *= inv_mdensity;
-    matrix_data[ j + 63] *= Tge;
+    matrix_data[ idx ] = -H2_1*gloverabel08_h2lte*h2_optical_depth_approx*(-gloverabel08_h2lte*(-H2_1*rgloverabel08_gaH2 - H_1*rgloverabel08_gaHI - H_2*rgloverabel08_gaHp - He_1*rgloverabel08_gaHe - de*rgloverabel08_gael)/pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2) - rgloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael))/pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2) - H2_1*h2_optical_depth_approx*rgloverabel08_h2lte/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)*(-1.0*h2formation_ncrn*(-H2_1*rh2formation_ncrd2 - H_1*rh2formation_ncrd1)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) - 1.0*rh2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1)) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*rh2formation_h2mcool + pow(H_1, 3)*rh2formation_h2mheat);
+    matrix_data[ idx ] *= inv_mdensity;
+    matrix_data[ idx ] *= Tge;
+    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
 
-#ifdef RAJA_SERIAL
-    colvals[j + 0] = i * NSPECIES + 0 ;
-    colvals[j + 1] = i * NSPECIES + 1 ;
-    colvals[j + 2] = i * NSPECIES + 2 ;
-    colvals[j + 3] = i * NSPECIES + 3 ;
-    colvals[j + 4] = i * NSPECIES + 4 ;
-    colvals[j + 5] = i * NSPECIES + 8 ;
-    colvals[j + 6] = i * NSPECIES + 9 ;
-    colvals[j + 7] = i * NSPECIES + 0 ;
-    colvals[j + 8] = i * NSPECIES + 1 ;
-    colvals[j + 9] = i * NSPECIES + 2 ;
-    colvals[j + 10] = i * NSPECIES + 3 ;
-    colvals[j + 11] = i * NSPECIES + 4 ;
-    colvals[j + 12] = i * NSPECIES + 8 ;
-    colvals[j + 13] = i * NSPECIES + 9 ;
-    colvals[j + 14] = i * NSPECIES + 0 ;
-    colvals[j + 15] = i * NSPECIES + 1 ;
-    colvals[j + 16] = i * NSPECIES + 2 ;
-    colvals[j + 17] = i * NSPECIES + 3 ;
-    colvals[j + 18] = i * NSPECIES + 4 ;
-    colvals[j + 19] = i * NSPECIES + 8 ;
-    colvals[j + 20] = i * NSPECIES + 9 ;
-    colvals[j + 21] = i * NSPECIES + 0 ;
-    colvals[j + 22] = i * NSPECIES + 1 ;
-    colvals[j + 23] = i * NSPECIES + 2 ;
-    colvals[j + 24] = i * NSPECIES + 3 ;
-    colvals[j + 25] = i * NSPECIES + 4 ;
-    colvals[j + 26] = i * NSPECIES + 8 ;
-    colvals[j + 27] = i * NSPECIES + 9 ;
-    colvals[j + 28] = i * NSPECIES + 1 ;
-    colvals[j + 29] = i * NSPECIES + 2 ;
-    colvals[j + 30] = i * NSPECIES + 3 ;
-    colvals[j + 31] = i * NSPECIES + 4 ;
-    colvals[j + 32] = i * NSPECIES + 8 ;
-    colvals[j + 33] = i * NSPECIES + 9 ;
-    colvals[j + 34] = i * NSPECIES + 5 ;
-    colvals[j + 35] = i * NSPECIES + 6 ;
-    colvals[j + 36] = i * NSPECIES + 8 ;
-    colvals[j + 37] = i * NSPECIES + 9 ;
-    colvals[j + 38] = i * NSPECIES + 5 ;
-    colvals[j + 39] = i * NSPECIES + 6 ;
-    colvals[j + 40] = i * NSPECIES + 7 ;
-    colvals[j + 41] = i * NSPECIES + 8 ;
-    colvals[j + 42] = i * NSPECIES + 9 ;
-    colvals[j + 43] = i * NSPECIES + 6 ;
-    colvals[j + 44] = i * NSPECIES + 7 ;
-    colvals[j + 45] = i * NSPECIES + 8 ;
-    colvals[j + 46] = i * NSPECIES + 9 ;
-    colvals[j + 47] = i * NSPECIES + 1 ;
-    colvals[j + 48] = i * NSPECIES + 2 ;
-    colvals[j + 49] = i * NSPECIES + 3 ;
-    colvals[j + 50] = i * NSPECIES + 4 ;
-    colvals[j + 51] = i * NSPECIES + 5 ;
-    colvals[j + 52] = i * NSPECIES + 6 ;
-    colvals[j + 53] = i * NSPECIES + 7 ;
-    colvals[j + 54] = i * NSPECIES + 8 ;
-    colvals[j + 55] = i * NSPECIES + 9 ;
-    colvals[j + 56] = i * NSPECIES + 0 ;
-    colvals[j + 57] = i * NSPECIES + 2 ;
-    colvals[j + 58] = i * NSPECIES + 3 ;
-    colvals[j + 59] = i * NSPECIES + 5 ;
-    colvals[j + 60] = i * NSPECIES + 6 ;
-    colvals[j + 61] = i * NSPECIES + 7 ;
-    colvals[j + 62] = i * NSPECIES + 8 ;
-    colvals[j + 63] = i * NSPECIES + 9 ;
+#if defined(RAJA_SERIAL) && !defined(USEMAGMA)
+    colvals[i * NSPARSE + 0] = i * NSPECIES + 0 ;
+    colvals[i * NSPARSE + 1] = i * NSPECIES + 1 ;
+    colvals[i * NSPARSE + 2] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 3] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 4] = i * NSPECIES + 4 ;
+    colvals[i * NSPARSE + 5] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 6] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 7] = i * NSPECIES + 0 ;
+    colvals[i * NSPARSE + 8] = i * NSPECIES + 1 ;
+    colvals[i * NSPARSE + 9] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 10] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 11] = i * NSPECIES + 4 ;
+    colvals[i * NSPARSE + 12] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 13] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 14] = i * NSPECIES + 0 ;
+    colvals[i * NSPARSE + 15] = i * NSPECIES + 1 ;
+    colvals[i * NSPARSE + 16] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 17] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 18] = i * NSPECIES + 4 ;
+    colvals[i * NSPARSE + 19] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 20] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 21] = i * NSPECIES + 0 ;
+    colvals[i * NSPARSE + 22] = i * NSPECIES + 1 ;
+    colvals[i * NSPARSE + 23] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 24] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 25] = i * NSPECIES + 4 ;
+    colvals[i * NSPARSE + 26] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 27] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 28] = i * NSPECIES + 1 ;
+    colvals[i * NSPARSE + 29] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 30] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 31] = i * NSPECIES + 4 ;
+    colvals[i * NSPARSE + 32] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 33] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 34] = i * NSPECIES + 5 ;
+    colvals[i * NSPARSE + 35] = i * NSPECIES + 6 ;
+    colvals[i * NSPARSE + 36] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 37] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 38] = i * NSPECIES + 5 ;
+    colvals[i * NSPARSE + 39] = i * NSPECIES + 6 ;
+    colvals[i * NSPARSE + 40] = i * NSPECIES + 7 ;
+    colvals[i * NSPARSE + 41] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 42] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 43] = i * NSPECIES + 6 ;
+    colvals[i * NSPARSE + 44] = i * NSPECIES + 7 ;
+    colvals[i * NSPARSE + 45] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 46] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 47] = i * NSPECIES + 1 ;
+    colvals[i * NSPARSE + 48] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 49] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 50] = i * NSPECIES + 4 ;
+    colvals[i * NSPARSE + 51] = i * NSPECIES + 5 ;
+    colvals[i * NSPARSE + 52] = i * NSPECIES + 6 ;
+    colvals[i * NSPARSE + 53] = i * NSPECIES + 7 ;
+    colvals[i * NSPARSE + 54] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 55] = i * NSPECIES + 9 ;
+    colvals[i * NSPARSE + 56] = i * NSPECIES + 0 ;
+    colvals[i * NSPARSE + 57] = i * NSPECIES + 2 ;
+    colvals[i * NSPARSE + 58] = i * NSPECIES + 3 ;
+    colvals[i * NSPARSE + 59] = i * NSPECIES + 5 ;
+    colvals[i * NSPARSE + 60] = i * NSPECIES + 6 ;
+    colvals[i * NSPARSE + 61] = i * NSPECIES + 7 ;
+    colvals[i * NSPARSE + 62] = i * NSPECIES + 8 ;
+    colvals[i * NSPARSE + 63] = i * NSPECIES + 9 ;
 
     rowptrs[ i * NSPECIES +  0] = i * NSPARSE + 0;
     rowptrs[ i * NSPECIES +  1] = i * NSPARSE + 7;
@@ -1746,77 +1892,20 @@ int calculate_sparse_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     }
 #endif
 
-    j = i * NSPECIES;
-    matrix_data[ i * NSPARSE + 0]  *=  (inv_scale[ j + 0 ]*scale[ j + 0 ]);
-    matrix_data[ i * NSPARSE + 1]  *=  (inv_scale[ j + 0 ]*scale[ j + 1 ]);
-    matrix_data[ i * NSPARSE + 2]  *=  (inv_scale[ j + 0 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 3]  *= (inv_scale[ j + 0 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 4]  *= (inv_scale[ j + 0 ]*scale[ j + 4 ]);
-    matrix_data[ i * NSPARSE + 5]  *= (inv_scale[ j + 0 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 6]  *= (inv_scale[ j + 0 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 7]  *= (inv_scale[ j + 1 ]*scale[ j + 0 ]);
-    matrix_data[ i * NSPARSE + 8]  *= (inv_scale[ j + 1 ]*scale[ j + 1 ]);
-    matrix_data[ i * NSPARSE + 9]  *= (inv_scale[ j + 1 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 10]  *= (inv_scale[ j + 1 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 11]  *= (inv_scale[ j + 1 ]*scale[ j + 4 ]);
-    matrix_data[ i * NSPARSE + 12]  *= (inv_scale[ j + 1 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 13]  *= (inv_scale[ j + 1 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 14]  *= (inv_scale[ j + 2 ]*scale[ j + 0 ]);
-    matrix_data[ i * NSPARSE + 15]  *= (inv_scale[ j + 2 ]*scale[ j + 1 ]);
-    matrix_data[ i * NSPARSE + 16]  *= (inv_scale[ j + 2 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 17]  *= (inv_scale[ j + 2 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 18]  *= (inv_scale[ j + 2 ]*scale[ j + 4 ]);
-    matrix_data[ i * NSPARSE + 19]  *= (inv_scale[ j + 2 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 20]  *= (inv_scale[ j + 2 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 21]  *= (inv_scale[ j + 3 ]*scale[ j + 0 ]);
-    matrix_data[ i * NSPARSE + 22]  *= (inv_scale[ j + 3 ]*scale[ j + 1 ]);
-    matrix_data[ i * NSPARSE + 23]  *= (inv_scale[ j + 3 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 24]  *= (inv_scale[ j + 3 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 25]  *= (inv_scale[ j + 3 ]*scale[ j + 4 ]);
-    matrix_data[ i * NSPARSE + 26]  *= (inv_scale[ j + 3 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 27]  *= (inv_scale[ j + 3 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 28]  *= (inv_scale[ j + 4 ]*scale[ j + 1 ]);
-    matrix_data[ i * NSPARSE + 29]  *= (inv_scale[ j + 4 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 30]  *= (inv_scale[ j + 4 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 31]  *= (inv_scale[ j + 4 ]*scale[ j + 4 ]);
-    matrix_data[ i * NSPARSE + 32]  *= (inv_scale[ j + 4 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 33]  *= (inv_scale[ j + 4 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 34]  *= (inv_scale[ j + 5 ]*scale[ j + 5 ]);
-    matrix_data[ i * NSPARSE + 35]  *= (inv_scale[ j + 5 ]*scale[ j + 6 ]);
-    matrix_data[ i * NSPARSE + 36]  *= (inv_scale[ j + 5 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 37]  *= (inv_scale[ j + 5 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 38]  *= (inv_scale[ j + 6 ]*scale[ j + 5 ]);
-    matrix_data[ i * NSPARSE + 39]  *= (inv_scale[ j + 6 ]*scale[ j + 6 ]);
-    matrix_data[ i * NSPARSE + 40]  *= (inv_scale[ j + 6 ]*scale[ j + 7 ]);
-    matrix_data[ i * NSPARSE + 41]  *= (inv_scale[ j + 6 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 42]  *= (inv_scale[ j + 6 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 43]  *= (inv_scale[ j + 7 ]*scale[ j + 6 ]);
-    matrix_data[ i * NSPARSE + 44]  *= (inv_scale[ j + 7 ]*scale[ j + 7 ]);
-    matrix_data[ i * NSPARSE + 45]  *= (inv_scale[ j + 7 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 46]  *= (inv_scale[ j + 7 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 47]  *= (inv_scale[ j + 8 ]*scale[ j + 1 ]);
-    matrix_data[ i * NSPARSE + 48]  *= (inv_scale[ j + 8 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 49]  *= (inv_scale[ j + 8 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 50]  *= (inv_scale[ j + 8 ]*scale[ j + 4 ]);
-    matrix_data[ i * NSPARSE + 51]  *= (inv_scale[ j + 8 ]*scale[ j + 5 ]);
-    matrix_data[ i * NSPARSE + 52]  *= (inv_scale[ j + 8 ]*scale[ j + 6 ]);
-    matrix_data[ i * NSPARSE + 53]  *= (inv_scale[ j + 8 ]*scale[ j + 7 ]);
-    matrix_data[ i * NSPARSE + 54]  *= (inv_scale[ j + 8 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 55]  *= (inv_scale[ j + 8 ]*scale[ j + 9 ]);
-    matrix_data[ i * NSPARSE + 56]  *= (inv_scale[ j + 9 ]*scale[ j + 0 ]);
-    matrix_data[ i * NSPARSE + 57]  *= (inv_scale[ j + 9 ]*scale[ j + 2 ]);
-    matrix_data[ i * NSPARSE + 58]  *= (inv_scale[ j + 9 ]*scale[ j + 3 ]);
-    matrix_data[ i * NSPARSE + 59]  *= (inv_scale[ j + 9 ]*scale[ j + 5 ]);
-    matrix_data[ i * NSPARSE + 60]  *= (inv_scale[ j + 9 ]*scale[ j + 6 ]);
-    matrix_data[ i * NSPARSE + 61]  *= (inv_scale[ j + 9 ]*scale[ j + 7 ]);
-    matrix_data[ i * NSPARSE + 62]  *= (inv_scale[ j + 9 ]*scale[ j + 8 ]);
-    matrix_data[ i * NSPARSE + 63]  *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
-
   });
+
+  // synchronize device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    std::cerr << ">>> ERROR in calculate_jacobian_cvklu: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return(-1);
+  }
 
   return 0;
 }
-#endif
 
 
 

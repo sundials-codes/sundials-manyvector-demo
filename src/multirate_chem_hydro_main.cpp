@@ -995,13 +995,8 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
 
   // call Jacobian routine
-#ifdef USEMAGMA
-  retval = calculate_denseblock_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
-                                               tmp1chem, tmp2chem, tmp3chem);
-#else
-  retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
-                                           tmp1chem, tmp2chem, tmp3chem);
-#endif
+  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
+                                    tmp1chem, tmp2chem, tmp3chem);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
   // must be converted back to code units here

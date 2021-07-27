@@ -551,22 +551,14 @@ int main(int argc, char* argv[]) {
   retval = CVodeSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "CVodeSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
-#ifdef USEMAGMA
-    retval = CVodeSetJacFn(arkode_mem, calculate_denseblock_jacobian_cvklu);
-#else
-    retval = CVodeSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
-#endif
+    retval = CVodeSetJacFn(arkode_mem, calculate_jacobian_cvklu);
     if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 #else
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
-#ifdef USEMAGMA
-    retval = ARKStepSetJacFn(arkode_mem, calculate_denseblock_jacobian_cvklu);
-#else
-    retval = ARKStepSetJacFn(arkode_mem, calculate_sparse_jacobian_cvklu);
-#endif
+    retval = ARKStepSetJacFn(arkode_mem, calculate_jacobian_cvklu);
     if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 #endif
