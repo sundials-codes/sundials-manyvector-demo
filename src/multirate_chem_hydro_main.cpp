@@ -286,12 +286,20 @@ int main(int argc, char* argv[]) {
     } else {
       cout << "   local N_Vector reduction operations disabled\n";
     }
+    if (opts.iterative) {
+      cout << "   iterative block linear solver selected\n";
+    } else {
+      cout << "   direct block linear solver selected\n";
+    }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
 #ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
 #ifdef USERAJA
+#ifdef USEMAGMA
+    cout << "Executable built using MAGMA block linear solver\n";
+#endif
 #if defined(RAJA_CUDA)
     cout << "Executable built with RAJA+CUDA support\n";
 #elif defined(RAJA_SERIAL)
@@ -419,13 +427,13 @@ int main(int argc, char* argv[]) {
     if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
 #ifdef USEMAGMA
-  // Create SUNMatrix for use in linear solves
-  A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, memhelper, NULL);
-  if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
+    // Create SUNMatrix for use in linear solves
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, memhelper, NULL);
+    if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
-  // Create the SUNLinearSolver object
-  LS = SUNLinSol_MagmaDense(wsubvecs[5], A);
-  if(check_flag((void *)LS, "SUNLinSol_MagmaDense", 0)) return(1);
+    // Create the SUNLinearSolver object
+    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A);
+    if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
@@ -686,7 +694,7 @@ int main(int argc, char* argv[]) {
         cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
       } else if (nls > 0) {
         cout << "   Total number of fast lin solv setups = " << nls << "\n";
-        cout << "   Total number of fast Jac eavls = " << nje << "\n";
+        cout << "   Total number of fast Jac evals = " << nje << "\n";
       }
       if (nni > 0) {
         cout << "   Total number of fast nonlin iters = " << nni << "\n";
@@ -873,7 +881,7 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
     } else if (nls > 0) {
       cout << "   Total number of fast lin solv setups = " << nls << "\n";
-      cout << "   Total number of fast Jac eavls = " << nje << "\n";
+      cout << "   Total number of fast Jac evals = " << nje << "\n";
     }
     if (nni > 0) {
       cout << "   Total number of fast nonlin iters = " << nni << "\n";
@@ -1190,7 +1198,9 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   S->ops->setup      = SUNLinSolSetup_BDMPIMV;
   S->ops->solve      = SUNLinSolSolve_BDMPIMV;
   S->ops->lastflag   = SUNLinSolLastFlag_BDMPIMV;
-  S->ops->setatimes  = SUNLinSolSetATimes_BDMPIMV;
+  if (opts.iterative) {
+    S->ops->setatimes  = SUNLinSolSetATimes_BDMPIMV;
+  }
   S->ops->free       = SUNLinSolFree_BDMPIMV;
 
   // Create, fill and attach content
