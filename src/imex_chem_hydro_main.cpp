@@ -47,17 +47,6 @@
 #include <dengo_primordial_network.hpp>
 #endif
 
-// HIP vs RAJA vs serial
-#if defined(RAJA_CUDA)
-#define HIP_OR_CUDA(a,b) b
-#include <sunmemory/sunmemory_cuda.h>
-#elif defined(RAJA_HIP)
-#define HIP_OR_CUDA(a,b) a
-#include <sunmemory/sunmemory_hip.h>
-#else
-#define HIP_OR_CUDA(a,b) ((void)0);
-#endif
-
 //    SUNDIALS
 #include <arkode/arkode_arkstep.h>
 #include <sunlinsol/sunlinsol_spgmr.h>
@@ -164,8 +153,6 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
-  SUNMemoryHelper memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip();,
-                                           SUNMemoryHelper_Cuda(); )
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -417,7 +404,7 @@ int main(int argc, char* argv[]) {
   } else {
 #ifdef USEMAGMA
     // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, memhelper, NULL);
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
     // Create the SUNLinearSolver object

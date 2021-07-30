@@ -186,7 +186,7 @@ int initialize_Dengo_structures(EulerData& udata) {
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA
-  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl);
+  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl, udata.memhelper);
 #else
   network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
 #endif
@@ -230,7 +230,7 @@ int initialize_Dengo_structures(EulerData& udata) {
 // Utility routine to free Dengo data structures
 void free_Dengo_structures(EulerData& udata) {
   // call utility routine to free contents of Dengo_data structure
-  cvklu_free_data(udata.RxNetData);
+  cvklu_free_data(udata.RxNetData, udata.memhelper);
   udata.RxNetData = NULL;
 }
 

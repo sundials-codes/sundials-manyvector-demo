@@ -25,8 +25,14 @@
 #include <nvector/nvector_parallel.h>
 #ifdef USERAJA
 #include <nvector/nvector_raja.h>
+#if defined(RAJA_CUDA)
+#include <sunmemory/sunmemory_cuda.h>
+#elif defined(RAJA_HIP)
+#include <sunmemory/sunmemory_hip.h>
+#endif
 #else
 #include <nvector/nvector_serial.h>
+#include <sundials/sundials_memory.h>
 #endif
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
@@ -57,6 +63,14 @@ using namespace std;
 // accessor macro between (v,i,j,k) location and 1D data array location
 #define BUFIDX(v,i,j,k,nv,nx,ny,nz) ( (v) + (nv)*((i) + (nx)*((j) + (ny)*(k))) )
 
+// HIP vs RAJA vs serial macro
+#if defined(RAJA_CUDA)
+#define HIP_OR_CUDA(a,b) b
+#elif defined(RAJA_HIP)
+#define HIP_OR_CUDA(a,b) a
+#else
+#define HIP_OR_CUDA(a,b) ((void)0);
+#endif
 
 // reused constants
 #define ZERO    RCONST(0.0)
@@ -160,6 +174,7 @@ class EulerData {
 public:
   ///// reaction network data structure /////
   void *RxNetData;
+  SUNMemoryHelper memhelper;
 
   ///// code profilers /////
   Profile profile[MAXPROFILES];
@@ -278,6 +293,8 @@ public:
     fchemcur(NULL)
   {
     nchem = (NVAR) - 5;
+    memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip();,
+                             SUNMemoryHelper_Cuda(); )
   };
 
   // destructor
@@ -299,6 +316,7 @@ public:
     if (zflux != NULL)  delete[] zflux;
     if (RxNetData != NULL)  free(RxNetData);
     if (fchemcur != NULL) N_VDestroy(fchemcur);
+    if (memhelper != NULL) SUNMemoryHelper_Destroy(memhelper);
   };
 
   // Update derived unit scaling factors from base factors

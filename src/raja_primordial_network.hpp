@@ -270,8 +270,8 @@ typedef struct cvklu_data {
 typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix , void *, N_Vector, N_Vector, N_Vector);
 
-cvklu_data *cvklu_setup_data(const char *, long int);
-void cvklu_free_data(void*);
+cvklu_data *cvklu_setup_data(const char *, long int, SUNMemoryHelper);
+void cvklu_free_data(void*, SUNMemoryHelper);
 void cvklu_read_rate_tables(cvklu_data*);
 void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);

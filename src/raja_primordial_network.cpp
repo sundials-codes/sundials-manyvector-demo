@@ -14,10 +14,8 @@
 // HIP vs RAJA vs serial
 #if defined(RAJA_CUDA)
 #define HIP_OR_CUDA(a,b) b
-#include <sunmemory/sunmemory_cuda.h>
 #elif defined(RAJA_HIP)
 #define HIP_OR_CUDA(a,b) a
-#include <sunmemory/sunmemory_hip.h>
 #else
 #define HIP_OR_CUDA(a,b) ((void)0);
 #endif
@@ -32,7 +30,7 @@
 #define SPARSEIDX(blk,off) (blk*NSPARSE + off)
 #define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
 
-cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
+cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells, SUNMemoryHelper memhelper)
 {
 
   //-----------------------------------------------------
@@ -302,7 +300,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells)
 }
 
 
-void cvklu_free_data(void *data)
+void cvklu_free_data(void *data, SUNMemoryHelper memhelper)
 {
 
   //-----------------------------------------------------

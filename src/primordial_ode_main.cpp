@@ -24,17 +24,6 @@
 #include <dengo_primordial_network.hpp>
 #endif
 
-// HIP vs RAJA vs serial
-#if defined(RAJA_CUDA)
-#define HIP_OR_CUDA(a,b) b
-#include <sunmemory/sunmemory_cuda.h>
-#elif defined(RAJA_HIP)
-#define HIP_OR_CUDA(a,b) a
-#include <sunmemory/sunmemory_hip.h>
-#else
-#define HIP_OR_CUDA(a,b) ((void)0);
-#endif
-
 //    SUNDIALS
 #ifdef USE_CVODE
 #include <cvode/cvode.h>
@@ -110,8 +99,6 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKodeParameters opts;
-  SUNMemoryHelper memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip();,
-                                           SUNMemoryHelper_Cuda(); )
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -200,7 +187,7 @@ int main(int argc, char* argv[]) {
 
   // initialize primordial rate tables, etc
 #ifdef USERAJA
-  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", nstrip);
+  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", nstrip, udata.memhelper);
 #else
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
 #endif
@@ -511,7 +498,7 @@ int main(int argc, char* argv[]) {
   } else {
 #ifdef USEMAGMA
   // Create SUNMatrix for use in linear solves
-  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, memhelper, NULL);
+  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
   if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
   // Create the SUNLinearSolver object
@@ -868,7 +855,7 @@ int main(int argc, char* argv[]) {
 
   // Clean up and return with successful completion
 #ifdef USERAJA
-  cvklu_free_data(network_data);  // Free Dengo data structure
+  cvklu_free_data(network_data, udata.memhelper);  // Free Dengo data structure
 #else
   free(network_data);
 #endif
