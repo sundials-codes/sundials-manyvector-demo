@@ -16,14 +16,17 @@
 #define HIP_OR_CUDA(a,b) b
 #define dalloc(arr, len) cudaMallocManaged((void**)&(arr), (len)*sizeof(double))
 #define dfree(arr) cudaFree(arr)
+#define dcopy(dst, src, len) cudaMemcpy(dst, src, (len)*sizeof(double), cudaMemcpyHostToDevice)
 #elif defined(RAJA_HIP)
 #define HIP_OR_CUDA(a,b) a
 #define dalloc(arr, len) hipMalloc((void**)&(arr), (len)*sizeof(double))
 #define dfree(arr) hipFree(arr)
+#define dcopy(dst, src, len) hipMemcpy(dst, src, (len)*sizeof(double), hipMemcpyHostToDevice)
 #else
 #define HIP_OR_CUDA(a,b) ((void)0);
 #define dalloc(arr, len) arr = (double *) malloc((len)*sizeof(double))
 #define dfree(arr) free(arr)
+#define dcopy(dst, src, len) memcpy(dst, src, (len)*sizeof(double))
 #endif
 
 // sparse vs dense
@@ -226,22 +229,11 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells, SUNMemor
   dalloc(data->g_gammaH2_2, data->nbins+1);
   dalloc(data->g_dgammaH2_2_dT, data->nbins+1);
 
+  /* read tables from HDF5 files */
   cvklu_read_rate_tables(data);
   cvklu_read_cooling_tables(data);
   cvklu_read_gamma(data);
-
-  // ensure that problem structures are synchronized between host/device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-    std::cerr << ">>> ERROR in cvklu_setup_data: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return NULL;
-  }
-
   return data;
-
 }
 
 
@@ -407,46 +399,154 @@ void cvklu_free_data(void *data, SUNMemoryHelper memhelper)
 }
 
 
+// UPDATE THIS TO RETURN SUCCESS/FAILURE FLAG
 void cvklu_read_rate_tables(cvklu_data *data)
 {
+  // Allocate temporary memory on host for file input
+  double *k01 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k02 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k03 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k04 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k05 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k06 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k07 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k08 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k09 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k10 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k11 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k12 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k13 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k14 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k15 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k16 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k17 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k18 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k19 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k21 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *k22 = (double*) malloc((data->nbins+1)*sizeof(double));
+
+  // Read the rate tables to temporaries
   const char * filedir;
   if (data->dengo_data_file != NULL){
     filedir =  data->dengo_data_file;
   } else{
     filedir = "cvklu_tables.h5";
   }
-
   hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-
-  // Read the rate tables (these go to main memory)
-  H5LTread_dataset_double(file_id, "/k01", data->r_k01);
-  H5LTread_dataset_double(file_id, "/k02", data->r_k02);
-  H5LTread_dataset_double(file_id, "/k03", data->r_k03);
-  H5LTread_dataset_double(file_id, "/k04", data->r_k04);
-  H5LTread_dataset_double(file_id, "/k05", data->r_k05);
-  H5LTread_dataset_double(file_id, "/k06", data->r_k06);
-  H5LTread_dataset_double(file_id, "/k07", data->r_k07);
-  H5LTread_dataset_double(file_id, "/k08", data->r_k08);
-  H5LTread_dataset_double(file_id, "/k09", data->r_k09);
-  H5LTread_dataset_double(file_id, "/k10", data->r_k10);
-  H5LTread_dataset_double(file_id, "/k11", data->r_k11);
-  H5LTread_dataset_double(file_id, "/k12", data->r_k12);
-  H5LTread_dataset_double(file_id, "/k13", data->r_k13);
-  H5LTread_dataset_double(file_id, "/k14", data->r_k14);
-  H5LTread_dataset_double(file_id, "/k15", data->r_k15);
-  H5LTread_dataset_double(file_id, "/k16", data->r_k16);
-  H5LTread_dataset_double(file_id, "/k17", data->r_k17);
-  H5LTread_dataset_double(file_id, "/k18", data->r_k18);
-  H5LTread_dataset_double(file_id, "/k19", data->r_k19);
-  H5LTread_dataset_double(file_id, "/k21", data->r_k21);
-  H5LTread_dataset_double(file_id, "/k22", data->r_k22);
+  H5LTread_dataset_double(file_id, "/k01", k01);
+  H5LTread_dataset_double(file_id, "/k02", k02);
+  H5LTread_dataset_double(file_id, "/k03", k03);
+  H5LTread_dataset_double(file_id, "/k04", k04);
+  H5LTread_dataset_double(file_id, "/k05", k05);
+  H5LTread_dataset_double(file_id, "/k06", k06);
+  H5LTread_dataset_double(file_id, "/k07", k07);
+  H5LTread_dataset_double(file_id, "/k08", k08);
+  H5LTread_dataset_double(file_id, "/k09", k09);
+  H5LTread_dataset_double(file_id, "/k10", k10);
+  H5LTread_dataset_double(file_id, "/k11", k11);
+  H5LTread_dataset_double(file_id, "/k12", k12);
+  H5LTread_dataset_double(file_id, "/k13", k13);
+  H5LTread_dataset_double(file_id, "/k14", k14);
+  H5LTread_dataset_double(file_id, "/k15", k15);
+  H5LTread_dataset_double(file_id, "/k16", k16);
+  H5LTread_dataset_double(file_id, "/k17", k17);
+  H5LTread_dataset_double(file_id, "/k18", k18);
+  H5LTread_dataset_double(file_id, "/k19", k19);
+  H5LTread_dataset_double(file_id, "/k21", k21);
+  H5LTread_dataset_double(file_id, "/k22", k22);
   H5Fclose(file_id);
+
+  // Copy tables into rate data structure
+  dcopy(data->r_k01, k01, data->nbins+1);
+  dcopy(data->r_k02, k02, data->nbins+1);
+  dcopy(data->r_k03, k03, data->nbins+1);
+  dcopy(data->r_k04, k04, data->nbins+1);
+  dcopy(data->r_k05, k05, data->nbins+1);
+  dcopy(data->r_k06, k06, data->nbins+1);
+  dcopy(data->r_k07, k07, data->nbins+1);
+  dcopy(data->r_k08, k08, data->nbins+1);
+  dcopy(data->r_k09, k09, data->nbins+1);
+  dcopy(data->r_k10, k10, data->nbins+1);
+  dcopy(data->r_k11, k11, data->nbins+1);
+  dcopy(data->r_k12, k12, data->nbins+1);
+  dcopy(data->r_k13, k13, data->nbins+1);
+  dcopy(data->r_k14, k14, data->nbins+1);
+  dcopy(data->r_k15, k15, data->nbins+1);
+  dcopy(data->r_k16, k16, data->nbins+1);
+  dcopy(data->r_k17, k17, data->nbins+1);
+  dcopy(data->r_k18, k18, data->nbins+1);
+  dcopy(data->r_k19, k19, data->nbins+1);
+  dcopy(data->r_k21, k21, data->nbins+1);
+  dcopy(data->r_k22, k22, data->nbins+1);
+
+  // ensure that table data is synchronized between host/device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return;
+  }
+#endif
+
+  // Free temporary arrays
+  free(k01);
+  free(k02);
+  free(k03);
+  free(k04);
+  free(k05);
+  free(k06);
+  free(k07);
+  free(k08);
+  free(k09);
+  free(k10);
+  free(k11);
+  free(k12);
+  free(k13);
+  free(k14);
+  free(k15);
+  free(k16);
+  free(k17);
+  free(k18);
+  free(k19);
+  free(k21);
+  free(k22);
 }
 
 
+// UPDATE THIS TO RETURN SUCCESS/FAILURE FLAG
 void cvklu_read_cooling_tables(cvklu_data *data)
 {
+  // Allocate temporary memory on host for file input
+  double *c_brem_brem = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ceHeI_ceHeI = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ceHeII_ceHeII = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ceHI_ceHI = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_cie_cooling_cieco = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ciHeI_ciHeI = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ciHeII_ciHeII = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ciHeIS_ciHeIS = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_ciHI_ciHI = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_compton_comp_ = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_gloverabel08_gael = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_gloverabel08_gaH2 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_gloverabel08_gaHe = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_gloverabel08_gaHI = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_gloverabel08_gaHp = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_gloverabel08_h2lte = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_h2formation_h2mcool = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_h2formation_h2mheat = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_h2formation_ncrd1 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_h2formation_ncrd2 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_h2formation_ncrn = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_reHeII1_reHeII1 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_reHeII2_reHeII2 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_reHeIII_reHeIII = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *c_reHII_reHII = (double*) malloc((data->nbins+1)*sizeof(double));
 
+  // Read the cooling tables to temporaries
   const char * filedir;
   if (data->dengo_data_file != NULL){
     filedir =  data->dengo_data_file;
@@ -454,54 +554,147 @@ void cvklu_read_cooling_tables(cvklu_data *data)
     filedir = "cvklu_tables.h5";
   }
   hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-
-  // Read the cooling tables (these go to main memory)
-  H5LTread_dataset_double(file_id, "/brem_brem",           data->c_brem_brem);
-  H5LTread_dataset_double(file_id, "/ceHeI_ceHeI",         data->c_ceHeI_ceHeI);
-  H5LTread_dataset_double(file_id, "/ceHeII_ceHeII",       data->c_ceHeII_ceHeII);
-  H5LTread_dataset_double(file_id, "/ceHI_ceHI",           data->c_ceHI_ceHI);
-  H5LTread_dataset_double(file_id, "/cie_cooling_cieco",   data->c_cie_cooling_cieco);
-  H5LTread_dataset_double(file_id, "/ciHeI_ciHeI",         data->c_ciHeI_ciHeI);
-  H5LTread_dataset_double(file_id, "/ciHeII_ciHeII",       data->c_ciHeII_ciHeII);
-  H5LTread_dataset_double(file_id, "/ciHeIS_ciHeIS",       data->c_ciHeIS_ciHeIS);
-  H5LTread_dataset_double(file_id, "/ciHI_ciHI",           data->c_ciHI_ciHI);
-  H5LTread_dataset_double(file_id, "/compton_comp_",       data->c_compton_comp_);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gael",   data->c_gloverabel08_gael);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",   data->c_gloverabel08_gaH2);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaHe",   data->c_gloverabel08_gaHe);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaHI",   data->c_gloverabel08_gaHI);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",   data->c_gloverabel08_gaHp);
-  H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",  data->c_gloverabel08_h2lte);
-  H5LTread_dataset_double(file_id, "/h2formation_h2mcool", data->c_h2formation_h2mcool);
-  H5LTread_dataset_double(file_id, "/h2formation_h2mheat", data->c_h2formation_h2mheat);
-  H5LTread_dataset_double(file_id, "/h2formation_ncrd1",   data->c_h2formation_ncrd1);
-  H5LTread_dataset_double(file_id, "/h2formation_ncrd2",   data->c_h2formation_ncrd2);
-  H5LTread_dataset_double(file_id, "/h2formation_ncrn",    data->c_h2formation_ncrn);
-  H5LTread_dataset_double(file_id, "/reHeII1_reHeII1",     data->c_reHeII1_reHeII1);
-  H5LTread_dataset_double(file_id, "/reHeII2_reHeII2",     data->c_reHeII2_reHeII2);
-  H5LTread_dataset_double(file_id, "/reHeIII_reHeIII",     data->c_reHeIII_reHeIII);
-  H5LTread_dataset_double(file_id, "/reHII_reHII",         data->c_reHII_reHII);
+  H5LTread_dataset_double(file_id, "/brem_brem",           c_brem_brem);
+  H5LTread_dataset_double(file_id, "/ceHeI_ceHeI",         c_ceHeI_ceHeI);
+  H5LTread_dataset_double(file_id, "/ceHeII_ceHeII",       c_ceHeII_ceHeII);
+  H5LTread_dataset_double(file_id, "/ceHI_ceHI",           c_ceHI_ceHI);
+  H5LTread_dataset_double(file_id, "/cie_cooling_cieco",   c_cie_cooling_cieco);
+  H5LTread_dataset_double(file_id, "/ciHeI_ciHeI",         c_ciHeI_ciHeI);
+  H5LTread_dataset_double(file_id, "/ciHeII_ciHeII",       c_ciHeII_ciHeII);
+  H5LTread_dataset_double(file_id, "/ciHeIS_ciHeIS",       c_ciHeIS_ciHeIS);
+  H5LTread_dataset_double(file_id, "/ciHI_ciHI",           c_ciHI_ciHI);
+  H5LTread_dataset_double(file_id, "/compton_comp_",       c_compton_comp_);
+  H5LTread_dataset_double(file_id, "/gloverabel08_gael",   c_gloverabel08_gael);
+  H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",   c_gloverabel08_gaH2);
+  H5LTread_dataset_double(file_id, "/gloverabel08_gaHe",   c_gloverabel08_gaHe);
+  H5LTread_dataset_double(file_id, "/gloverabel08_gaHI",   c_gloverabel08_gaHI);
+  H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",   c_gloverabel08_gaHp);
+  H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",  c_gloverabel08_h2lte);
+  H5LTread_dataset_double(file_id, "/h2formation_h2mcool", c_h2formation_h2mcool);
+  H5LTread_dataset_double(file_id, "/h2formation_h2mheat", c_h2formation_h2mheat);
+  H5LTread_dataset_double(file_id, "/h2formation_ncrd1",   c_h2formation_ncrd1);
+  H5LTread_dataset_double(file_id, "/h2formation_ncrd2",   c_h2formation_ncrd2);
+  H5LTread_dataset_double(file_id, "/h2formation_ncrn",    c_h2formation_ncrn);
+  H5LTread_dataset_double(file_id, "/reHeII1_reHeII1",     c_reHeII1_reHeII1);
+  H5LTread_dataset_double(file_id, "/reHeII2_reHeII2",     c_reHeII2_reHeII2);
+  H5LTread_dataset_double(file_id, "/reHeIII_reHeIII",     c_reHeIII_reHeIII);
+  H5LTread_dataset_double(file_id, "/reHII_reHII",         c_reHII_reHII);
   H5Fclose(file_id);
+
+  // Copy tables into rate data structure
+  dcopy(data->c_brem_brem, c_brem_brem, data->nbins+1);
+  dcopy(data->c_ceHeI_ceHeI, c_ceHeI_ceHeI, data->nbins+1);
+  dcopy(data->c_ceHeII_ceHeII, c_ceHeII_ceHeII, data->nbins+1);
+  dcopy(data->c_ceHI_ceHI, c_ceHI_ceHI, data->nbins+1);
+  dcopy(data->c_cie_cooling_cieco, c_cie_cooling_cieco, data->nbins+1);
+  dcopy(data->c_ciHeI_ciHeI, c_ciHeI_ciHeI, data->nbins+1);
+  dcopy(data->c_ciHeII_ciHeII, c_ciHeII_ciHeII, data->nbins+1);
+  dcopy(data->c_ciHeIS_ciHeIS, c_ciHeIS_ciHeIS, data->nbins+1);
+  dcopy(data->c_ciHI_ciHI, c_ciHI_ciHI, data->nbins+1);
+  dcopy(data->c_compton_comp_, c_compton_comp_, data->nbins+1);
+  dcopy(data->c_gloverabel08_gael, c_gloverabel08_gael, data->nbins+1);
+  dcopy(data->c_gloverabel08_gaH2, c_gloverabel08_gaH2, data->nbins+1);
+  dcopy(data->c_gloverabel08_gaHe, c_gloverabel08_gaHe, data->nbins+1);
+  dcopy(data->c_gloverabel08_gaHI, c_gloverabel08_gaHI, data->nbins+1);
+  dcopy(data->c_gloverabel08_gaHp, c_gloverabel08_gaHp, data->nbins+1);
+  dcopy(data->c_gloverabel08_h2lte, c_gloverabel08_h2lte, data->nbins+1);
+  dcopy(data->c_h2formation_h2mcool, c_h2formation_h2mcool, data->nbins+1);
+  dcopy(data->c_h2formation_h2mheat, c_h2formation_h2mheat, data->nbins+1);
+  dcopy(data->c_h2formation_ncrd1, c_h2formation_ncrd1, data->nbins+1);
+  dcopy(data->c_h2formation_ncrd2, c_h2formation_ncrd2, data->nbins+1);
+  dcopy(data->c_h2formation_ncrn, c_h2formation_ncrn, data->nbins+1);
+  dcopy(data->c_reHeII1_reHeII1, c_reHeII1_reHeII1, data->nbins+1);
+  dcopy(data->c_reHeII2_reHeII2, c_reHeII2_reHeII2, data->nbins+1);
+  dcopy(data->c_reHeIII_reHeIII, c_reHeIII_reHeIII, data->nbins+1);
+  dcopy(data->c_reHII_reHII, c_reHII_reHII, data->nbins+1);
+
+  // ensure that table data is synchronized between host/device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return;
+  }
+#endif
+
+  // Free temporary arrays
+  free(c_brem_brem);
+  free(c_ceHeI_ceHeI);
+  free(c_ceHeII_ceHeII);
+  free(c_ceHI_ceHI);
+  free(c_cie_cooling_cieco);
+  free(c_ciHeI_ciHeI);
+  free(c_ciHeII_ciHeII);
+  free(c_ciHeIS_ciHeIS);
+  free(c_ciHI_ciHI);
+  free(c_compton_comp_);
+  free(c_gloverabel08_gael);
+  free(c_gloverabel08_gaH2);
+  free(c_gloverabel08_gaHe);
+  free(c_gloverabel08_gaHI);
+  free(c_gloverabel08_gaHp);
+  free(c_gloverabel08_h2lte);
+  free(c_h2formation_h2mcool);
+  free(c_h2formation_h2mheat);
+  free(c_h2formation_ncrd1);
+  free(c_h2formation_ncrd2);
+  free(c_h2formation_ncrn);
+  free(c_reHeII1_reHeII1);
+  free(c_reHeII2_reHeII2);
+  free(c_reHeIII_reHeIII);
+  free(c_reHII_reHII);
 }
 
+// UPDATE THIS TO RETURN SUCCESS/FAILURE FLAG
 void cvklu_read_gamma(cvklu_data *data)
 {
 
+  // Allocate temporary memory on host for file input
+  double *g_gammaH2_1 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *g_dgammaH2_1_dT = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *g_gammaH2_2 = (double*) malloc((data->nbins+1)*sizeof(double));
+  double *g_dgammaH2_2_dT = (double*) malloc((data->nbins+1)*sizeof(double));
+
+  // Read the gamma tables to temporaries
   const char * filedir;
   if (data->dengo_data_file != NULL){
     filedir =  data->dengo_data_file;
   } else{
     filedir = "cvklu_tables.h5";
   }
-
   hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-
-  // Read the gamma tables (these go to main memory)
   H5LTread_dataset_double(file_id, "/gammaH2_1",     data->g_gammaH2_1 );
   H5LTread_dataset_double(file_id, "/dgammaH2_1_dT", data->g_dgammaH2_1_dT );
   H5LTread_dataset_double(file_id, "/gammaH2_2",     data->g_gammaH2_2 );
   H5LTread_dataset_double(file_id, "/dgammaH2_2_dT", data->g_dgammaH2_2_dT );
   H5Fclose(file_id);
+
+  // Copy tables into rate data structure
+  dcopy(data->g_gammaH2_1, g_gammaH2_1, data->nbins+1);
+  dcopy(data->g_dgammaH2_1_dT, g_dgammaH2_1_dT, data->nbins+1);
+  dcopy(data->g_gammaH2_2, g_gammaH2_2, data->nbins+1);
+  dcopy(data->g_dgammaH2_2_dT, g_dgammaH2_2_dT, data->nbins+1);
+
+  // ensure that table data is synchronized between host/device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return;
+  }
+#endif
+
+  // Free temporary arrays
+  free(g_gammaH2_1);
+  free(g_dgammaH2_1_dT);
+  free(g_gammaH2_2);
+  free(g_dgammaH2_2_dT);
 }
 
 
