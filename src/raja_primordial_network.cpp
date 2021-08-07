@@ -39,11 +39,21 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells, SUNMemor
   //-----------------------------------------------------
   // Function : cvklu_setup_data
   // Description: Initialize a data object that stores the reaction/ cooling rate data
+  //
+  //*** To-Do ***
+  // Move the entire structure into device memory, through the steps:
+  // (1) use malloc to create a 'helper' structure in host memory; fill relevant scalars there
+  // (2) use cudaMalloc to create the device structure
+  // (3) use cudaMalloc to create device arrays, while storing device array pointers in the 
+  //     *host* structure.
+  // (4) use cudaMemcpy to copy the entire host structure (i.e., scalar values and device 
+  //     array pointers) to the device structure
+  //***
   //-----------------------------------------------------
 
   cvklu_data *data = NULL;
 #ifdef RAJA_SERIAL
-  data = (cvklu_data *) malloc(sizeof(cvklu_data));
+   data = (cvklu_data *) malloc(sizeof(cvklu_data));
 #elif RAJA_CUDA
   cudaMallocManaged((void**)&(data), sizeof(cvklu_data));
 #else
@@ -2307,6 +2317,11 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
 void setting_up_extra_variables( cvklu_data * data, double * input, long int nstrip ){
 
+  double *mdens = data->mdensity;
+  double *imdens = data->inv_mdensity;
+  double *cie_oda = data->cie_optical_depth_approx;
+  double *h2_oda = data->h2_optical_depth_approx;
+
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     double mdensity = 0.0;
@@ -2342,10 +2357,10 @@ void setting_up_extra_variables( cvklu_data * data, double * input, long int nst
     tau = fmax( tau, 1.0e-5 );
 
     // store results
-    data->mdensity[i] = mdensity;
-    data->inv_mdensity[i] = 1.0 / mdensity;
-    data->cie_optical_depth_approx[i] = fmin( 1.0, (1.0 - exp(-tau) ) / tau );
-    data->h2_optical_depth_approx[i] = fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
+    mdens[i] = mdensity;
+    imdens[i] = 1.0 / mdensity;
+    cie_oda[i] = fmin( 1.0, (1.0 - exp(-tau) ) / tau );
+    h2_oda[i] = fmin( 1.0, pow( (mdensity / (1.34e-14) )  , -0.45) );
   });
 
 }

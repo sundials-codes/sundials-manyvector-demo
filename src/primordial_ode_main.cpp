@@ -190,9 +190,9 @@ int main(int argc, char* argv[]) {
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", nstrip, udata.memhelper);
 #else
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
-#endif
   //    overwrite internal strip size
   network_data->nstrip = nstrip;
+#endif
   //    set redshift value for non-cosmological run
   network_data->current_z = -1.0;
 
