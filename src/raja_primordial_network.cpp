@@ -413,6 +413,14 @@ void cvklu_free_data(void *data, SUNMemoryHelper memhelper)
   //-----------------------------------------------------
   // Function : cvklu_free_data
   // Description: Frees reaction/ cooling rate data
+  //
+  //*** To-Do ***
+  // Move the entire structure into device memory, through the steps:
+  // (1) use malloc to create a 'helper' structure in host memory
+  // (2) use cudaMemcpy to copy the entire device structure to the host structure
+  // (3) use cudaFree to free device arrays, then structure itself
+  // (3) use free to free the host structure
+  //***
   //-----------------------------------------------------
   cvklu_data *rxdata = (cvklu_data *) data;
 
@@ -1164,10 +1172,8 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
     // Calculate reaction rates in this cell
     //cvklu_interpolate_rates(data, i);
     int bin_id;
-    double lb, t1, t2;
-    double Tdef, dT, invTs, Tfactor;
 
-    lb = log(data->bounds[0]);
+    const double lb = log(data->bounds[0]);
 
     bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
     if (bin_id <= 0) {
@@ -1175,12 +1181,12 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
     } else if (bin_id >= data->nbins) {
       bin_id = data->nbins - 1;
     }
-    t1 = (lb + (bin_id    ) * data->dbin);
-    t2 = (lb + (bin_id + 1) * data->dbin);
-    Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
-    dT = (t2 - t1);
-    invTs = 1.0 / data->Ts[i];
-    Tfactor = invTs/dT;
+    const double t1 = (lb + (bin_id    ) * data->dbin);
+    const double t2 = (lb + (bin_id + 1) * data->dbin);
+    const double Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
+    const double dT = (t2 - t1);
+    const double invTs = 1.0 / data->Ts[i];
+    const double Tfactor = invTs/dT;
 
     data->rs_k01[i] = data->r_k01[bin_id] +
       Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
