@@ -1005,7 +1005,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, l, cidx, fidx;
+  long int i, j, k, cidx, fidx;
 
   // start timer
   EulerData *udata = (EulerData*) user_data;
@@ -1099,7 +1099,6 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
 {
   // start timer
   EulerData *udata = (EulerData*) user_data;
-  cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
   int retval = udata->profile[PR_POSTFAST].start();
   if (check_flag(&retval, "Profile::start (PostprocessStep)", 1)) return(-1);
 

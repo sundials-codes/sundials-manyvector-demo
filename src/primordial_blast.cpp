@@ -335,13 +335,13 @@ int initialize_Dengo_structures(EulerData& udata) {
 #ifdef USERAJA
   double *sc = network_data->scale;
   double *isc = network_data->inv_scale;
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,network_data->nstrip * udata.nchem),
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,udata.nxl * udata.nyl * udata.nzl * udata.nchem),
                            [=] RAJA_DEVICE (long int i) {
     sc[i] = ONE;
     isc[i] = ONE;
   });
 #else
-  for (long int i=0; i< (network_data->nstrip * udata.nchem); i++) {
+  for (long int i=0; i< (udata.nxl * udata.nyl * udata.nzl * udata.nchem); i++) {
     network_data->scale[0][i] = ONE;
     network_data->inv_scale[0][i] = ONE;
   }
@@ -375,20 +375,13 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access network_data scaling arrays
-#ifdef USERAJA
-  realtype *sc = network_data->scale;
-  realtype *isc = network_data->inv_scale;
-#else
-  realtype *sc = network_data->scale[0];
-  realtype *isc = network_data->inv_scale[0];
-#endif
-
   // move current chemical solution values into 'network_data->scale' structure
 #ifdef USERAJA
   int nchem = udata.nchem;
-  RAJA::View<double, RAJA::Layout<4> > scview(sc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
-  RAJA::View<double, RAJA::Layout<4> > iscview(isc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
+                                              udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > iscview(network_data->inv_scale, udata.nzl,
+                                               udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
   RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
@@ -402,6 +395,8 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
     }
    });
 #else
+  realtype *sc = network_data->scale[0];
+  realtype *isc = network_data->inv_scale[0];
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
   for (int k=0; k<udata.nzl; k++)

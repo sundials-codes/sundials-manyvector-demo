@@ -450,11 +450,11 @@ int main(int argc, char* argv[]) {
 
   // move input solution values into 'scale' components of network_data structure
 #ifdef USERAJA
-  double *sc = network_data->scale;
-  double *isc = network_data->inv_scale;
   int nchem = udata.nchem;
-  RAJA::View<double, RAJA::Layout<4> > scview(sc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
-  RAJA::View<double, RAJA::Layout<4> > iscview(isc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
+                                              udata.nyl, udata.nxl, udata.nchem);
+  RAJA::View<double, RAJA::Layout<4> > iscview(network_data->inv_scale, udata.nzl,
+                                               udata.nyl, udata.nxl, udata.nchem);
   RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
                                                 RAJA::RangeSegment(0, udata.nyl),
                                                 RAJA::RangeSegment(0, udata.nxl)),

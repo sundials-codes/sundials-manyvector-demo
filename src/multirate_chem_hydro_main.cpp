@@ -1129,7 +1129,6 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
 //   // access user_data structure and Dengo data structure
 //   EulerData *udata = (EulerData*) user_data;
-//   cvklu_data *network_data = (cvklu_data*) udata->RxNetData;
 
 //   // start timer
 //   int retval = udata->profile[PR_POSTFAST].start();

@@ -272,9 +272,9 @@ typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix , void *, N_Vect
 
 cvklu_data *cvklu_setup_data(const char *, long int, SUNMemoryHelper, realtype);
 void cvklu_free_data(void*, SUNMemoryHelper);
-void cvklu_read_rate_tables(cvklu_data*);
-void cvklu_read_cooling_tables(cvklu_data*);
-void cvklu_read_gamma(cvklu_data*);
+void cvklu_read_rate_tables(cvklu_data*, const char *, int);
+void cvklu_read_cooling_tables(cvklu_data*, const char *, int);
+void cvklu_read_gamma(cvklu_data*, const char *, int);
 RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
                                             const long int, double &, double &);
 void setting_up_extra_variables(cvklu_data*, long int);
