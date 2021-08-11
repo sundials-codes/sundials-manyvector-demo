@@ -277,7 +277,7 @@ void cvklu_read_cooling_tables(cvklu_data*);
 void cvklu_read_gamma(cvklu_data*);
 RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
                                             const long int, double &, double &);
-void setting_up_extra_variables(cvklu_data*, double*, long int);
+void setting_up_extra_variables(cvklu_data*, long int);
 
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
 int calculate_jacobian_cvklu( realtype t,

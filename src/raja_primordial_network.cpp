@@ -2315,9 +2315,9 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
 
 
-//*** TO-DO: remove "input" argument, and instead extract this directly from "data"
-void setting_up_extra_variables( cvklu_data * data, double * input, long int nstrip ){
+void setting_up_extra_variables( cvklu_data * data, long int nstrip ){
 
+  double *input = data->scale;
   double *mdens = data->mdensity;
   double *imdens = data->inv_mdensity;
   double *cie_oda = data->cie_optical_depth_approx;

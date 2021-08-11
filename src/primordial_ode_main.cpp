@@ -480,7 +480,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // compute auxiliary values within network_data structure
-  setting_up_extra_variables(network_data, sc, nstrip);
+  setting_up_extra_variables(network_data, nstrip);
 
   // initialize the integrator memory
 #ifdef USE_CVODE
@@ -844,7 +844,7 @@ int main(int argc, char* argv[]) {
       cout << "   Total number of lin RHS evals = " << nfls << "\n";
     } else if (nls > 0) {
       cout << "   Total number of lin solv setups = " << nls << "\n";
-      cout << "   Total number of Jac eavls = " << nje << "\n";
+      cout << "   Total number of Jac evals = " << nje << "\n";
     }
     if (nni > 0) {
       cout << "   Total number of nonlin iters = " << nni << "\n";

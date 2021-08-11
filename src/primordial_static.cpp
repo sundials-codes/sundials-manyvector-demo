@@ -275,7 +275,7 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 #endif
 
   // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, sc, udata.nxl*udata.nyl*udata.nzl );
+  setting_up_extra_variables( network_data, udata.nxl*udata.nyl*udata.nzl );
 
   return(0);
 }
