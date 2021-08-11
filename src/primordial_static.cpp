@@ -186,14 +186,14 @@ int initialize_Dengo_structures(EulerData& udata) {
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA
-  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl, udata.memhelper);
+  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl,
+                                  udata.memhelper, -1.0);
 #else
   network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
+  network_data->current_z = -1.0;
+  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
 #endif
   if (network_data == NULL)  return(1);
-
-  // overwrite internal strip size
-  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
 
   // initialize 'scale' and 'inv_scale' to valid values
 #ifdef USERAJA
@@ -210,9 +210,6 @@ int initialize_Dengo_structures(EulerData& udata) {
     network_data->inv_scale[0][i] = ONE;
   }
 #endif
-
-  // set redshift value for non-cosmological run
-  network_data->current_z = -1.0;
 
   // ensure that newtork_data structure is synchronized between host/device device memory
 #ifdef RAJA_CUDA
@@ -242,17 +239,10 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // access network_data scaling arrays
+  // move current chemical solution values into 'network_data->scale' structure
 #ifdef USERAJA
   realtype *sc = network_data->scale;
   realtype *isc = network_data->scale;
-#else
-  realtype *sc = network_data->scale[0];
-  realtype *isc = network_data->scale[0];
-#endif
-
-  // move current chemical solution values into 'network_data->scale' structure
-#ifdef USERAJA
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(sc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > iscview(isc, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -269,6 +259,8 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
     }
    });
 #else
+  realtype *sc = network_data->scale[0];
+  realtype *isc = network_data->scale[0];
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
   for (int k=0; k<udata.nzl; k++)

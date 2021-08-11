@@ -33,7 +33,8 @@
 #define SPARSEIDX(blk,off) (blk*NSPARSE + off)
 #define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
 
-cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells, SUNMemoryHelper memhelper)
+cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells,
+                             SUNMemoryHelper memhelper, double current_z)
 {
 
   //-----------------------------------------------------
@@ -44,9 +45,9 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells, SUNMemor
   // Move the entire structure into device memory, through the steps:
   // (1) use malloc to create a 'helper' structure in host memory; fill relevant scalars there
   // (2) use cudaMalloc to create the device structure
-  // (3) use cudaMalloc to create device arrays, while storing device array pointers in the 
+  // (3) use cudaMalloc to create device arrays, while storing device array pointers in the
   //     *host* structure.
-  // (4) use cudaMemcpy to copy the entire host structure (i.e., scalar values and device 
+  // (4) use cudaMemcpy to copy the entire host structure (i.e., scalar values and device
   //     array pointers) to the device structure
   //***
   //-----------------------------------------------------
@@ -279,7 +280,7 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells, SUNMemor
 #else
 #error RAJA HIP chemistry interface is currently unimplemented
 #endif
-  data->current_z = 0.0;
+  data->current_z = current_z;
 
   // initialize temperature so it wont crash
   double *Ts_dev = data->Ts;
@@ -2314,7 +2315,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
 
 
-
+//*** TO-DO: remove "input" argument, and instead extract this directly from "data"
 void setting_up_extra_variables( cvklu_data * data, double * input, long int nstrip ){
 
   double *mdens = data->mdensity;

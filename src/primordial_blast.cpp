@@ -318,14 +318,18 @@ int initialize_Dengo_structures(EulerData& udata) {
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA
-  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl, udata.memhelper);
+  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl,
+                                  udata.memhelper, -1.0);
 #else
   network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
-#endif
-  if (network_data == NULL)  return(1);
 
   // overwrite internal strip size
   network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
+  // set redshift value for non-cosmological run
+  network_data->current_z = -1.0;
+#endif
+  if (network_data == NULL)  return(1);
+
 
   // initialize 'scale' and 'inv_scale' to valid values
 #ifdef USERAJA
@@ -342,9 +346,6 @@ int initialize_Dengo_structures(EulerData& udata) {
     network_data->inv_scale[0][i] = ONE;
   }
 #endif
-
-  // set redshift value for non-cosmological run
-  network_data->current_z = -1.0;
 
   // ensure that newtork_data structure is synchronized between host/device device memory
 #ifdef RAJA_CUDA
