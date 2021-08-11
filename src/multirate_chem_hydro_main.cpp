@@ -943,7 +943,12 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
 
   // call Dengo RHS routine
+#ifdef USERAJA
+  retval = calculate_rhs_cvklu(t, wchem, wchemdot, (udata->nxl)*(udata->nyl)*(udata->nzl),
+                               udata->RxNetData);
+#else
   retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
+#endif
   if (check_flag(&retval, "calculate_rhs_cvklu (ffast)", 1)) return(retval);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
@@ -990,8 +995,14 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
 
   // call Jacobian routine
+#ifdef USERAJA
+  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
+                                    udata->RxNetData, tmp1chem, tmp2chem, tmp3chem);
+#else
   retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
                                     tmp1chem, tmp2chem, tmp3chem);
+#endif
+  if (check_flag(&retval, "calculate_jacobian_cvklu (Jfast)", 1)) return(retval);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
   // must be converted back to code units here
@@ -1331,7 +1342,12 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   N_VLinearSum(sig, v, ONE, y, w);
 
   // Set z = ffast(t, y + sig * v)
+#ifdef USERAJA
+  retval = calculate_rhs_cvklu(tcur, w, z, (udata->nxl)*(udata->nyl)*(udata->nzl),
+                               udata->RxNetData);
+#else
   retval = calculate_rhs_cvklu(tcur, w, z, udata->RxNetData);
+#endif
   content->nfeDQ++;
   if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
 

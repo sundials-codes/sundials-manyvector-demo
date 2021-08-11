@@ -1134,7 +1134,8 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
 
 
 
-int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
+int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
+                        long int nstrip, void *user_data)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
   double *scale       = data->scale;
@@ -1142,7 +1143,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
 
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (long int i) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     double y_arr[NSPECIES];
     long int j = i * NSPECIES;
@@ -1735,9 +1736,9 @@ int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
 
 
 int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
-                             SUNMatrix J, void *user_data,
-                             N_Vector tmp1, N_Vector tmp2,
-                             N_Vector tmp3)
+                             SUNMatrix J, long int nstrip,
+                             void *user_data, N_Vector tmp1,
+                             N_Vector tmp2, N_Vector tmp3)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
   double *scale       = data->scale;
@@ -1762,7 +1763,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   SUNMatZero(J);
 
   // Loop over data, filling in Jacobian
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,data->nstrip), [=] RAJA_DEVICE (long int i) {
+  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     // Set up some temporaries
     const double z   = data->current_z;
@@ -1847,7 +1848,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     const double reHeIII_reHeIII = data->cs_reHeIII_reHeIII[i];
     const double reHII_reHII = data->cs_reHII_reHII[i];
 
-    long int j = i * NSPECIES;
+    const long int j = i * NSPECIES;
     const double H2_1 = ydata[j]*scale[j];
     const double H2_2 = ydata[j+1]*scale[j+1];
     const double H_1  = ydata[j+2]*scale[j+2];
@@ -2292,8 +2293,8 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     rowptrs[ i * NSPECIES +  7] = i * NSPARSE + 43;
     rowptrs[ i * NSPECIES +  8] = i * NSPARSE + 47;
     rowptrs[ i * NSPECIES +  9] = i * NSPARSE + 56;
-    if (i == data->nstrip-1) {
-      rowptrs[ data->nstrip * NSPECIES ] = data->nstrip * NSPARSE;
+    if (i == nstrip-1) {
+      rowptrs[ nstrip * NSPECIES ] = nstrip * NSPARSE;
     }
 #endif
 

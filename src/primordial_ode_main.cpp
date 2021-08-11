@@ -70,6 +70,10 @@
 #define  BLAST_CENTER_Z      RCONST(0.5)     // relative to unit cube
 
 
+// user-provided functions called by the fast integrators
+static int frhs(realtype t, N_Vector w, N_Vector wdot, void* user_data);
+static int Jrhs(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
+                void* user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
 
 // utility function prototypes
 void print_info(void *arkode_mem, realtype &t, N_Vector w,
@@ -197,6 +201,9 @@ int main(int argc, char* argv[]) {
   //    set redshift value for non-cosmological run
   network_data->current_z = -1.0;
 #endif
+
+  // store pointer to network_data in udata
+  udata.RxNetData = (void*) network_data;
 
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
@@ -486,10 +493,10 @@ int main(int argc, char* argv[]) {
 #ifdef USE_CVODE
   arkode_mem = CVodeCreate(CV_BDF);
   if (check_flag((void*) arkode_mem, "CVodeCreate (main)", 0)) MPI_Abort(udata.comm, 1);
-  retval = CVodeInit(arkode_mem, calculate_rhs_cvklu, udata.t0, w);
+  retval = CVodeInit(arkode_mem, frhs, udata.t0, w);
   if (check_flag(&retval, "CVodeInit (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-  arkode_mem = ARKStepCreate(NULL, calculate_rhs_cvklu, udata.t0, w);
+  arkode_mem = ARKStepCreate(NULL, frhs, udata.t0, w);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 
@@ -540,14 +547,14 @@ int main(int argc, char* argv[]) {
   retval = CVodeSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "CVodeSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
-    retval = CVodeSetJacFn(arkode_mem, calculate_jacobian_cvklu);
+    retval = CVodeSetJacFn(arkode_mem, Jrhs);
     if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 #else
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
-    retval = ARKStepSetJacFn(arkode_mem, calculate_jacobian_cvklu);
+    retval = ARKStepSetJacFn(arkode_mem, Jrhs);
     if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 #endif
@@ -556,7 +563,7 @@ int main(int argc, char* argv[]) {
 
 #ifdef USE_CVODE
   //    pass network_udata to user functions
-  retval = CVodeSetUserData(arkode_mem, network_data);
+  retval = CVodeSetUserData(arkode_mem, (void *) (&udata));
   if (check_flag(&retval, "CVodeSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    set max order
@@ -594,7 +601,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "CVodeSVtolerances (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
   //    pass network_udata to user functions
-  retval = ARKStepSetUserData(arkode_mem, network_data);
+  retval = ARKStepSetUserData(arkode_mem, (void *) (&udata));
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   //    set diagnostics file
@@ -861,6 +868,7 @@ int main(int argc, char* argv[]) {
 #else
   free(network_data);
 #endif
+  udata.RxNetData = NULL;
 #ifdef RAJA_SERIAL
   free(clump_data);
 #elif RAJA_CUDA
@@ -887,6 +895,57 @@ int main(int argc, char* argv[]) {
   return 0;
 }
 
+
+//---- problem-defining functions (wrappers for other routines) ----
+
+static int frhs(realtype t, N_Vector w, N_Vector wdot, void *user_data)
+{
+  // start timer
+  EulerData *udata = (EulerData*) user_data;
+  int retval = udata->profile[PR_RHSFAST].start();
+  if (check_flag(&retval, "Profile::start (frhs)", 1)) return(-1);
+
+  // initialize all outputs to zero (necessary!!)
+  N_VConst(ZERO, wdot);
+
+  // call Dengo RHS routine
+#ifdef USERAJA
+  retval = calculate_rhs_cvklu(t, w, wdot, (udata->nxl)*(udata->nyl)*(udata->nzl),
+                               udata->RxNetData);
+#else
+  retval = calculate_rhs_cvklu(t, w, wdot, udata->RxNetData);
+#endif
+  if (check_flag(&retval, "calculate_rhs_cvklu (frhs)", 1)) return(retval);
+
+  // stop timer and return
+  retval = udata->profile[PR_RHSFAST].stop();
+  if (check_flag(&retval, "Profile::stop (frhs)", 1)) return(-1);
+  return(0);
+}
+
+static int Jrhs(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
+                void *user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)
+{
+  // start timer
+  EulerData *udata = (EulerData*) user_data;
+  int retval = udata->profile[PR_JACFAST].start();
+  if (check_flag(&retval, "Profile::start (Jrhs)", 1)) return(-1);
+
+  // call Jacobian routine
+#ifdef USERAJA
+  retval = calculate_jacobian_cvklu(t, w, fw, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
+                                    udata->RxNetData, tmp1, tmp2, tmp3);
+#else
+  retval = calculate_jacobian_cvklu(t, w, fw, Jac, udata->RxNetData,
+                                    tmp1, tmp2, tmp3);
+#endif
+  if (check_flag(&retval, "calculate_jacobian_cvklu (Jrhs)", 1)) return(retval);
+
+  // stop timer and return
+  retval = udata->profile[PR_JACFAST].stop();
+  if (check_flag(&retval, "Profile::stop (Jrhs)", 1)) return(-1);
+  return(0);
+}
 
 // Prints out solution statistics over the domain
 void print_info(void *arkode_mem, realtype &t, N_Vector w,

@@ -280,12 +280,12 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
 void setting_up_extra_variables(cvklu_data*, long int);
 
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
-int calculate_jacobian_cvklu( realtype t,
-                              N_Vector y, N_Vector fy,
-                              SUNMatrix J, void *user_data,
-                              N_Vector tmp1, N_Vector tmp2,
-                              N_Vector tmp3);
-int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data);
+int calculate_jacobian_cvklu( realtype t, N_Vector y, N_Vector fy,
+                              SUNMatrix J, long int nstrip,
+                              void *user_data, N_Vector tmp1,
+                              N_Vector tmp2, N_Vector tmp3);
+int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
+                        long int nstrip, void *user_data);
 
 
 #endif
