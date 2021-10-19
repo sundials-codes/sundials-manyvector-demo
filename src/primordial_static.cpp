@@ -90,7 +90,9 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   // initial condition values -- essentially-neutral primordial gas
   const realtype Tmean = 2000.0;  // mean temperature in K
   const realtype Tamp = 0.0;      // temperature amplitude in K
-  const realtype tiny = 1e-20;
+  const realtype tiny = 1e-40;
+  const realtype small = 1e-12;
+  //realtype small = 1e-16;
   const realtype mH = 1.67e-24;
   const realtype Hfrac = 0.76;
   const realtype HI_weight = 1.00794 * mH;
@@ -112,12 +114,19 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
       for (int i=0; i<udata.nxl; i++) {
 
         // set mass densities into local variables
-        const realtype H2I = 1.e-3*density;
-        const realtype H2II = tiny*density;
-        const realtype HII = tiny*density;
-        const realtype HM = tiny*density;
-        const realtype HeII = tiny*density;
-        const realtype HeIII = tiny*density;
+        const realtype H2I   = tiny*density;
+        const realtype H2II  = tiny*density;
+        const realtype HII   = small*density;
+        const realtype HM    = tiny*density;
+        const realtype HeII  = small*density;
+        const realtype HeIII = small*density;
+        //
+        // const realtype H2I   = 1.e-3*density;
+        // const realtype H2II  = tiny*density;
+        // const realtype HII   = tiny*density;
+        // const realtype HM    = tiny*density;
+        // const realtype HeII  = tiny*density;
+        // const realtype HeIII = tiny*density;
         const realtype HeI = (ONE-Hfrac)*density - HeII - HeIII;
         const realtype HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 

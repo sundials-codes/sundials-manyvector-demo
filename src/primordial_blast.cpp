@@ -233,24 +233,26 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // set initial mass densities into local variables -- blast clump is essentially
         // only HI and HeI, but outside we have trace amounts of other species.
-        // H2I   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        // H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        // HII   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
-        // HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        // HeII  = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
-        // HeIII = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        H2I   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HII   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
+        HeII  = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        HeIII = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
+        //
         // H2I   = (rsq/cr/cr < 2.0) ? small*density : 1.e-3*density;
         // H2II  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         // HII   = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         // HM    = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         // HeII  = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
         // HeIII = (rsq/cr/cr < 2.0) ? tiny*density  : 1.e-3*density;
-        H2I   = small*density;
-        H2II  = tiny*density;
-        HII   = tiny*density;
-        HM    = tiny*density;
-        HeII  = tiny*density;
-        HeIII = tiny*density;
+        //
+        // H2I   = small*density;
+        // H2II  = tiny*density;
+        // HII   = tiny*density;
+        // HM    = tiny*density;
+        // HeII  = tiny*density;
+        // HeIII = tiny*density;
         HeI = (ONE-Hfrac)*density - HeII - HeIII;
         HI = density - (H2I+H2II+HII+HM+HeI+HeII+HeIII);
 
