@@ -50,7 +50,7 @@ base_htrans=0.1    # base fast transient evolution interval
 
 # testing 'dimensions'
 NodeFactor=(1 2 4 6 8 10 12)
-Fused=(fused unfused)
+Fused=(fused)
 
 # ------------------------------------------------------------------------------
 # Generate test files
@@ -92,6 +92,9 @@ case "$hfasttype" in
         exit 1
         ;;
 esac
+
+# set HOST if unset on OLCF systems
+HOST=${HOST:-$LMOD_SYSTEM_NAME}
 
 # check that the HOST environment variable is valid
 case "$HOST" in
