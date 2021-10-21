@@ -1146,8 +1146,6 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
                         long int nstrip, void *user_data)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
-  double *scale       = data->scale;
-  double *inv_scale   = data->inv_scale;
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
 
@@ -1155,16 +1153,16 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 
     double y_arr[NSPECIES];
     long int j = i * NSPECIES;
-    const double H2_1 = y_arr[0] = ydata[j]*scale[j];
-    const double H2_2 = y_arr[1] = ydata[j+1]*scale[j+1];
-    const double H_1 = y_arr[2]  = ydata[j+2]*scale[j+2];
-    const double H_2 = y_arr[3]  = ydata[j+3]*scale[j+3];
-    const double H_m0 = y_arr[4] = ydata[j+4]*scale[j+4];
-    const double He_1 = y_arr[5] = ydata[j+5]*scale[j+5];
-    const double He_2 = y_arr[6] = ydata[j+6]*scale[j+6];
-    const double He_3 = y_arr[7] = ydata[j+7]*scale[j+7];
-    const double de = y_arr[8]   = ydata[j+8]*scale[j+8];
-    const double ge = y_arr[9]   = ydata[j+9]*scale[j+9];
+    const double H2_1 = y_arr[0] = ydata[j]*data->scale[j];
+    const double H2_2 = y_arr[1] = ydata[j+1]*data->scale[j+1];
+    const double H_1 = y_arr[2]  = ydata[j+2]*data->scale[j+2];
+    const double H_2 = y_arr[3]  = ydata[j+3]*data->scale[j+3];
+    const double H_m0 = y_arr[4] = ydata[j+4]*data->scale[j+4];
+    const double He_1 = y_arr[5] = ydata[j+5]*data->scale[j+5];
+    const double He_2 = y_arr[6] = ydata[j+6]*data->scale[j+6];
+    const double He_3 = y_arr[7] = ydata[j+7]*data->scale[j+7];
+    const double de = y_arr[8]   = ydata[j+8]*data->scale[j+8];
+    const double ge = y_arr[9]   = ydata[j+9]*data->scale[j+9];
 
     // Calculate temperature in this cell
     cvklu_calculate_temperature(data, y_arr, i, data->Ts[i], data->dTs_ge[i]);
@@ -1432,70 +1430,70 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
     // Species: H2_1
     //
     ydotdata[j] = k08*H_1*H_m0 + k10*H2_2*H_1 - k11*H2_1*H_2 - k12*H2_1*de - k13*H2_1*H_1 + k19*H2_2*H_m0 + k21*H2_1*H_1*H_1 + k22*H_1*H_1*H_1;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H2_2
     //
     ydotdata[j] = k09*H_1*H_2 - k10*H2_2*H_1 + k11*H2_1*H_2 + k17*H_2*H_m0 - k18*H2_2*de - k19*H2_2*H_m0;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H_1
     //
     ydotdata[j] = -k01*H_1*de + k02*H_2*de - k07*H_1*de - k08*H_1*H_m0 - k09*H_1*H_2 - k10*H2_2*H_1 + k11*H2_1*H_2 + 2*k12*H2_1*de + 2*k13*H2_1*H_1 + k14*H_m0*de + k15*H_1*H_m0 + 2*k16*H_2*H_m0 + 2*k18*H2_2*de + k19*H2_2*H_m0 - 2*k21*H2_1*H_1*H_1 - 2*k22*H_1*H_1*H_1;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H_2
     //
     ydotdata[j] = k01*H_1*de - k02*H_2*de - k09*H_1*H_2 + k10*H2_2*H_1 - k11*H2_1*H_2 - k16*H_2*H_m0 - k17*H_2*H_m0;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H_m0
     //
     ydotdata[j] = k07*H_1*de - k08*H_1*H_m0 - k14*H_m0*de - k15*H_1*H_m0 - k16*H_2*H_m0 - k17*H_2*H_m0 - k19*H2_2*H_m0;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: He_1
     //
     ydotdata[j] = -k03*He_1*de + k04*He_2*de;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: He_2
     //
     ydotdata[j] = k03*He_1*de - k04*He_2*de - k05*He_2*de + k06*He_3*de;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: He_3
     //
     ydotdata[j] = k05*He_2*de - k06*He_3*de;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: de
     //
     ydotdata[j] = k01*H_1*de - k02*H_2*de + k03*He_1*de - k04*He_2*de + k05*He_2*de - k06*He_3*de - k07*H_1*de + k08*H_1*H_m0 + k14*H_m0*de + k15*H_1*H_m0 + k17*H_2*H_m0 - k18*H2_2*de;
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: ge
     //
     ydotdata[j] = -2.0158800000000001*H2_1*cie_cooling_cieco*cie_optical_depth_approx*mdensity - H2_1*cie_optical_depth_approx*gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) - H_1*ceHI_ceHI*cie_optical_depth_approx*de - H_1*ciHI_ciHI*cie_optical_depth_approx*de - H_2*cie_optical_depth_approx*de*reHII_reHII - He_1*ciHeI_ciHeI*cie_optical_depth_approx*de - He_2*ceHeII_ceHeII*cie_optical_depth_approx*de - He_2*ceHeI_ceHeI*cie_optical_depth_approx*pow(de, 2) - He_2*ciHeII_ciHeII*cie_optical_depth_approx*de - He_2*ciHeIS_ciHeIS*cie_optical_depth_approx*pow(de, 2) - He_2*cie_optical_depth_approx*de*reHeII1_reHeII1 - He_2*cie_optical_depth_approx*de*reHeII2_reHeII2 - He_3*cie_optical_depth_approx*de*reHeIII_reHeIII - brem_brem*cie_optical_depth_approx*de*(H_2 + He_2 + 4.0*He_3) - cie_optical_depth_approx*compton_comp_*de*pow(z + 1.0, 4)*(T - 2.73*z - 2.73) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat);
-    ydotdata[j] *= inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     ydotdata[j] *= inv_mdensity;
     j++;
 
@@ -1747,8 +1745,6 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                              N_Vector tmp2, N_Vector tmp3)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
-  double *scale       = data->scale;
-  double *inv_scale   = data->inv_scale;
   const double *ydata = N_VGetDeviceArrayPointer(y);
 
   // Access dense matrix structures, and zero out data
@@ -1855,16 +1851,16 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     const double reHII_reHII = data->cs_reHII_reHII[i];
 
     const long int j = i * NSPECIES;
-    const double H2_1 = ydata[j]*scale[j];
-    const double H2_2 = ydata[j+1]*scale[j+1];
-    const double H_1  = ydata[j+2]*scale[j+2];
-    const double H_2  = ydata[j+3]*scale[j+3];
-    const double H_m0 = ydata[j+4]*scale[j+4];
-    const double He_1 = ydata[j+5]*scale[j+5];
-    const double He_2 = ydata[j+6]*scale[j+6];
-    const double He_3 = ydata[j+7]*scale[j+7];
-    const double de   = ydata[j+8]*scale[j+8];
-    const double ge   = ydata[j+9]*scale[j+9];
+    const double H2_1 = ydata[j]*data->scale[j];
+    const double H2_2 = ydata[j+1]*data->scale[j+1];
+    const double H_1  = ydata[j+2]*data->scale[j+2];
+    const double H_2  = ydata[j+3]*data->scale[j+3];
+    const double H_m0 = ydata[j+4]*data->scale[j+4];
+    const double He_1 = ydata[j+5]*data->scale[j+5];
+    const double He_2 = ydata[j+6]*data->scale[j+6];
+    const double He_3 = ydata[j+7]*data->scale[j+7];
+    const double de   = ydata[j+8]*data->scale[j+8];
+    const double ge   = ydata[j+9]*data->scale[j+9];
     const double mdensity     = data->mdensity[i];
     const double inv_mdensity = 1.0 / mdensity;
     const double h2_optical_depth_approx  = data->h2_optical_depth_approx[i];
@@ -1875,342 +1871,342 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     // H2_1 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,0), DENSEIDX(i,0,0));
     matrix_data[ idx ] = -k11*H_2 - k12*de - k13*H_1 + k21*pow(H_1, 2);
-    matrix_data[ idx ] *=  (inv_scale[ j + 0 ]*scale[ j + 0 ]);
+    matrix_data[ idx ] *=  (data->inv_scale[ j + 0 ]*data->scale[ j + 0 ]);
 
     // H2_1 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,1), DENSEIDX(i,0,1));
     matrix_data[ idx ] = k10*H_1 + k19*H_m0;
-    matrix_data[ idx ] *=  (inv_scale[ j + 0 ]*scale[ j + 1 ]);
+    matrix_data[ idx ] *=  (data->inv_scale[ j + 0 ]*data->scale[ j + 1 ]);
 
     // H2_1 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,2), DENSEIDX(i,0,2));
     matrix_data[ idx ] = k08*H_m0 + k10*H2_2 - k13*H2_1 + 2*k21*H2_1*H_1 + 3*k22*pow(H_1, 2);
-    matrix_data[ idx ] *=  (inv_scale[ j + 0 ]*scale[ j + 2 ]);
+    matrix_data[ idx ] *=  (data->inv_scale[ j + 0 ]*data->scale[ j + 2 ]);
 
     // H2_1 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,3), DENSEIDX(i,0,3));
     matrix_data[ idx ] = -k11*H2_1;
-    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 3 ]);
 
     // H2_1 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,4), DENSEIDX(i,0,4));
     matrix_data[ idx ] = k08*H_1 + k19*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 4 ]);
 
     // H2_1 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,5), DENSEIDX(i,0,8));
     matrix_data[ idx ] = -k12*H2_1;
-    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 8 ]);
 
     // H2_1 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,6), DENSEIDX(i,0,9));
     matrix_data[ idx ] = rk08*H_1*H_m0 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk12*H2_1*de - rk13*H2_1*H_1 + rk19*H2_2*H_m0 + rk21*H2_1*H_1*H_1 + rk22*H_1*H_1*H_1;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 0 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 9 ]);
 
 
     // H2_2 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,7), DENSEIDX(i,1,0));
     matrix_data[ idx ] = k11*H_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 0 ]);
 
     // H2_2 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,8), DENSEIDX(i,1,1));
     matrix_data[ idx ] = -k10*H_1 - k18*de - k19*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 1 ]);
 
     // H2_2 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,9), DENSEIDX(i,1,2));
     matrix_data[ idx ] = k09*H_2 - k10*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 2 ]);
 
     // H2_2 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,10), DENSEIDX(i,1,3));
     matrix_data[ idx ] = k09*H_1 + k11*H2_1 + k17*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 3 ]);
 
     // H2_2 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,11), DENSEIDX(i,1,4));
     matrix_data[ idx ] = k17*H_2 - k19*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 4 ]);
 
     // H2_2 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,12), DENSEIDX(i,1,8));
     matrix_data[ idx ] = -k18*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 8 ]);
 
     // H2_2 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,13), DENSEIDX(i,1,9));
     matrix_data[ idx ] = rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + rk17*H_2*H_m0 - rk18*H2_2*de - rk19*H2_2*H_m0;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 1 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 9 ]);
 
 
     // H_1 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,14), DENSEIDX(i,2,0));
     matrix_data[ idx ] = k11*H_2 + 2*k12*de + 2*k13*H_1 - 2*k21*pow(H_1, 2);
-    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 0 ]);
 
     // H_1 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,15), DENSEIDX(i,2,1));
     matrix_data[ idx ] = -k10*H_1 + 2*k18*de + k19*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 1 ]);
 
     // H_1 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,16), DENSEIDX(i,2,2));
     matrix_data[ idx ] = -k01*de - k07*de - k08*H_m0 - k09*H_2 - k10*H2_2 + 2*k13*H2_1 + k15*H_m0 - 4*k21*H2_1*H_1 - 6*k22*pow(H_1, 2);
-    matrix_data[ idx ]  *= (inv_scale[ j + 2 ]*scale[ j + 2 ]);
+    matrix_data[ idx ]  *= (data->inv_scale[ j + 2 ]*data->scale[ j + 2 ]);
 
     // H_1 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,17), DENSEIDX(i,2,3));
     matrix_data[ idx ] = k02*de - k09*H_1 + k11*H2_1 + 2*k16*H_m0;
-    matrix_data[ idx ]  *= (inv_scale[ j + 2 ]*scale[ j + 3 ]);
+    matrix_data[ idx ]  *= (data->inv_scale[ j + 2 ]*data->scale[ j + 3 ]);
 
     // H_1 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,18), DENSEIDX(i,2,4));
     matrix_data[ idx ] = -k08*H_1 + k14*de + k15*H_1 + 2*k16*H_2 + k19*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 4 ]);
 
     // H_1 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,19), DENSEIDX(i,2,8));
     matrix_data[ idx ] = -k01*H_1 + k02*H_2 - k07*H_1 + 2*k12*H2_1 + k14*H_m0 + 2*k18*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 8 ]);
 
     // H_1 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,20), DENSEIDX(i,2,9));
     matrix_data[ idx ] = -rk01*H_1*de + rk02*H_2*de - rk07*H_1*de - rk08*H_1*H_m0 - rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + 2*rk12*H2_1*de + 2*rk13*H2_1*H_1 + rk14*H_m0*de + rk15*H_1*H_m0 + 2*rk16*H_2*H_m0 + 2*rk18*H2_2*de + rk19*H2_2*H_m0 - 2*rk21*H2_1*H_1*H_1 - 2*rk22*H_1*H_1*H_1;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 2 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 9 ]);
 
 
     // H_2 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,21), DENSEIDX(i,3,0));
     matrix_data[ idx ] = -k11*H_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 0 ]);
 
     // H_2 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,22), DENSEIDX(i,3,1));
     matrix_data[ idx ] = k10*H_1;
-    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 1 ]);
 
     // H_2 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,23), DENSEIDX(i,3,2));
     matrix_data[ idx ] = k01*de - k09*H_2 + k10*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 2 ]);
 
     // H_2 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,24), DENSEIDX(i,3,3));
     matrix_data[ idx ] = -k02*de - k09*H_1 - k11*H2_1 - k16*H_m0 - k17*H_m0;
-    matrix_data[ idx ]  *= (inv_scale[ j + 3 ]*scale[ j + 3 ]);
+    matrix_data[ idx ]  *= (data->inv_scale[ j + 3 ]*data->scale[ j + 3 ]);
 
     // H_2 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,25), DENSEIDX(i,3,4));
     matrix_data[ idx ] = -k16*H_2 - k17*H_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 4 ]);
 
     // H_2 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,26), DENSEIDX(i,3,8));
     matrix_data[ idx ] = k01*H_1 - k02*H_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 8 ]);
 
     // H_2 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,27), DENSEIDX(i,3,9));
     matrix_data[ idx ] = rk01*H_1*de - rk02*H_2*de - rk09*H_1*H_2 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk16*H_2*H_m0 - rk17*H_2*H_m0;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 3 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 9 ]);
 
 
     // H_m0 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,28), DENSEIDX(i,4,1));
     matrix_data[ idx ] = -k19*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 1 ]);
 
     // H_m0 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,29), DENSEIDX(i,4,2));
     matrix_data[ idx ] = k07*de - k08*H_m0 - k15*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 2 ]);
 
     // H_m0 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,30), DENSEIDX(i,4,3));
     matrix_data[ idx ] = -k16*H_m0 - k17*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 3 ]);
 
     // H_m0 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,31), DENSEIDX(i,4,4));
     matrix_data[ idx ] = -k08*H_1 - k14*de - k15*H_1 - k16*H_2 - k17*H_2 - k19*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 4 ]);
 
     // H_m0 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,32), DENSEIDX(i,4,8));
     matrix_data[ idx ] = k07*H_1 - k14*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 8 ]);
 
     // H_m0 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,33), DENSEIDX(i,4,9));
     matrix_data[ idx ] = rk07*H_1*de - rk08*H_1*H_m0 - rk14*H_m0*de - rk15*H_1*H_m0 - rk16*H_2*H_m0 - rk17*H_2*H_m0 - rk19*H2_2*H_m0;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 4 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 9 ]);
 
 
     // He_1 by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,34), DENSEIDX(i,5,5));
     matrix_data[ idx ] = -k03*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 5 ]);
 
     // He_1 by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,35), DENSEIDX(i,5,6));
     matrix_data[ idx ] = k04*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 6 ]);
 
     // He_1 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,36), DENSEIDX(i,5,8));
     matrix_data[ idx ] = -k03*He_1 + k04*He_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 8 ]);
 
     // He_1 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,37), DENSEIDX(i,5,9));
     matrix_data[ idx ] = -rk03*He_1*de + rk04*He_2*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 5 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 9 ]);
 
 
     // He_2 by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,38), DENSEIDX(i,6,5));
     matrix_data[ idx ] = k03*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 5 ]);
 
     // He_2 by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,39), DENSEIDX(i,6,6));
     matrix_data[ idx ] = -k04*de - k05*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 6 ]);
 
     // He_2 by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,40), DENSEIDX(i,6,7));
     matrix_data[ idx ] = k06*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 7 ]);
 
     // He_2 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,41), DENSEIDX(i,6,8));
     matrix_data[ idx ] = k03*He_1 - k04*He_2 - k05*He_2 + k06*He_3;
-    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 8 ]);
 
     // He_2 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,42), DENSEIDX(i,6,9));
     matrix_data[ idx ] = rk03*He_1*de - rk04*He_2*de - rk05*He_2*de + rk06*He_3*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 6 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 9 ]);
 
 
     // He_3 by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,43), DENSEIDX(i,7,6));
     matrix_data[ idx ] = k05*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 6 ]);
 
     // He_3 by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,44), DENSEIDX(i,7,7));
     matrix_data[ idx ] = -k06*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 7 ]);
 
     // He_3 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,45), DENSEIDX(i,7,8));
     matrix_data[ idx ] = k05*He_2 - k06*He_3;
-    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 8 ]);
 
     // He_3 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,46), DENSEIDX(i,7,9));
     matrix_data[ idx ] = rk05*He_2*de - rk06*He_3*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 7 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 9 ]);
 
 
     // de by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,47), DENSEIDX(i,8,1));
     matrix_data[ idx ] = -k18*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 1 ]);
 
     // de by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,48), DENSEIDX(i,8,2));
     matrix_data[ idx ] = k01*de - k07*de + k08*H_m0 + k15*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 2 ]);
 
     // de by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,49), DENSEIDX(i,8,3));
     matrix_data[ idx ] = -k02*de + k17*H_m0;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 3 ]);
 
     // de by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,50), DENSEIDX(i,8,4));
     matrix_data[ idx ] = k08*H_1 + k14*de + k15*H_1 + k17*H_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 4 ]);
 
     // de by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,51), DENSEIDX(i,8,5));
     matrix_data[ idx ] = k03*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 5 ]);
 
     // de by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,52), DENSEIDX(i,8,6));
     matrix_data[ idx ] = -k04*de + k05*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 6 ]);
 
     // de by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,53), DENSEIDX(i,8,7));
     matrix_data[ idx ] = -k06*de;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 7 ]);
 
     // de by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,54), DENSEIDX(i,8,8));
     matrix_data[ idx ] = k01*H_1 - k02*H_2 + k03*He_1 - k04*He_2 + k05*He_2 - k06*He_3 - k07*H_1 + k14*H_m0 - k18*H2_2;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 8 ]);
 
     // de by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,55), DENSEIDX(i,8,9));
     matrix_data[ idx ] = rk01*H_1*de - rk02*H_2*de + rk03*He_1*de - rk04*He_2*de + rk05*He_2*de - rk06*He_3*de - rk07*H_1*de + rk08*H_1*H_m0 + rk14*H_m0*de + rk15*H_1*H_m0 + rk17*H_2*H_m0 - rk18*H2_2*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 8 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 9 ]);
 
 
     // ge by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,56), DENSEIDX(i,9,0));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaH2*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - 0.5*H_1*h2formation_h2mcool*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0) - 2.0158800000000001*cie_cooling_cieco*mdensity - gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*h2formation_ncrd2*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2);
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 0 ]);
 
     // ge by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,57), DENSEIDX(i,9,2));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaHI*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ceHI_ceHI*de - ciHI_ciHI*de + 0.5*h2formation_ncrd1*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) + 0.5*(-H2_1*h2formation_h2mcool + 3*pow(H_1, 2)*h2formation_h2mheat)*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0);
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 2 ]);
 
     // ge by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,58), DENSEIDX(i,9,3));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaHp*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - brem_brem*de - de*reHII_reHII;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 3 ]);
 
     // ge by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,59), DENSEIDX(i,9,5));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaHe*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ciHeI_ciHeI*de;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 5 ]);
 
     // ge by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,60), DENSEIDX(i,9,6));
     matrix_data[ idx ] = -brem_brem*de - ceHeII_ceHeII*de - ceHeI_ceHeI*pow(de, 2) - ciHeII_ciHeII*de - ciHeIS_ciHeIS*pow(de, 2) - de*reHeII1_reHeII1 - de*reHeII2_reHeII2;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 6 ]);
 
     // ge by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,61), DENSEIDX(i,9,7));
     matrix_data[ idx ] = -4.0*brem_brem*de - de*reHeIII_reHeIII;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 7 ]);
 
     // ge by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,62), DENSEIDX(i,9,8));
     matrix_data[ idx ] = -H2_1*gloverabel08_gael*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - H_1*ceHI_ceHI - H_1*ciHI_ciHI - H_2*reHII_reHII - He_1*ciHeI_ciHeI - He_2*ceHeII_ceHeII - 2*He_2*ceHeI_ceHeI*de - He_2*ciHeII_ciHeII - 2*He_2*ciHeIS_ciHeIS*de - He_2*reHeII1_reHeII1 - He_2*reHeII2_reHeII2 - He_3*reHeIII_reHeIII - brem_brem*(H_2 + He_2 + 4.0*He_3) - compton_comp_*pow(z + 1.0, 4)*(T - 2.73*z - 2.73);
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 8 ]);
 
     // ge by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,63), DENSEIDX(i,9,9));
@@ -2221,7 +2217,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ idx ] = -H2_1*gloverabel08_h2lte*h2_optical_depth_approx*(-gloverabel08_h2lte*(-H2_1*rgloverabel08_gaH2 - H_1*rgloverabel08_gaHI - H_2*rgloverabel08_gaHp - He_1*rgloverabel08_gaHe - de*rgloverabel08_gael)/pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2) - rgloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael))/pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2) - H2_1*h2_optical_depth_approx*rgloverabel08_h2lte/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)*(-1.0*h2formation_ncrn*(-H2_1*rh2formation_ncrd2 - H_1*rh2formation_ncrd1)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) - 1.0*rh2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1)) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*rh2formation_h2mcool + pow(H_1, 3)*rh2formation_h2mheat);
     matrix_data[ idx ] *= inv_mdensity;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (inv_scale[ j + 9 ]*scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 9 ]);
 
 #if defined(RAJA_SERIAL) && !defined(USEMAGMA)
     colvals[i * NSPARSE + 0] = i * NSPECIES + 0 ;
