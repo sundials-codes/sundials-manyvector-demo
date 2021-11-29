@@ -412,7 +412,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 25, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 27, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
