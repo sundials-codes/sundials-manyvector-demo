@@ -191,8 +191,8 @@ int main(int argc, char* argv[]) {
 
   // initialize primordial rate tables, etc
 #ifdef USERAJA
-  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", nstrip,
-                                              udata.memhelper, -1.0);
+  cvklu_data *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                              nstrip, udata.memhelper, -1.0);
 #else
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
 

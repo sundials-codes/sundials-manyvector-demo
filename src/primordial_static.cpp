@@ -195,7 +195,8 @@ int initialize_Dengo_structures(EulerData& udata) {
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA
-  network_data = cvklu_setup_data("primordial_tables.h5", udata.nxl * udata.nyl * udata.nzl,
+  network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                  udata.nxl * udata.nyl * udata.nzl,
                                   udata.memhelper, -1.0);
 #else
   network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);

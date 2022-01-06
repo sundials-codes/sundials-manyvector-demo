@@ -33,7 +33,7 @@
 #define SPARSEIDX(blk,off) (blk*NSPARSE + off)
 #define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
 
-cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells,
+cvklu_data *cvklu_setup_data(MPI_Comm comm, const char *FileLocation, long int ncells,
                              SUNMemoryHelper memhelper, double current_z)
 {
 
@@ -400,9 +400,9 @@ cvklu_data *cvklu_setup_data(const char *FileLocation, long int ncells,
 #else
 #error RAJA HIP chemistry interface is currently unimplemented
 #endif
-  cvklu_read_rate_tables(data, FileLocation, data->nbins+1);
-  cvklu_read_cooling_tables(data, FileLocation, data->nbins+1);
-  cvklu_read_gamma(data, FileLocation, data->nbins+1);
+  cvklu_read_rate_tables(data, FileLocation, data->nbins+1, comm);
+  cvklu_read_cooling_tables(data, FileLocation, data->nbins+1, comm);
+  cvklu_read_gamma(data, FileLocation, data->nbins+1, comm);
   return data;
 }
 
@@ -735,9 +735,14 @@ void cvklu_free_data(void *data, SUNMemoryHelper memhelper)
 }
 
 
-// UPDATE THIS TO RETURN SUCCESS/FAILURE FLAG
-void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation, int table_len)
+void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation,
+                            int table_len, MPI_Comm comm)
 {
+  // determine process rank
+  int myid;
+  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+
   // Allocate temporary memory on host for file input
   double *k01 = (double*) malloc(table_len*sizeof(double));
   double *k02 = (double*) malloc(table_len*sizeof(double));
@@ -761,36 +766,103 @@ void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation, int tabl
   double *k21 = (double*) malloc(table_len*sizeof(double));
   double *k22 = (double*) malloc(table_len*sizeof(double));
 
-  // Read the rate tables to temporaries
-  const char * filedir;
-  if (FileLocation != NULL){
-    filedir = FileLocation;
-  } else{
-    filedir = "cvklu_tables.h5";
+  // Read the rate tables to temporaries (root process only)
+  if (myid == 0) {
+    const char * filedir;
+    if (FileLocation != NULL){
+      filedir = FileLocation;
+    } else{
+      filedir = "cvklu_tables.h5";
+    }
+    hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (H5LTread_dataset_double(file_id, "/k01", k01) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k02", k02) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k03", k03) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k04", k04) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k05", k05) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k06", k06) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k07", k07) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k08", k08) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k09", k09) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k10", k10) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k11", k11) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k12", k12) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k13", k13) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k14", k14) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k15", k15) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k16", k16) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k17", k17) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k18", k18) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k19", k19) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k21", k21) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k22", k22) < 0)
+      MPI_Abort(comm, 1);
+    H5Fclose(file_id);
   }
-  hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-  H5LTread_dataset_double(file_id, "/k01", k01);
-  H5LTread_dataset_double(file_id, "/k02", k02);
-  H5LTread_dataset_double(file_id, "/k03", k03);
-  H5LTread_dataset_double(file_id, "/k04", k04);
-  H5LTread_dataset_double(file_id, "/k05", k05);
-  H5LTread_dataset_double(file_id, "/k06", k06);
-  H5LTread_dataset_double(file_id, "/k07", k07);
-  H5LTread_dataset_double(file_id, "/k08", k08);
-  H5LTread_dataset_double(file_id, "/k09", k09);
-  H5LTread_dataset_double(file_id, "/k10", k10);
-  H5LTread_dataset_double(file_id, "/k11", k11);
-  H5LTread_dataset_double(file_id, "/k12", k12);
-  H5LTread_dataset_double(file_id, "/k13", k13);
-  H5LTread_dataset_double(file_id, "/k14", k14);
-  H5LTread_dataset_double(file_id, "/k15", k15);
-  H5LTread_dataset_double(file_id, "/k16", k16);
-  H5LTread_dataset_double(file_id, "/k17", k17);
-  H5LTread_dataset_double(file_id, "/k18", k18);
-  H5LTread_dataset_double(file_id, "/k19", k19);
-  H5LTread_dataset_double(file_id, "/k21", k21);
-  H5LTread_dataset_double(file_id, "/k22", k22);
-  H5Fclose(file_id);
+
+  // broadcast tables to remaining procs
+  if (MPI_Bcast(k01, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k02, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k03, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k04, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k05, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k06, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k07, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k08, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k09, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k10, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k11, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k12, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k13, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k14, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k15, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k16, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k17, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k18, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k19, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k21, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k22, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
 
   // Copy tables into rate data structure
   dcopy(data->r_k01, k01, table_len);
@@ -817,14 +889,14 @@ void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation, int tabl
 
   // ensure that table data is synchronized between host/device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
+    HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+                 cudaError_t cuerr = cudaGetLastError(); )
 #if defined(RAJA_CUDA) || defined(RAJA_HIP)
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
       std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return;
-  }
+                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+      MPI_Abort(comm, 1);
+    }
 #endif
 
   // Free temporary arrays
@@ -852,9 +924,14 @@ void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation, int tabl
 }
 
 
-// UPDATE THIS TO RETURN SUCCESS/FAILURE FLAG
-void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation, int table_len)
+void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation,
+                               int table_len, MPI_Comm comm)
 {
+  // determine process rank
+  int myid;
+  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+
   // Allocate temporary memory on host for file input
   double *c_brem_brem = (double*) malloc(table_len*sizeof(double));
   double *c_ceHeI_ceHeI = (double*) malloc(table_len*sizeof(double));
@@ -882,40 +959,119 @@ void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation, int t
   double *c_reHeIII_reHeIII = (double*) malloc(table_len*sizeof(double));
   double *c_reHII_reHII = (double*) malloc(table_len*sizeof(double));
 
-  // Read the cooling tables to temporaries
-  const char * filedir;
-  if (FileLocation != NULL){
-    filedir = FileLocation;
-  } else{
-    filedir = "cvklu_tables.h5";
+  // Read the cooling tables to temporaries (root only)
+  if (myid == 0) {
+    const char * filedir;
+    if (FileLocation != NULL){
+      filedir = FileLocation;
+    } else{
+      filedir = "cvklu_tables.h5";
+    }
+    hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (H5LTread_dataset_double(file_id, "/brem_brem",           c_brem_brem) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ceHeI_ceHeI",         c_ceHeI_ceHeI) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ceHeII_ceHeII",       c_ceHeII_ceHeII) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ceHI_ceHI",           c_ceHI_ceHI) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/cie_cooling_cieco",   c_cie_cooling_cieco) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ciHeI_ciHeI",         c_ciHeI_ciHeI) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ciHeII_ciHeII",       c_ciHeII_ciHeII) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ciHeIS_ciHeIS",       c_ciHeIS_ciHeIS) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/ciHI_ciHI",           c_ciHI_ciHI) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/compton_comp_",       c_compton_comp_) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gael",   c_gloverabel08_gael) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",   c_gloverabel08_gaH2) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHe",   c_gloverabel08_gaHe) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHI",   c_gloverabel08_gaHI) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",   c_gloverabel08_gaHp) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",  c_gloverabel08_h2lte) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/h2formation_h2mcool", c_h2formation_h2mcool) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/h2formation_h2mheat", c_h2formation_h2mheat) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/h2formation_ncrd1",   c_h2formation_ncrd1) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/h2formation_ncrd2",   c_h2formation_ncrd2) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/h2formation_ncrn",    c_h2formation_ncrn) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/reHeII1_reHeII1",     c_reHeII1_reHeII1) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/reHeII2_reHeII2",     c_reHeII2_reHeII2) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/reHeIII_reHeIII",     c_reHeIII_reHeIII) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/reHII_reHII",         c_reHII_reHII) < 0)
+      MPI_Abort(comm, 1);
+    H5Fclose(file_id);
   }
-  hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-  H5LTread_dataset_double(file_id, "/brem_brem",           c_brem_brem);
-  H5LTread_dataset_double(file_id, "/ceHeI_ceHeI",         c_ceHeI_ceHeI);
-  H5LTread_dataset_double(file_id, "/ceHeII_ceHeII",       c_ceHeII_ceHeII);
-  H5LTread_dataset_double(file_id, "/ceHI_ceHI",           c_ceHI_ceHI);
-  H5LTread_dataset_double(file_id, "/cie_cooling_cieco",   c_cie_cooling_cieco);
-  H5LTread_dataset_double(file_id, "/ciHeI_ciHeI",         c_ciHeI_ciHeI);
-  H5LTread_dataset_double(file_id, "/ciHeII_ciHeII",       c_ciHeII_ciHeII);
-  H5LTread_dataset_double(file_id, "/ciHeIS_ciHeIS",       c_ciHeIS_ciHeIS);
-  H5LTread_dataset_double(file_id, "/ciHI_ciHI",           c_ciHI_ciHI);
-  H5LTread_dataset_double(file_id, "/compton_comp_",       c_compton_comp_);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gael",   c_gloverabel08_gael);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",   c_gloverabel08_gaH2);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaHe",   c_gloverabel08_gaHe);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaHI",   c_gloverabel08_gaHI);
-  H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",   c_gloverabel08_gaHp);
-  H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",  c_gloverabel08_h2lte);
-  H5LTread_dataset_double(file_id, "/h2formation_h2mcool", c_h2formation_h2mcool);
-  H5LTread_dataset_double(file_id, "/h2formation_h2mheat", c_h2formation_h2mheat);
-  H5LTread_dataset_double(file_id, "/h2formation_ncrd1",   c_h2formation_ncrd1);
-  H5LTread_dataset_double(file_id, "/h2formation_ncrd2",   c_h2formation_ncrd2);
-  H5LTread_dataset_double(file_id, "/h2formation_ncrn",    c_h2formation_ncrn);
-  H5LTread_dataset_double(file_id, "/reHeII1_reHeII1",     c_reHeII1_reHeII1);
-  H5LTread_dataset_double(file_id, "/reHeII2_reHeII2",     c_reHeII2_reHeII2);
-  H5LTread_dataset_double(file_id, "/reHeIII_reHeIII",     c_reHeIII_reHeIII);
-  H5LTread_dataset_double(file_id, "/reHII_reHII",         c_reHII_reHII);
-  H5Fclose(file_id);
+
+  // broadcast tables to remaining procs
+  if (MPI_Bcast(c_brem_brem, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ceHeI_ceHeI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ceHeII_ceHeII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ceHI_ceHI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_cie_cooling_cieco, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ciHeI_ciHeI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ciHeII_ciHeII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ciHeIS_ciHeIS, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_ciHI_ciHI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_compton_comp_, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_gloverabel08_gael, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_gloverabel08_gaH2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_gloverabel08_gaHe, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_gloverabel08_gaHI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_gloverabel08_gaHp, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_gloverabel08_h2lte, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_h2formation_h2mcool, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_h2formation_h2mheat, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_h2formation_ncrd1, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_h2formation_ncrd2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_h2formation_ncrn, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_reHeII1_reHeII1, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_reHeII2_reHeII2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_reHeIII_reHeIII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_reHII_reHII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
 
   // Copy tables into rate data structure
   dcopy(data->c_brem_brem, c_brem_brem, table_len);
@@ -946,14 +1102,14 @@ void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation, int t
 
   // ensure that table data is synchronized between host/device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
+    HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+                 cudaError_t cuerr = cudaGetLastError(); )
 #if defined(RAJA_CUDA) || defined(RAJA_HIP)
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
       std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return;
-  }
+                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+      MPI_Abort(comm, 1);
+    }
 #endif
 
   // Free temporary arrays
@@ -984,9 +1140,13 @@ void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation, int t
   free(c_reHII_reHII);
 }
 
-// UPDATE THIS TO RETURN SUCCESS/FAILURE FLAG
-void cvklu_read_gamma(cvklu_data *data, const char *FileLocation, int table_len)
+void cvklu_read_gamma(cvklu_data *data, const char *FileLocation,
+                     int table_len, MPI_Comm comm)
 {
+  // determine process rank
+  int myid;
+  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
 
   // Allocate temporary memory on host for file input
   double *g_gammaH2_1 = (double*) malloc(table_len*sizeof(double));
@@ -994,19 +1154,35 @@ void cvklu_read_gamma(cvklu_data *data, const char *FileLocation, int table_len)
   double *g_gammaH2_2 = (double*) malloc(table_len*sizeof(double));
   double *g_dgammaH2_2_dT = (double*) malloc(table_len*sizeof(double));
 
-  // Read the gamma tables to temporaries
-  const char * filedir;
-  if (FileLocation != NULL){
-    filedir = FileLocation;
-  } else{
-    filedir = "cvklu_tables.h5";
+  // Read the gamma tables to temporaries (root only)
+  if (myid == 0) {
+    const char * filedir;
+    if (FileLocation != NULL){
+      filedir = FileLocation;
+    } else{
+      filedir = "cvklu_tables.h5";
+    }
+    hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (H5LTread_dataset_double(file_id, "/gammaH2_1",     g_gammaH2_1 ) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/dgammaH2_1_dT", g_dgammaH2_1_dT ) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gammaH2_2",     g_gammaH2_2 ) < 0)
+      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/dgammaH2_2_dT", g_dgammaH2_2_dT ) < 0)
+      MPI_Abort(comm, 1);
+    H5Fclose(file_id);
   }
-  hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-  H5LTread_dataset_double(file_id, "/gammaH2_1",     g_gammaH2_1 );
-  H5LTread_dataset_double(file_id, "/dgammaH2_1_dT", g_dgammaH2_1_dT );
-  H5LTread_dataset_double(file_id, "/gammaH2_2",     g_gammaH2_2 );
-  H5LTread_dataset_double(file_id, "/dgammaH2_2_dT", g_dgammaH2_2_dT );
-  H5Fclose(file_id);
+
+  // broadcast tables to remaining procs
+  if (MPI_Bcast(g_gammaH2_1, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(g_dgammaH2_1_dT, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(g_gammaH2_2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
+  if (MPI_Bcast(g_dgammaH2_2_dT, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
+    MPI_Abort(comm, 1);
 
   // Copy tables into rate data structure
   dcopy(data->g_gammaH2_1, g_gammaH2_1, table_len);
@@ -1016,14 +1192,14 @@ void cvklu_read_gamma(cvklu_data *data, const char *FileLocation, int table_len)
 
   // ensure that table data is synchronized between host/device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
+    HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+                 cudaError_t cuerr = cudaGetLastError(); )
 #if defined(RAJA_CUDA) || defined(RAJA_HIP)
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
       std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return;
-  }
+                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+      MPI_Abort(comm, 1);
+    }
 #endif
 
   // Free temporary arrays
