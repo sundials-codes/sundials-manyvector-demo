@@ -1256,7 +1256,7 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
 {
   // start profiling timer
   int retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
+  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
 
   // access desired subvector from MPIManyVector objects
   N_Vector xsub, bsub;
@@ -1271,25 +1271,29 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   // pass solve call down to the block linear solver
   int ierr = SUNLinSolSolve(BDMPIMV_BLS(S), A, xsub, bsub, tol);
 
+
   // check if any of the block solvers failed
   int ierrs[2], globerrs[2];
   ierrs[0] = ierr; ierrs[1] = -ierr;
-  retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN,
-                         BDMPIMV_UDATA(S)->comm);
+  retval = BDMPIMV_UDATA(S)->profile[PR_MPI].start();
+  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, BDMPIMV_UDATA(S)->comm);
   if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
+  retval = BDMPIMV_UDATA(S)->profile[PR_MPI].stop();
+  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
 
   // check whether an unrecoverable failure occured
   BDMPIMV_LASTFLAG(S) = globerrs[0];
   if (globerrs[0] < 0) {
     retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-    if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
+    if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
     return(globerrs[0]);
   }
 
   // otherwise return the success and/or recoverable failure flag
   BDMPIMV_LASTFLAG(S) = -globerrs[1];
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
+  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
   return(-globerrs[1]);
 }
 
