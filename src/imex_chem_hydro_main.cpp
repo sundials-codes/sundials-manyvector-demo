@@ -1272,28 +1272,25 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   int ierr = SUNLinSolSolve(BDMPIMV_BLS(S), A, xsub, bsub, tol);
 
   // check if any of the block solvers failed
-  int global_ierr;
-
-  retval = MPI_Allreduce(&ierr, &global_ierr, 1, MPI_INT, MPI_MIN,
+  int ierrs[2], globerrs[2];
+  ierrs[0] = ierr; ierrs[1] = -ierr;
+  retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN,
                          BDMPIMV_UDATA(S)->comm);
   if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
 
-  // an unrecoverable failure occured
-  BDMPIMV_LASTFLAG(S) = global_ierr;
-  if (global_ierr < 0) return(global_ierr);
+  // check whether an unrecoverable failure occured
+  BDMPIMV_LASTFLAG(S) = globerrs[0];
+  if (globerrs[0] < 0) {
+    retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
+    if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
+    return(globerrs[0]);
+  }
 
-  retval = MPI_Allreduce(&ierr, &global_ierr, 1, MPI_INT, MPI_MAX,
-                         BDMPIMV_UDATA(S)->comm);
-  if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
-
-  // either success or a recoverable failure occured
-  BDMPIMV_LASTFLAG(S) = global_ierr;
-
-  // stop profiling timer
+  // otherwise return the success and/or recoverable failure flag
+  BDMPIMV_LASTFLAG(S) = -globerrs[1];
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
   if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(retval);
-
-  return(global_ierr);
+  return(-globerrs[1]);
 }
 
 int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
