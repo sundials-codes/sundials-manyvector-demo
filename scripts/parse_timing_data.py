@@ -92,66 +92,82 @@ def main():
             plotstackedbars(timings, keys, ylabel="seconds")
 
     # plot scaling data with setup time removed
-    keys = ["total w/o setup", "sim", "trans"]
-    plotcomparescaling(rundata,                           # list with test dictionaries
-                       keys,                              # keys to plot
-                       filterkey=["fused ops", True],     # fiter key and value to include
-                       normalize=True,                    # normalize runtimes
-                       title="Scaling: Fused vs Unfused", # plot title
-                       save=args.savefigs,                # save figure to file or show
-                       fname="scaling_compare_fused_vs_unfused_no_setup.pdf")
+    # keys = ["total w/o setup", "sim", "trans"]
+    # plotcomparescaling(rundata,                           # list with test dictionaries
+    #                    keys,                              # keys to plot
+    #                    filterkey=["fused ops", True],     # fiter key and value to include
+    #                    normalize=True,                    # normalize runtimes
+    #                    title="Scaling: Fused vs Unfused", # plot title
+    #                    save=args.savefigs,                # save figure to file or show
+    #                    fname="scaling_compare_fused_vs_unfused_no_setup.pdf")
 
     # total times without setup time
-    keys = ["total w/o setup",
-            "total fast RHS", "total sundials", "total lsolve"]
-    plotcomparescaling(rundata,                           # list with test dictionaries
-                       keys,                              # keys to plot
-                       filterkey=["fused ops", True],     # fiter key and value to include
-                       normalize=True,                    # normalize runtimes
-                       errorbars=True,                    # add error bars to plot
-                       title="Scaling: Fused vs Unfused", # plot title
-                       labels=["total fused",
-                               "total unfused",
-                               "fast RHS fused",
-                               "fast RHS unfused",
-                               "Sundials fused",
-                               "Sundials unfused",
-                               "LSolve fused",
-                               "LSolve unfused"],
-                       save=args.savefigs,                # save figure to file or show
-                       fname="scaling_total_fused_vs_unfused_no_setup.pdf")
+    # keys = ["total w/o setup",
+    #         "total fast RHS", "total sundials", "total lsolve"]
+    # plotcomparescaling(rundata,                           # list with test dictionaries
+    #                    keys,                              # keys to plot
+    #                    filterkey=["fused ops", True],     # fiter key and value to include
+    #                    normalize=True,                    # normalize runtimes
+    #                    errorbars=True,                    # add error bars to plot
+    #                    title="Scaling: Fused vs Unfused", # plot title
+    #                    labels=["total fused",
+    #                            "total unfused",
+    #                            "fast RHS fused",
+    #                            "fast RHS unfused",
+    #                            "Sundials fused",
+    #                            "Sundials unfused",
+    #                            "LSolve fused",
+    #                            "LSolve unfused"],
+    #                    save=args.savefigs,                # save figure to file or show
+    #                    fname="scaling_total_fused_vs_unfused_no_setup.pdf")
 
-    # total fused times without setup time
-    keys = ["total w/o setup", "total fast RHS", "total sundials", "total lsolve", "total slow RHS"]
-    plotscaling(rundata,                           # list with test dictionaries
-                keys,                              # keys to plot
-                filterkey=["fused ops", True],     # filter key and value to include
-                normalize=True,                    # normalize runtimes
-                errorbars=False,                   # add error bars to plot
-                title="Weak Scaling: Multirate Compressible Reacting Flow",   # plot title
-                Labels=["total",
-                        "fast RHS",
-                        "overhead",
-                        "fast LSolve",
-                        "slow RHS"],
-                save=args.savefigs,                # save figure to file or show
-                fname="scaling_fused_no_setup.pdf")
+    # # total fused times without setup time
+    # keys = ["total w/o setup", "total fast RHS", "total sundials", "total lsolve", "total slow RHS"]
+    # plotscaling(rundata,                           # list with test dictionaries
+    #             keys,                              # keys to plot
+    #             filterkey=["multirate", True],     # filter key and value to include
+    #             normalize=True,                    # normalize runtimes
+    #             errorbars=False,                   # add error bars to plot
+    #             title="Weak Scaling: Multirate Compressible Reacting Flow",   # plot title
+    #             Labels=["total",
+    #                     "fast RHS",
+    #                     "overhead",
+    #                     "fast LSolve",
+    #                     "slow RHS"],
+    #             save=args.savefigs,                # save figure to file or show
+    #             fname="scaling_fused_no_setup.pdf")
+
+    # plot scaling data with setup time removed
+    keys = ["total w/o setup", "total slow RHS", "total fast RHS"]
+    plotcomparescaling(rundata,                                 # list with test dictionaries
+                       keys,                                    # keys to plot
+                       filterkey=["multirate", False],           # fiter key and value to include
+                       normalize=True,                          # normalize runtimes
+                       title="Weak Scaling: IMEX vs Multirate", # plot title
+                       labels=["imex total",
+                               "mr total",
+                               "imex explicit RHS",
+                               "mr slow RHS",
+                               "imex implicit RHS",
+                               "mr fast RHS"],
+                       save=args.savefigs,                      # save figure to file or show
+                       fname="scaling_compare_imex_vs_multirate_no_setup.pdf")
 
     # total unfused times without setup time
-    keys = ["total w/o setup", "total fast RHS", "total sundials", "total lsolve", "total slow RHS"]
-    plotscaling(rundata,                           # list with test dictionaries
-                keys,                              # keys to plot
-                filterkey=["fused ops", False],    # filter key and value to include
-                normalize=True,                    # normalize runtimes
-                errorbars=False,                   # add error bars to plot
-                title="Weak Scaling: Multirate Compressible Reacting Flow",   # plot title
-                Labels=["total",
-                        "fast RHS",
-                        "overhead",
-                        "fast LSolve",
-                        "slow RHS"],
-                save=args.savefigs,                # save figure to file or show
-                fname="scaling_unfused_no_setup.pdf")
+    # keys = ["total w/o setup", "total fast RHS", "total sundials", "total lsolve", "total slow RHS"]
+    # plotscaling(rundata,                           # list with test dictionaries
+    #             keys,                              # keys to plot
+    #             filterkey=["fused ops", False],    # filter key and value to include
+    #             normalize=True,                    # normalize runtimes
+    #             errorbars=False,                   # add error bars to plot
+    #             title="Weak Scaling: Multirate Compressible Reacting Flow",   # plot title
+    #             Labels=["total",
+    #                     "fast RHS",
+    #                     "overhead",
+    #                     "fast LSolve",
+    #                     "slow RHS"],
+    #             save=args.savefigs,                # save figure to file or show
+    #             fname="scaling_unfused_no_setup.pdf")
 
     if args.printtime:
         keys = ["total w/o setup",
@@ -161,7 +177,7 @@ def main():
         printpercenttime(rundata,                          # list with test dictionaries
                          "total w/o setup",                # key for total time
                          keys,                             # keys to plot
-                         filterkey=["fused ops", True],    # fiter key and value to include
+                         filterkey=["multirate", False],    # fiter key and value to include
                          normalize=True,                   # normalie runtimes
                          errorbars=True)                   # add error bars to plot
 
@@ -190,6 +206,12 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
 
             # split line into list
             text = shlex.split(line)
+
+            if "(multirate):" in line:
+                test["multirate"] = True
+
+            if "(imex):" in line:
+                test["multirate"] = False
 
             if "nprocs:" in line:
                 ntotal = int(text[1])
@@ -327,6 +349,13 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
                     timing["sim slow RHS"] = [avgtime, mintime, maxtime]
                 continue
 
+            if "Total explicit RHS" in line:
+                if firstread:
+                    timing["trans slow RHS"] = [avgtime, mintime, maxtime]
+                else:
+                    timing["sim slow RHS"] = [avgtime, mintime, maxtime]
+                continue
+
             if "Total fast RHS" in line:
                 if firstread:
                     timing["trans fast RHS"] = [avgtime, mintime, maxtime]
@@ -334,7 +363,21 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
                     timing["sim fast RHS"] = [avgtime, mintime, maxtime]
                 continue
 
+            if "Total implicit RHS" in line:
+                if firstread:
+                    timing["trans fast RHS"] = [avgtime, mintime, maxtime]
+                else:
+                    timing["sim fast RHS"] = [avgtime, mintime, maxtime]
+                continue
+
             if "Total fast Jac" in line:
+                if firstread:
+                    timing["trans fast Jac"] = [avgtime, mintime, maxtime]
+                else:
+                    timing["sim fast Jac"] = [avgtime, mintime, maxtime]
+                continue
+
+            if "Total implicit Jac" in line:
                 if firstread:
                     timing["trans fast Jac"] = [avgtime, mintime, maxtime]
                 else:
@@ -353,6 +396,13 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
                     timing["trans lsolve"] = [avgtime, mintime, maxtime]
                 else:
                     timing["sim lsolve"] = [avgtime, mintime, maxtime]
+                continue
+
+            if "Total poststep" in line:
+                if firstread:
+                    timing["trans poststep"] = [avgtime, mintime, maxtime]
+                else:
+                    timing["sim poststep"] = [avgtime, mintime, maxtime]
                 continue
 
             if "Total trans" in line:
@@ -817,7 +867,8 @@ def plotcomparescaling(rundata, keys, filterkey,
     # normalize based on the first key
     firstkey = True
 
-    # loop counter
+    # loop counters
+    c = 0
     i = 0
 
     # create figure and get axes
@@ -882,16 +933,21 @@ def plotcomparescaling(rundata, keys, filterkey,
         # plot times
         if errorbars:
             plt.errorbar(nprocs1, time1, minmax1,
-                         color=color[i], linestyle='-', label=label1, linewidth=lwidth)
+                         color=color[c], linestyle='-', label=label1)
             plt.errorbar(nprocs2, time2, minmax2,
-                         color=color[i+1], linestyle='--', label=label2, linewidth=lwidth)
+                         color=color[c+1], linestyle='--', label=label2)
         else:
             plt.semilogx(nprocs1, time1,
-                         color=color[i], linestyle='-', label=label1, linewidth=lwidth)
+                         color=color[c], linestyle='-', label=label1)
             plt.semilogx(nprocs2, time2,
-                         color=color[i+1], linestyle='--', label=label2, linewidth=lwidth)
+                         color=color[c], linestyle='--', label=label2)
+            # plt.semilogx(nprocs1, time1,
+            #              color=color[c], linestyle='-', label=label1)
+            # plt.semilogx(nprocs2, time2,
+            #              color=color[c+1], linestyle='--', label=label2)
 
-        # update counter
+        # update counters
+        c += 1
         i += 2
 
     # add title, labels, legend, etc.
