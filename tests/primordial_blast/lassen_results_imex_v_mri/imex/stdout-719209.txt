@@ -1,0 +1,84 @@
+  
+Mon Dec  2 06:44:46 PST 2019
+lassen471
+JobID 719209
+  
+jsrun command line:
+jsrun -n 4 -a 20 -c 20 -g 0 -b packed:1 -r 2 -l CPU-CPU -d packed ./primordial_blast_imex.exe --infile=input_primordial_blast_imex.txt
+  
+Initializing problem
+Reading command-line options
+Reading options from file: input_primordial_blast_imex.txt
+Merging command-line and file-based inputs
+Setting up parallel decomposition
+
+3D compressible inviscid Euler + primordial chemistry driver (imex):
+   nprocs: 80 (5 x 4 x 4)
+   spatial domain: [0, 1] x [0, 1] x [0, 1]
+   time domain = (0, 0.1],  or (0, 1e+10] in CGS
+   fixed timestep size: 0.0001
+   initial transient evolution: 0.01
+   solution output disabled
+   bdry cond (0=per, 1=Neu, 2=Dir, 3=refl): [3, 3] x [3, 3] x [3, 3]
+   gamma: 1.66667
+   cfl fraction: 0
+   num chemical species: 10
+   spatial grid: 125 x 100 x 100
+   fused N_Vector kernels enabled
+   local N_Vector reduction operations enabled
+
+Primordial blast test problem
+
+Initializing problem with 800 clumps
+
+Transient portion of simulation complete:
+   Solver steps = 246 (attempted = 247)
+   Total RHS evals:  Fe = 1237,  Fi = 3626
+   Total number of error test failures = 1
+   Total number of lin solv setups = 21
+   Total number of nonlin iters = 2389
+   Total number of nonlin conv fails = 0
+
+Current profiling results:
+Total setup time = 	4.28e-01  ( min / max  =  4.27e-01 / 4.28e-01 )
+Total I/O time = 	1.41e-02  ( min / max  =  1.36e-02 / 1.45e-02 )
+Total MPI time = 	3.05e+00  ( min / max  =  5.54e-01 / 7.80e+00 )
+Total pack time = 	7.03e+00  ( min / max  =  6.92e+00 / 7.31e+00 )
+Total flux time = 	5.06e+02  ( min / max  =  4.96e+02 / 5.15e+02 )
+Total Euler RHS time = 	5.28e+02  ( min / max  =  5.21e+02 / 5.36e+02 )
+Total explicit RHS time = 	5.29e+02  ( min / max  =  5.22e+02 / 5.38e+02 )
+Total implicit RHS time = 	6.73e+01  ( min / max  =  6.17e+01 / 6.85e+01 )
+Total implicit Jac time = 	4.39e-01  ( min / max  =  2.68e-01 / 4.80e-01 )
+Total lsetup time = 	3.74e-01  ( min / max  =  3.31e-01 / 4.80e-01 )
+Total lsolve time = 	1.27e+01  ( min / max  =  1.20e+01 / 1.31e+01 )
+Total poststep time = 	1.06e-01  ( min / max  =  6.97e-02 / 1.15e-01 )
+Total dt_stab time = 	-0.00e+00  ( min / max  =  0.00e+00 / 0.00e+00 )
+Total trans time = 	6.46e+02  ( min / max  =  6.46e+02 / 6.46e+02 )
+
+
+Overall Solver Statistics:
+   Solver steps = 1146 (attempted = 1147)
+   Total RHS evals:  Fe = 5737,  Fi = 10916
+   Total number of error test failures = 1
+   Total number of lin solv setups = 66
+   Total number of nonlin iters = 5179
+   Total number of nonlin conv fails = 0
+
+Final profiling results:
+Total setup time = 	4.28e-01  ( min / max  =  4.27e-01 / 4.28e-01 )
+Total I/O time = 	4.92e-04  ( min / max  =  4.35e-04 / 6.16e-04 )
+Total MPI time = 	1.36e+01  ( min / max  =  1.99e+00 / 3.32e+01 )
+Total pack time = 	2.56e+01  ( min / max  =  2.52e+01 / 2.67e+01 )
+Total flux time = 	1.83e+03  ( min / max  =  1.80e+03 / 1.87e+03 )
+Total Euler RHS time = 	1.91e+03  ( min / max  =  1.89e+03 / 1.95e+03 )
+Total explicit RHS time = 	1.92e+03  ( min / max  =  1.90e+03 / 1.95e+03 )
+Total implicit RHS time = 	1.32e+02  ( min / max  =  1.22e+02 / 1.36e+02 )
+Total implicit Jac time = 	1.32e+00  ( min / max  =  7.94e-01 / 1.45e+00 )
+Total lsetup time = 	6.75e-01  ( min / max  =  5.86e-01 / 8.77e-01 )
+Total lsolve time = 	1.36e+01  ( min / max  =  1.25e+01 / 1.47e+01 )
+Total poststep time = 	1.30e-01  ( min / max  =  8.18e-02 / 2.00e-01 )
+Total dt_stab time = 	-0.00e+00  ( min / max  =  0.00e+00 / 0.00e+00 )
+Total sim time = 	2.15e+03  ( min / max  =  2.15e+03 / 2.15e+03 )
+Total Total time = 	2.80e+03  ( min / max  =  2.80e+03 / 2.80e+03 )
+Done
+logout
