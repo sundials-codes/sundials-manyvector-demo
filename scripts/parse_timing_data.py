@@ -70,14 +70,14 @@ def main():
     # print dictionary keys and values
     if args.debug:
         for d in rundata:
-            print "Output from:",d["file"]
+            print("Output from:",d["file"])
             for key in sorted(d.keys()):
                 if type(d[key]) is dict:
                     for key2 in sorted(d[key].keys()):
-                        print key2, "=>", d[key][key2]
+                        print(key2, "=>", d[key][key2])
                 else:
-                    print key, "=>", d[key]
-            print "----------"
+                    print(key, "=>", d[key])
+            print("----------")
 
     # get timing data
     if args.plotbreakdown:
@@ -445,18 +445,18 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
     # check if min is larger than avg
     if time[1] > time[0]:
         if wminmax:
-            print "Warning: total time w/o setup min > avg for file:",filename
-            print "min = ",time[1]
-            print "avg = ",time[0]
-            print "Setting min = avg"
+            print("Warning: total time w/o setup min > avg for file:",filename)
+            print("min = ",time[1])
+            print("avg = ",time[0])
+            print("Setting min = avg")
         time[1] = time[0]
     # check if max is smaller than avg
     if time[2] < time[0]:
         if wminmax:
-            print "Warning: total time w/o setup max < avg for file:",filename
-            print "max = ",time[2]
-            print "avg = ",time[0]
-            print "Setting max = avg"
+            print("Warning: total time w/o setup max < avg for file:",filename)
+            print("max = ",time[2])
+            print("avg = ",time[0])
+            print("Setting max = avg")
         time[2] = time[0]
 
     timing["total w/o setup"] = time
@@ -534,18 +534,18 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
     # check if min is larger than avg
     if time[1] > time[0]:
         if wminmax:
-            print "Warning: trans sundials min > avg for file:",filename
-            print "min = ",time[1]
-            print "avg = ",time[0]
-            print "Setting min = avg"
+            print("Warning: trans sundials min > avg for file:",filename)
+            print("min = ",time[1])
+            print("avg = ",time[0])
+            print("Setting min = avg")
         time[1] = time[0]
     # check if max is smaller than avg
     if time[2] < time[0]:
         if wminmax:
-            print "Warning: trans sundials max < avg for file:",filename
-            print "max = ",time[2]
-            print "avg = ",time[0]
-            print "Setting max = avg"
+            print("Warning: trans sundials max < avg for file:",filename)
+            print("max = ",time[2])
+            print("avg = ",time[0])
+            print("Setting max = avg")
         time[2] = time[0]
 
     timing["trans sundials"] = time
@@ -623,18 +623,18 @@ def parseoutput(filename, minmax = "minvar", wminmax = False):
     # check if min is larger than avg
     if time[1] > time[0]:
         if wminmax:
-            print "Warning: sim sundials min > avg for file:",filename
-            print "min = ",time[1]
-            print "avg = ",time[0]
-            print "Setting min = avg"
+            print("Warning: sim sundials min > avg for file:",filename)
+            print("min = ",time[1])
+            print("avg = ",time[0])
+            print("Setting min = avg")
         time[1] = time[0]
     # check if max is smaller than avg
     if time[2] < time[0]:
         if wminmax:
-            print "Warning: sim sundials max < avg for file:",filename
-            print "max = ",time[2]
-            print "avg = ",time[0]
-            print "Setting max = avg"
+            print("Warning: sim sundials max < avg for file:",filename)
+            print("max = ",time[2])
+            print("avg = ",time[0])
+            print("Setting max = avg")
         time[2] = time[0]
 
     timing["sim sundials"] = time
@@ -1105,32 +1105,32 @@ def printpercenttime(rundata, keytotal, keys, filterkey,
                       "max time: {2:8.2f}, " +
                       "percent max var: {3:6.2f}%")
 
-        print k, "1"
+        print(k, "1")
         for w, x, y, z in np.nditer([nprocs1, time1, ntime1, ptime1]):
             print(formatstr1.format(int(w), float(x), float(y), float(z)))
         print
 
-        print k, "1"
+        print(k, "1")
         for w, x, y, z in np.nditer([nprocs1, time1, mintime1, minpvar1]):
             print(formatstr2.format(int(w), float(x), float(y), float(z)))
         print
 
-        print k, "1"
+        print(k, "1")
         for w, x, y, z in np.nditer([nprocs1, time1, maxtime1, maxpvar1]):
             print(formatstr3.format(int(w), float(x), float(y), float(z)))
         print
 
-        print k, "2"
+        print(k, "2")
         for w, x, y, z in np.nditer([nprocs2, time2, ntime2, ptime2]):
             print(formatstr1.format(int(w), float(x), float(y), float(z)))
         print
 
-        print k, "2"
+        print(k, "2")
         for w, x, y, z in np.nditer([nprocs2, time2, mintime2, minpvar2]):
             print(formatstr2.format(int(w), float(x), float(y), float(z)))
         print
 
-        print k, "2"
+        print(k, "2")
         for w, x, y, z in np.nditer([nprocs2, time2, maxtime2, maxpvar2]):
             print(formatstr3.format(int(w), float(x), float(y), float(z)))
         print
