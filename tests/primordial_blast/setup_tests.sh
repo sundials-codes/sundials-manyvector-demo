@@ -43,14 +43,18 @@ base_npz=4
 base_nx=25         # base grid on each process
 base_ny=25
 base_nz=25
-base_tf=1.0        # base final simulation time
-base_h0=0.1        # base slow time step size
-base_m=1000.0      # base fast/slow time scale separation factor
-base_htrans=0.1    # base fast transient evolution interval
+base_tf=0.1        # base final simulation time
+base_h0=0.01       # base slow time step size
+base_m=100.0       # base fast/slow time scale separation factor
+base_htrans=0.01   # base fast transient evolution interval
 
-# testing 'dimensions'
-NodeFactor=(1 2 4 6 8 10 12)
-Fused=(fused unfused)
+# testing 'dimensions' Summit
+#NodeFactor=(1 2 4 6 8 10 12)
+#Fused=(fused unfused)
+
+# testing 'dimensions' Lassen
+NodeFactor=(1 2 3 4 5)
+Fused=(fused)
 
 # ------------------------------------------------------------------------------
 # Generate test files

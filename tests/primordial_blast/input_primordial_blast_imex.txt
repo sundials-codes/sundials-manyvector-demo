@@ -45,7 +45,7 @@ showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #### ARKStep Options ####
 order = 0           # temporal order of accuracy (0 => use specified btable)
 dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
-btable = 112        # specific built-in Butcher table to use (<0 => default)
+btable = 104        # specific built-in Butcher table to use (<0 => default)
 adapt_method = 2    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)
