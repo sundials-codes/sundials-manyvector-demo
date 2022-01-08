@@ -399,8 +399,12 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSetDiagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // set ARK Butcher tables
-  retval = ARKStepSetTableNum(arkode_mem, ARK437L2SA_DIRK_7_3_4, ARK437L2SA_ERK_7_3_4);
+  // set ARK Butcher tables (4th order)
+  // retval = ARKStepSetTableNum(arkode_mem, ARK437L2SA_DIRK_7_3_4, ARK437L2SA_ERK_7_3_4);
+  // if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  // set ARK Butcher tables (3rd order)
+  retval = ARKStepSetTableNum(arkode_mem, ARK324L2SA_DIRK_4_2_3, ARK324L2SA_ERK_4_2_3);
   if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set dense output order
