@@ -192,6 +192,10 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
 // Utility routine to initialize global Dengo data structures
 int initialize_Dengo_structures(EulerData& udata) {
 
+  // start profiler
+  int retval = udata.profile[PR_CHEMSETUP].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+  
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA
@@ -228,8 +232,10 @@ int initialize_Dengo_structures(EulerData& udata) {
 #error RAJA HIP chemistry interface is currently unimplemented
 #endif
 
-  // store pointer to network_data in udata, and return
+  // store pointer to network_data in udata, stop profiler, and return
   udata.RxNetData = (void*) network_data;
+  retval = udata.profile[PR_CHEMSETUP].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   return(0);
 }
 

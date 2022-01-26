@@ -672,6 +672,7 @@ int main(int argc, char* argv[]) {
     retval = MPI_Barrier(udata.comm);
     if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
     udata.profile[PR_SETUP].print_cumulative_times("setup");
+    udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
     udata.profile[PR_IO].print_cumulative_times("I/O");
     udata.profile[PR_MPI].print_cumulative_times("MPI");
     udata.profile[PR_PACKDATA].print_cumulative_times("pack");
@@ -683,6 +684,7 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
     udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
     udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
+    udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
     udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
     udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
     udata.profile[PR_TRANS].print_cumulative_times("trans");
@@ -699,6 +701,8 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].reset();
     udata.profile[PR_LSETUP].reset();
     udata.profile[PR_LSOLVE].reset();
+    udata.profile[PR_LATIMES].reset();
+    udata.profile[PR_LSOLVEMPI].reset();
     udata.profile[PR_POSTFAST].reset();
     udata.profile[PR_DTSTAB].reset();
 
@@ -854,6 +858,7 @@ int main(int argc, char* argv[]) {
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   udata.profile[PR_SETUP].print_cumulative_times("setup");
+  udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
   udata.profile[PR_IO].print_cumulative_times("I/O");
   udata.profile[PR_MPI].print_cumulative_times("MPI");
   udata.profile[PR_PACKDATA].print_cumulative_times("pack");
@@ -865,6 +870,7 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
   udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
+  udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
   udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
@@ -1275,11 +1281,11 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   // check if any of the block solvers failed
   int ierrs[2], globerrs[2];
   ierrs[0] = ierr; ierrs[1] = -ierr;
-  retval = BDMPIMV_UDATA(S)->profile[PR_MPI].start();
+  retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].start();
   if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
   retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, BDMPIMV_UDATA(S)->comm);
   if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
-  retval = BDMPIMV_UDATA(S)->profile[PR_MPI].stop();
+  retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].stop();
   if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
 
   // check whether an unrecoverable failure occured

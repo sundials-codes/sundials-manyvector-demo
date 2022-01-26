@@ -190,6 +190,8 @@ int main(int argc, char* argv[]) {
   }
 
   // initialize primordial rate tables, etc
+  retval = udata.profile[PR_CHEMSETUP].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 #ifdef USERAJA
   cvklu_data *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
                                               nstrip, udata.memhelper, -1.0);
@@ -202,8 +204,10 @@ int main(int argc, char* argv[]) {
   network_data->current_z = -1.0;
 #endif
 
-  // store pointer to network_data in udata
+  //    store pointer to network_data in udata
   udata.RxNetData = (void*) network_data;
+  retval = udata.profile[PR_CHEMSETUP].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
