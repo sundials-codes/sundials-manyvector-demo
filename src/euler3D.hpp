@@ -114,6 +114,7 @@ using namespace std;
 #define  PR_TOTAL     16
 #define  PR_LSOLVEMPI 17
 #define  PR_CHEMSETUP 18
+#define  PR_MRISETUP  19
 
 
 // Utility routine to check function return values:

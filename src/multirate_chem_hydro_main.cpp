@@ -545,6 +545,8 @@ int main(int argc, char* argv[]) {
 
 
   //--- create the slow integrator and set options ---//
+  retval = udata.profile[PR_MRISETUP].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // initialize the integrator memory
   outer_arkode_mem = MRIStepCreate(fslow, udata.t0, w, MRISTEP_ARKSTEP, inner_arkode_mem);
@@ -568,6 +570,9 @@ int main(int argc, char* argv[]) {
   // retval = MRIStepSetPostInnerFn(outer_arkode_mem, PostprocessFast);
   // if (check_flag(&retval, "MRIStepSetPostInnerFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  retval = udata.profile[PR_MRISETUP].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+  
   // finish initialization
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
@@ -693,6 +698,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
     udata.profile[PR_SETUP].print_cumulative_times("setup");
     udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
+    udata.profile[PR_MRISETUP].print_cumulative_times("MRIsetup");
     udata.profile[PR_IO].print_cumulative_times("I/O");
     udata.profile[PR_MPI].print_cumulative_times("MPI");
     udata.profile[PR_PACKDATA].print_cumulative_times("pack");
@@ -884,6 +890,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   udata.profile[PR_SETUP].print_cumulative_times("setup");
   udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
+  udata.profile[PR_MRISETUP].print_cumulative_times("MRIsetup");
   udata.profile[PR_IO].print_cumulative_times("I/O");
   udata.profile[PR_MPI].print_cumulative_times("MPI");
   udata.profile[PR_PACKDATA].print_cumulative_times("pack");
