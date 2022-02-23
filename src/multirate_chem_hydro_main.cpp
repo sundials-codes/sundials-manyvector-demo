@@ -13,13 +13,13 @@
  creates ODE RHS and Jacobian routines for arbitrarily-complex
  chemistry networks.
 
- The slow time scale is evolved explicitly using ARKode's MRIStep
+ The slow time scale is evolved explicitly using ARKODE's MRIStep
  time-stepping module, with it's default 3rd-order integration
  method, and a fixed time step given by either the user-input
  "initial" time step value, h0, or calculated to equal the time
  interval between solution outputs.
 
- The fast time scale is evolved implicitly using ARKode's ARKStep
+ The fast time scale is evolved implicitly using ARKODE's ARKStep
  time-stepping module, using the DIRK Butcher tableau that is
  specified by the user.  Here, time adaptivity is employed, with
  nearly all adaptivity options controllable via user inputs.
@@ -121,7 +121,8 @@ typedef struct _BDMPIMVContent {
 #define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void *arkode_mem, ARKodeParameters& opts);
+                                  void *arkode_mem, ARKODEParameters& opts,
+                                  SUNContext ctx);
 SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
@@ -154,10 +155,11 @@ int main(int argc, char* argv[]) {
   SUNMatrix A = NULL;            // empty matrix and linear solver structures
   SUNLinearSolver LS = NULL;
   SUNLinearSolver BLS = NULL;
+  MRIStepInnerStepper stepper = NULL;
   void *outer_arkode_mem = NULL; // empty ARKStep memory structures
   void *inner_arkode_mem = NULL;
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -326,7 +328,7 @@ int main(int argc, char* argv[]) {
   wsubvecs = new N_Vector[Nsubvecs];
   for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
+    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -345,12 +347,12 @@ int main(int argc, char* argv[]) {
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -367,7 +369,7 @@ int main(int argc, char* argv[]) {
       wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
     }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
+  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -401,7 +403,7 @@ int main(int argc, char* argv[]) {
   //--- create the fast integrator and set options ---//
 
   // initialize the fast integrator
-  inner_arkode_mem = ARKStepCreate(NULL, ffast, udata.t0, w);
+  inner_arkode_mem = ARKStepCreate(NULL, ffast, udata.t0, w, udata.ctx);
   if (check_flag((void*) inner_arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -410,25 +412,27 @@ int main(int argc, char* argv[]) {
 
   // create the fast integrator local linear solver
   if (opts.iterative) {
-    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters);
+    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
 #ifdef USEMAGMA
     // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, 
+                                  udata.memhelper, NULL, udata.ctx);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
     // Create the SUNLinearSolver object
-    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A);
+    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
     if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, 
+                                       cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
+    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
     // Set the sparsity pattern to be fixed
     retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
@@ -437,9 +441,9 @@ int main(int argc, char* argv[]) {
     retval = initialize_sparse_jacobian_cvklu(A, &udata);
     if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
+    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
     if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_KLU(wsubvecs[5], A);
+    BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
     if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 #endif
@@ -447,7 +451,7 @@ int main(int argc, char* argv[]) {
 
   // create linear solver wrapper and attach the matrix and linear solver to the
   // integrator and set the Jacobian for direct linear solvers
-  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, inner_arkode_mem, opts);
+  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, inner_arkode_mem, opts, udata.ctx);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -463,8 +467,8 @@ int main(int argc, char* argv[]) {
   }
 
   // set inner RK Butcher table
-  if (opts.btable != -1) {
-    retval = ARKStepSetTableNum(inner_arkode_mem, opts.btable, -1);
+  if (opts.itable != ARKODE_DIRK_NONE) {
+    retval = ARKStepSetTableNum(inner_arkode_mem, opts.itable, ARKODE_ERK_NONE);
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
@@ -548,8 +552,12 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_MRISETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  // wrap ARKStep as an MRIStepInnerStepper
+  retval = ARKStepCreateMRIStepInnerStepper(inner_arkode_mem, &stepper);
+  if (check_flag(&retval, "ARKStepCreateMRIStepInnerStepper (main)", 1)) MPI_Abort(udata.comm, 1);
+
   // initialize the integrator memory
-  outer_arkode_mem = MRIStepCreate(fslow, udata.t0, w, MRISTEP_ARKSTEP, inner_arkode_mem);
+  outer_arkode_mem = MRIStepCreate(fslow, NULL, udata.t0, w, stepper, udata.ctx);
   if (check_flag((void*) outer_arkode_mem, "MRIStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -560,6 +568,13 @@ int main(int argc, char* argv[]) {
   if (udata.showstats && outproc) {
     retval = MRIStepSetDiagnostics(outer_arkode_mem, DFID_OUTER);
     if (check_flag(&retval, "MRIStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+
+  // set MRI coupling table (if specified)
+  if (opts.mtable != ARKODE_MRI_NONE) {
+    MRIStepCoupling Gamma = MRIStepCoupling_LoadTable(opts.mtable);
+    retval = MRIStepSetCoupling(outer_arkode_mem, Gamma);
+    if (check_flag(&retval, "MRIStepSetCoupling (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
   // set slow time step size
@@ -649,19 +664,19 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
     if (outproc) {
-      long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nni, ncf;
+      long int nsts, nfs_e, nfs_i, nstf, nstf_a, nff_e, nff_i, netf, nni, ncf;
       long int nls, nje, nli, nlcf;
-      nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nni = ncf = 0;
+      nsts = nfs_e = nfs_i = nstf = nstf_a = nff_e = nff_i = netf = nni = ncf = 0;
       nls = nje = nli = nlcf = 0;
       retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
       if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
+      retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs_e, &nfs_i);
       if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
       if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
       if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
+      retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nff_e, &nff_i);
       if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
       retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
       if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -678,7 +693,7 @@ int main(int argc, char* argv[]) {
       cout << "\nTransient portion of simulation complete:\n";
       cout << "   Slow solver steps = " << nsts << "\n";
       cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
-      cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
+      cout << "   Total RHS evals:  Fs = " << nfs_e << ",  Ff = " << nff_i << "\n";
       cout << "   Total number of fast error test failures = " << netf << "\n";
       if (opts.iterative && nli > 0) {
         cout << "   Total number of fast lin iters = " << nli << "\n";
@@ -841,19 +856,19 @@ int main(int argc, char* argv[]) {
 
   // Print some final statistics
   if (outproc) {
-    long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nni, ncf;
+    long int nsts, nfs_e, nfs_i, nstf, nstf_a, nff_e, nff_i, netf, nni, ncf;
     long int nls, nje, nli, nlcf;
-    nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nni = ncf = 0;
+    nsts = nfs_e = nfs_i = nstf = nstf_a = nff_e = nff_i = netf = nni = ncf = 0;
     nls = nje = nli = nlcf = 0;
     retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
     if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
+    retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs_e, &nfs_i);
     if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
     if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
     if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
+    retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nff_e, &nff_i);
     if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
     retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
     if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -870,7 +885,7 @@ int main(int argc, char* argv[]) {
     cout << "\nOverall Solver Statistics:\n";
     cout << "   Slow solver steps = " << nsts << "\n";
     cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
-    cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
+    cout << "   Total RHS evals:  Fs = " << nfs_e << ",  Ff = " << nff_i << "\n";
     cout << "   Total number of fast error test failures = " << netf << "\n";
     if (opts.iterative && nli > 0) {
       cout << "   Total number of fast lin iters = " << nli << "\n";
@@ -1192,14 +1207,14 @@ void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, EulerData& udata,
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
                                   void* arkode_mem,
-                                  ARKodeParameters& opts)
+                                  ARKODEParameters& opts, SUNContext ctx)
 {
   // Check compatibility with supplied N_Vector
   if (N_VGetVectorID(x) != SUNDIALS_NVEC_MPIMANYVECTOR) return(NULL);
   if (subvec >= N_VGetNumSubvectors_MPIManyVector(x)) return(NULL);
 
   // Create an empty linear solver
-  SUNLinearSolver S = SUNLinSolNewEmpty();
+  SUNLinearSolver S = SUNLinSolNewEmpty(ctx);
   if (S == NULL) return(NULL);
 
   // Attach operations (use defaults whenever possible)

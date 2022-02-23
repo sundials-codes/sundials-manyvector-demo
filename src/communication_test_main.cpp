@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
 
   // read problem and solver parameters from input file / command line
   EulerData udata;
-  ARKodeParameters opts;
+  ARKODEParameters opts;
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   if (retval > 0) MPI_Abort(MPI_COMM_WORLD, 0);
@@ -116,20 +116,20 @@ int main(int argc, char* argv[]) {
   wsubvecs = new N_Vector[Nsubvecs];
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
+    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
+  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // set data into subvectors:

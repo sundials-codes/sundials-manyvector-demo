@@ -13,7 +13,7 @@
  Python library that creates ODE RHS and Jacobian routines for
  arbitrarily-complex chemistry networks.
 
- The problem is evolved using ARKode's ARKStep time-stepping
+ The problem is evolved using ARKODE's ARKStep time-stepping
  module, and is currently hard-coded to use the 4th-order
  ARK437L2SA_DIRK_7_3_4 + ARK437L2SA_ERK_7_3_4 Butcher table pair
  for a temporally adaptive additive Runge--Kutta solve.  Aside
@@ -116,7 +116,8 @@ typedef struct _BDMPIMVContent {
 #define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void *arkode_mem, ARKodeParameters& opts);
+                                  void *arkode_mem, ARKODEParameters& opts,
+                                  SUNContext ctx);
 SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
 int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
@@ -152,7 +153,7 @@ int main(int argc, char* argv[]) {
   SUNLinearSolver BLS = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -315,7 +316,7 @@ int main(int argc, char* argv[]) {
   wsubvecs = new N_Vector[Nsubvecs];
   for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
+    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -334,12 +335,12 @@ int main(int argc, char* argv[]) {
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -356,7 +357,7 @@ int main(int argc, char* argv[]) {
       wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
     }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
+  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -390,7 +391,7 @@ int main(int argc, char* argv[]) {
   //--- create the ARKStep integrator and set options ---//
 
   // initialize the integrator
-  arkode_mem = ARKStepCreate(fexpl, fimpl, udata.t0, w);
+  arkode_mem = ARKStepCreate(fexpl, fimpl, udata.t0, w, udata.ctx);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -399,25 +400,27 @@ int main(int argc, char* argv[]) {
 
   // create the fast integrator local linear solver
   if (opts.iterative) {
-    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters);
+    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
 #ifdef USEMAGMA
     // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, 
+                                  udata.memhelper, NULL, udata.ctx);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
     // Create the SUNLinearSolver object
-    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A);
+    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
     if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, 
+                                       cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
+    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
     // Set the sparsity pattern to be fixed
     retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
@@ -426,9 +429,9 @@ int main(int argc, char* argv[]) {
     retval = initialize_sparse_jacobian_cvklu(A, &udata);
     if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
+    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
     if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_KLU(wsubvecs[5], A);
+    BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
     if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 #endif
@@ -436,7 +439,7 @@ int main(int argc, char* argv[]) {
 
   // create linear solver wrapper and attach the matrix and linear solver to the
   // integrator and set the Jacobian for direct linear solvers
-  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, arkode_mem, opts);
+  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, arkode_mem, opts, udata.ctx);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -456,7 +459,7 @@ int main(int argc, char* argv[]) {
   }
 
   // set ARK Butcher tables
-  retval = ARKStepSetTableNum(arkode_mem, ARK437L2SA_DIRK_7_3_4, ARK437L2SA_ERK_7_3_4);
+  retval = ARKStepSetTableNum(arkode_mem, opts.itable, opts.etable);
   if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set dense output order
@@ -1187,15 +1190,15 @@ void cleanup(void **arkode_mem, EulerData& udata, SUNLinearSolver BLS,
 
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void* arkode_mem,
-                                  ARKodeParameters& opts)
+                                  void* arkode_mem, 
+                                  ARKODEParameters& opts, SUNContext ctx)
 {
   // Check compatibility with supplied N_Vector
   if (N_VGetVectorID(x) != SUNDIALS_NVEC_MPIMANYVECTOR) return(NULL);
   if (subvec >= N_VGetNumSubvectors_MPIManyVector(x)) return(NULL);
 
   // Create an empty linear solver
-  SUNLinearSolver S = SUNLinSolNewEmpty();
+  SUNLinearSolver S = SUNLinSolNewEmpty(ctx);
   if (S == NULL) return(NULL);
 
   // Attach operations (use defaults whenever possible)

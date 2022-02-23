@@ -1,7 +1,7 @@
 # Input parameter file for 1D Sod shock tube test problem.
 #
 # This file should be provided to the executable with the "-f" flag,
-# e.g. 
+# e.g.
 #     <executable> -f <input_file>
 #
 # Any of these parameters may also be specified on the command line,
@@ -44,7 +44,9 @@ showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #### ARKStep Options ####
 order = 4           # temporal order of accuracy
 dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
-btable = -1         # specific built-in Butcher table to use (<0 => default)
+etable = -1         # specific built-in ERK Butcher table to use (<0 => default)
+itable = -1         # specific built-in DIRK Butcher table to use (<0 => default)
+mtable = -1         # specific built-in MRI coupling table to use (<0 => default)
 adapt_method = 0    # temporal adaptivity algorithm to use
 maxnef = 0          # max num temporal error failures (0 => default)
 mxhnil = 0          # max num tn+h=tn warnings (0 => default)

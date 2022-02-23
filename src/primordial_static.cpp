@@ -8,7 +8,7 @@
  Primordial ODE test problem setup, in a static fluid domain.
  This should give essentially-identical results as primordial_ode,
  but now includes evolution of [stationary] hydrodynamic fields.
- This uses ARKode's MRIStep time-stepping module, via the
+ This uses ARKODE's MRIStep time-stepping module, via the
  multirate_chem_hydro_main.cpp driver.
 ---------------------------------------------------------------*/
 

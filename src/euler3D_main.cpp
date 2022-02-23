@@ -9,7 +9,7 @@
 
  This evolves the 3D compressible, inviscid Euler equations.
 
- The problem is evolved using ARKode's ARKStep time-stepping
+ The problem is evolved using ARKODE's ARKStep time-stepping
  module for a temporally adaptive explicit Runge--Kutta solve.
  Nearly all adaptivity options are controllable via user inputs.
  If the input file specifies fixedstep=1, then temporal adaptivity
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
   N_Vector *wsubvecs;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 
   //--- General Initialization ---//
 
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
   wsubvecs = new N_Vector[Nsubvecs];
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
+    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
     if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -171,12 +171,12 @@ int main(int argc, char* argv[]) {
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -193,7 +193,7 @@ int main(int argc, char* argv[]) {
       wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
     }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
+  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
   if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
   //--- create the ARKStep integrator and set options ---//
 
   // initialize the integrator
-  arkode_mem = ARKStepCreate(fEuler, NULL, udata.t0, w);
+  arkode_mem = ARKStepCreate(fEuler, NULL, udata.t0, w, udata.ctx);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -228,12 +228,12 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // set RK order, or specify individual Butcher table -- "order" overrides "btable"
+  // set RK order, or specify individual Butcher table -- "order" overrides "etable"
   if (opts.order != 0) {
     retval = ARKStepSetOrder(arkode_mem, opts.order);
     if (check_flag(&retval, "ARKStepSetOrder (main)", 1)) MPI_Abort(udata.comm, 1);
-  } else if (opts.btable != -1) {
-    retval = ARKStepSetTableNum(arkode_mem, -1, opts.btable);
+  } else if (opts.etable != ARKODE_ERK_NONE) {
+    retval = ARKStepSetTableNum(arkode_mem, ARKODE_DIRK_NONE, opts.etable);
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
