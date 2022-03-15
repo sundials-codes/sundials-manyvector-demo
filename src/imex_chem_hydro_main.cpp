@@ -306,8 +306,6 @@ int main(int argc, char* argv[]) {
   if (udata.showstats && outproc) {
     DFID=fopen("diags_chem_hydro.txt","w");
   }
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
@@ -965,13 +963,13 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   fwchem = N_VGetSubvector_MPIManyVector(fw, 5);
   if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp1chem = NULL;
-  tmp1chem = N_VGetSubvector_MPIManyVector(fw, 5);
+  tmp1chem = N_VGetSubvector_MPIManyVector(tmp1, 5);
   if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp2chem = NULL;
-  tmp2chem = N_VGetSubvector_MPIManyVector(fw, 5);
+  tmp2chem = N_VGetSubvector_MPIManyVector(tmp2, 5);
   if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp3chem = NULL;
-  tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
+  tmp3chem = N_VGetSubvector_MPIManyVector(tmp3, 5);
   if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
 
   // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
