@@ -40,12 +40,33 @@
       problems can be evolved separately (e.g., MPI process-local, or
       even more refined such as strips or individual cells).  [in progress]
 
-      **Need to change how this is implemented:
-        - convert overall vector data structure to use N_VSerial component vectors for hydrodynamic variables (but retain MPIManyVector in general).
-        - convert "fast" integrator to use a ManyVector with the same structure as the overall solution (including hydrodynamic variables), since at present the hydrodynamic variables are not being evolved at the fast time scale.
-        - create a custom SUNLinearSolver for the rank-local problem that treats the Jacobian of the hydrodynamic variables as 0 (thus $I-gamma J = I$), and farms out the chemical solver to Magma.
-        - update node-local fast integrator to accept the MPIManyVector as input, grab the vector array, create ManyVector with those same subvectors, and then call ARKStep Evolve on that ManyVector.
-        - update "fast" rhs function to explicitly consider the MRI forcing data as an MPIManyVector array, but to consider its own input/output vectors as ManyVector.  Determine whether it needs to cast the components of the MPIManyVector as a ManyVector for this to work, or if it's call to the linear combination routine can work with a mixture of ManyVector and MPIManyVector arguments.
+      **Need to change how this is implemented:**
+
+        - convert overall vector data structure to use N_VSerial component
+          vectors for hydrodynamic variables (but retain MPIManyVector in
+          general).  [done]
+
+        - convert "fast" integrator to use a ManyVector with the same
+          structure as the overall solution (including hydrodynamic
+          variables), since at present the hydrodynamic variables are not
+          being evolved at the fast time scale.  [yet to begin]
+
+        - create a custom SUNLinearSolver for the rank-local problem that
+          treats the Jacobian of the hydrodynamic variables as 0 (thus
+          $I-gamma J = I$), and farms out the chemical solver to Magma.
+          [yet to begin]
+
+        - update node-local fast integrator to accept the MPIManyVector as
+          input, grab the vector array, create ManyVector with those same
+          subvectors, and then call ARKStep Evolve on that ManyVector.
+          [yet to begin]
+
+        - update "fast" rhs function to explicitly consider the MRI forcing
+          data as an MPIManyVector array, but to consider its own input/output
+          vectors as ManyVector.  Determine whether it needs to cast the
+          components of the MPIManyVector as a ManyVector for this to work, or
+          if it's call to the linear combination routine can work with a
+          mixture of ManyVector and MPIManyVector arguments.  [yet to begin]
 
    d. Convert chemical reaction network and inner DIRK solver to reside
       on GPU.  This will initially retain control structures on CPU,

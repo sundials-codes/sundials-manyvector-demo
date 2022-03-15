@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot;
+  long int N;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
@@ -314,26 +314,14 @@ int main(int argc, char* argv[]) {
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
-  Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
-    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (opts.localreduce == 0) {
-      wsubvecs[i]->ops->nvdotprodlocal = NULL;
-      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[i]->ops->nvminlocal = NULL;
-      wsubvecs[i]->ops->nvl1normlocal = NULL;
-      wsubvecs[i]->ops->nvinvtestlocal = NULL;
-      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[i]->ops->nvminquotientlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
-    }
+    wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
@@ -348,20 +336,9 @@ int main(int argc, char* argv[]) {
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
-    if (opts.localreduce == 0) {
-      wsubvecs[5]->ops->nvdotprodlocal = NULL;
-      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[5]->ops->nvminlocal = NULL;
-      wsubvecs[5]->ops->nvl1normlocal = NULL;
-      wsubvecs[5]->ops->nvinvtestlocal = NULL;
-      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[5]->ops->nvminquotientlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
-    }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
-  if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
+  if (check_flag((void *) w, "N_VMake_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
   atols = N_VClone(wsubvecs[5]);                            // absolute tolerance vector for fast stepper

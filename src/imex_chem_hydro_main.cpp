@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot;
+  long int N;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
@@ -309,26 +309,14 @@ int main(int argc, char* argv[]) {
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
-  Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
-    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (opts.localreduce == 0) {
-      wsubvecs[i]->ops->nvdotprodlocal = NULL;
-      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[i]->ops->nvminlocal = NULL;
-      wsubvecs[i]->ops->nvl1normlocal = NULL;
-      wsubvecs[i]->ops->nvinvtestlocal = NULL;
-      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[i]->ops->nvminquotientlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
-    }
+    wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
@@ -343,20 +331,9 @@ int main(int argc, char* argv[]) {
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
-    if (opts.localreduce == 0) {
-      wsubvecs[5]->ops->nvdotprodlocal = NULL;
-      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[5]->ops->nvminlocal = NULL;
-      wsubvecs[5]->ops->nvl1normlocal = NULL;
-      wsubvecs[5]->ops->nvinvtestlocal = NULL;
-      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[5]->ops->nvminquotientlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
-    }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
-  if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
+  if (check_flag((void *) w, "N_VMake_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
   atols = N_VClone(w);                           // absolute tolerance vector
@@ -403,7 +380,7 @@ int main(int argc, char* argv[]) {
   } else {
 #ifdef USEMAGMA
     // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, 
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
                                   udata.memhelper, NULL, udata.ctx);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
@@ -415,7 +392,7 @@ int main(int argc, char* argv[]) {
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, 
+    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem,
                                        cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
     BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
@@ -1188,7 +1165,7 @@ void cleanup(void **arkode_mem, EulerData& udata, SUNLinearSolver BLS,
 
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void* arkode_mem, 
+                                  void* arkode_mem,
                                   ARKODEParameters& opts, SUNContext ctx)
 {
   // Check compatibility with supplied N_Vector

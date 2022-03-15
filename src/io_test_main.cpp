@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem parameters
-  long int N, Ntot, i, j, k, l, v, idx;
+  long int N, i, j, k, l, v, idx;
   int Nsubvecs;
 
   // general problem variables
@@ -88,13 +88,12 @@ int main(int argc, char* argv[]) {
 
   // Initialize N_Vector data structures
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
-  Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot, udata.ctx);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
+    wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
@@ -106,8 +105,8 @@ int main(int argc, char* argv[]) {
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
-  if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
+  if (check_flag((void *) w, "N_VMake_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   wtest = N_VClone(w);
   if (check_flag((void *) wtest, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   werr = N_VClone(w);

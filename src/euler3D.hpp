@@ -25,7 +25,8 @@
 #include <arkode/arkode_mristep.h>
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_manyvector.h>
-#include <nvector/nvector_parallel.h>
+#include <nvector/nvector_serial.h>
+#include <sundials/sundials_memory.h>
 #ifdef USERAJA
 #include <nvector/nvector_raja.h>
 #if defined(RAJA_CUDA)
@@ -33,9 +34,6 @@
 #elif defined(RAJA_HIP)
 #include <sunmemory/sunmemory_hip.h>
 #endif
-#else
-#include <nvector/nvector_serial.h>
-#include <sundials/sundials_memory.h>
 #endif
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
@@ -165,11 +163,11 @@ public:
   // constructor (with default values)
   ARKODEParameters() :
     order(4), dense_order(-1), etable(ARKODE_ERK_NONE), itable(ARKODE_DIRK_NONE),
-    mtable(ARKODE_MRI_NONE), adapt_method(0), maxnef(0), mxhnil(0), mxsteps(5000), 
-    cflfac(0.0), safety(0.0), bias(0.0), growth(0.0), pq(0), k1(0.0), k2(0.0), 
-    k3(0.0), etamx1(0.0), etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), 
-    fixedstep(0), htrans(0.0), predictor(0), maxniters(0), nlconvcoef(0.0), 
-    rtol(1e-8), atol(1e-12), fusedkernels(1), localreduce(1), iterative(0), 
+    mtable(ARKODE_MRI_NONE), adapt_method(0), maxnef(0), mxhnil(0), mxsteps(5000),
+    cflfac(0.0), safety(0.0), bias(0.0), growth(0.0), pq(0), k1(0.0), k2(0.0),
+    k3(0.0), etamx1(0.0), etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0),
+    fixedstep(0), htrans(0.0), predictor(0), maxniters(0), nlconvcoef(0.0),
+    rtol(1e-8), atol(1e-12), fusedkernels(1), localreduce(1), iterative(0),
     maxliters(0)
   {};
 
