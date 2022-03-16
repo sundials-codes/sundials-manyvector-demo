@@ -49,24 +49,26 @@
         - convert "fast" integrator to use a ManyVector with the same
           structure as the overall solution (including hydrodynamic
           variables), since at present the hydrodynamic variables are not
-          being evolved at the fast time scale.  [yet to begin]
-
-        - create a custom SUNLinearSolver for the rank-local problem that
-          treats the Jacobian of the hydrodynamic variables as 0 (thus
-          $I-gamma J = I$), and farms out the chemical solver to Magma.
-          [yet to begin]
-
-        - update node-local fast integrator to accept the MPIManyVector as
-          input, grab the vector array, create ManyVector with those same
-          subvectors, and then call ARKStep Evolve on that ManyVector.
-          [yet to begin]
+          being evolved at the fast time scale.  [done]
 
         - update "fast" rhs function to explicitly consider the MRI forcing
           data as an MPIManyVector array, but to consider its own input/output
           vectors as ManyVector.  Determine whether it needs to cast the
           components of the MPIManyVector as a ManyVector for this to work, or
           if it's call to the linear combination routine can work with a
-          mixture of ManyVector and MPIManyVector arguments.  [yet to begin]
+          mixture of ManyVector and MPIManyVector arguments.  [done]
+
+        - update node-local fast integrator to accept the MPIManyVector as
+          input, grab the vector array, create ManyVector with those same
+          subvectors, and then call ARKStep Evolve on that ManyVector.
+          [done]
+
+        - create a custom SUNLinearSolver for the rank-local problem that
+          treats the Jacobian of the hydrodynamic variables as 0 (thus
+          $I-gamma J = I$), and farms out the chemical solver to Magma.
+          [done]
+
+      **The above code has been developed and runs to completion; need to verify accuracy against archived results**
 
    d. Convert chemical reaction network and inner DIRK solver to reside
       on GPU.  This will initially retain control structures on CPU,

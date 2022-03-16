@@ -118,16 +118,15 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
                                   void *arkode_mem, ARKODEParameters& opts,
                                   SUNContext ctx);
-SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
-int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
-                           N_Vector x, N_Vector b, realtype tol);
-int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data,
-                               ATimesFn ATimes);
+SUNLinearSolver_Type GetType_BDMPIMV(SUNLinearSolver S);
+int Initialize_BDMPIMV(SUNLinearSolver S);
+int Setup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
+int Solve_BDMPIMV(SUNLinearSolver S, SUNMatrix A, N_Vector x,
+                  N_Vector b, realtype tol);
+int SetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes);
 int ATimes_BDMPIMV(void* arkode_mem, N_Vector v, N_Vector z);
-sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolFree_BDMPIMV(SUNLinearSolver S);
+sunindextype LastFlag_BDMPIMV(SUNLinearSolver S);
+int Free_BDMPIMV(SUNLinearSolver S);
 
 
 // Main Program
@@ -1177,15 +1176,14 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   if (S == NULL) return(NULL);
 
   // Attach operations (use defaults whenever possible)
-  S->ops->gettype    = SUNLinSolGetType_BDMPIMV;
-  S->ops->initialize = SUNLinSolInitialize_BDMPIMV;
-  S->ops->setup      = SUNLinSolSetup_BDMPIMV;
-  S->ops->solve      = SUNLinSolSolve_BDMPIMV;
-  S->ops->lastflag   = SUNLinSolLastFlag_BDMPIMV;
-  if (opts.iterative) {
-     S->ops->setatimes  = SUNLinSolSetATimes_BDMPIMV;
-  }
-  S->ops->free       = SUNLinSolFree_BDMPIMV;
+  S->ops->gettype     = GetType_BDMPIMV;
+  S->ops->initialize  = Initialize_BDMPIMV;
+  S->ops->setup       = Setup_BDMPIMV;
+  S->ops->solve       = Solve_BDMPIMV;
+  S->ops->lastflag    = LastFlag_BDMPIMV;
+  if (opts.iterative)
+    S->ops->setatimes = SetATimes_BDMPIMV;
+  S->ops->free        = Free_BDMPIMV;
 
   // Create, fill and attach content
   BDMPIMVContent content = NULL;
@@ -1209,7 +1207,7 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   return(S);
 }
 
-SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S)
+SUNLinearSolver_Type GetType_BDMPIMV(SUNLinearSolver S)
 {
   if (BDMPIMV_WORK(S))
     return(SUNLINEARSOLVER_ITERATIVE);
@@ -1217,30 +1215,30 @@ SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S)
     return(SUNLINEARSOLVER_DIRECT);
 }
 
-int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S)
+int Initialize_BDMPIMV(SUNLinearSolver S)
 {
   // pass initialize call down to block linear solver
   BDMPIMV_LASTFLAG(S) = SUNLinSolInitialize(BDMPIMV_BLS(S));
   return(BDMPIMV_LASTFLAG(S));
 }
 
-int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A)
+int Setup_BDMPIMV(SUNLinearSolver S, SUNMatrix A)
 {
   // pass setup call down to block linear solver
   int retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
+  if (check_flag(&retval, "Profile::start (Setup_BDMPIMV)", 1))  return(retval);
   BDMPIMV_LASTFLAG(S) = SUNLinSolSetup(BDMPIMV_BLS(S), A);
   retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
+  if (check_flag(&retval, "Profile::stop (Setup_BDMPIMV)", 1))  return(retval);
   return(BDMPIMV_LASTFLAG(S));
 }
 
-int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
+int Solve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
                            N_Vector x, N_Vector b, realtype tol)
 {
   // start profiling timer
   int retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::start (Solve_BDMPIMV)", 1))  return(-1);
 
   // access desired subvector from MPIManyVector objects
   N_Vector xsub, bsub;
@@ -1260,28 +1258,28 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   int ierrs[2], globerrs[2];
   ierrs[0] = ierr; ierrs[1] = -ierr;
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::start (Solve_BDMPIMV)", 1))  return(-1);
   retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, BDMPIMV_UDATA(S)->comm);
-  if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
+  if (check_flag(&retval, "MPI_Alleduce (Solve_BDMPIMV)", 3)) return(-1);
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::stop (Solve_BDMPIMV)", 1))  return(-1);
 
   // check whether an unrecoverable failure occured
   BDMPIMV_LASTFLAG(S) = globerrs[0];
   if (globerrs[0] < 0) {
     retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-    if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+    if (check_flag(&retval, "Profile::stop (Solve_BDMPIMV)", 1))  return(-1);
     return(globerrs[0]);
   }
 
   // otherwise return the success and/or recoverable failure flag
   BDMPIMV_LASTFLAG(S) = -globerrs[1];
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::stop (Solve_BDMPIMV)", 1))  return(-1);
   return(-globerrs[1]);
 }
 
-int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
+int SetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
 {
   // Ignore the input ARKODE ATimes function and attach a custom ATimes function
   BDMPIMV_LASTFLAG(S) = SUNLinSolSetATimes(BDMPIMV_BLS(S), BDMPIMV_CONTENT(S),
@@ -1301,19 +1299,19 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   // Get the current time, gamma, and error weights
   realtype tcur;
   int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
-  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes_BDMPIMV)", 1)) return(-1);
 
   N_Vector ycur;
   retval = ARKStepGetCurrentState(arkode_mem, &ycur);
-  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes_BDMPIMV)", 1)) return(-1);
 
   realtype gamma;
   retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
-  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes_BDMPIMV)", 1)) return(-1);
 
   N_Vector work = content->work;
   retval = ARKStepGetErrWeights(arkode_mem, work);
-  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes_BDMPIMV)", 1)) return(-1);
 
   // Get ycur and weight vector for chem species
   N_Vector y = N_VGetSubvector_MPIManyVector(ycur, content->subvec);
@@ -1321,7 +1319,7 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
 
   // Start timer
   retval = udata->profile[PR_LATIMES].start();
-  if (check_flag(&retval, "Profile::start (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "Profile::start (Atimes_BDMPIMV)", 1)) return(-1);
 
   // Set perturbation to 1/||v||
   realtype sig = ONE / N_VWrmsNorm(v, w);
@@ -1337,7 +1335,7 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   retval = calculate_rhs_cvklu(tcur, w, z, udata->RxNetData);
 #endif
   content->nfeDQ++;
-  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
+  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes_BDMPIMV)", 1)) return(retval);
 
   // scale wchemdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, z, z);
@@ -1351,18 +1349,18 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
 
   // Stop timer and return
   retval = udata->profile[PR_LATIMES].stop();
-  if (check_flag(&retval, "Profile::stop (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "Profile::stop (Atimes_BDMPIMV)", 1)) return(-1);
 
   return(0);
 }
 
-sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
+sunindextype LastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
 }
 
 
-int SUNLinSolFree_BDMPIMV(SUNLinearSolver S)
+int Free_BDMPIMV(SUNLinearSolver S)
 {
   BDMPIMVContent content = BDMPIMV_CONTENT(S);
   if (content == NULL) return(0);
