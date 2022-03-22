@@ -8,7 +8,7 @@
  Implementation file for input/output utility routines.
  Input routines read problem and solver input parameters
  from specified files.  For solver parameters, this calls
- associated "set" routines to specify options to ARKode.
+ associated "set" routines to specify options to ARKODE.
  Output routines compute/output shared diagnostics information,
  or write solution data to disk.
  ---------------------------------------------------------------*/
@@ -39,7 +39,7 @@
 // reads parameters and broadcasts results to remaining
 // processes
 int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
-                ARKodeParameters& opts, int& restart)
+                ARKODEParameters& opts, int& restart)
 {
   int retval;
   double dbuff[28];
@@ -54,16 +54,16 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     cout << "Reading command-line options\n";
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 57;
+    const int nopt = 59;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
                 itf, igam, imun, ilun, itun, inx, iny, inz, ixlb,
                 ixrb, iylb, iyrb, izlb, izrb, icfl, inout, ishow,
-                iord, idord, ibt, iadmth, imnef, imhnil, imaxst,
-                isfty, ibias, igrow, ipq, ik1, ik2, ik3, iemx1,
-                iemaf, ih0, ihmin, ihmax, ifixed, ihtrans, irtol,
-                iatol, irest, ipred, imxnit, inlcoef, ifk, ilr,
-                iils, imxlit };
+                iord, idord, iebt, iibt, imbt, iadmth, imnef, imhnil, 
+                imaxst, isfty, ibias, igrow, ipq, ik1, ik2, ik3, 
+                iemx1, iemaf, ih0, ihmin, ihmax, ifixed, ihtrans, 
+                irtol, iatol, irest, ipred, imxnit, inlcoef, ifk, 
+                ilr, iils, imxlit };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -101,7 +101,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[ishow].flags = GOPT_ARGUMENT_FORBIDDEN;
     options[iord].long_name = "order";
     options[idord].long_name = "dense_order";
-    options[ibt].long_name = "btable";
+    options[iebt].long_name = "etable";
+    options[iibt].long_name = "itable";
+    options[imbt].long_name = "mtable";
     options[iadmth].long_name = "adapt_method";
     options[imnef].long_name = "maxnef";
     options[imhnil].long_name = "mxhnil";
@@ -172,7 +174,9 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "   --cfl=<float>          (" << udata.cfl << ")\n"
            << "   --order=<int>          (" << opts.order << ")\n"
            << "   --dense_order=<int>    (" << opts.dense_order << ")\n"
-           << "   --btable=<int>         (" << opts.btable << ")\n"
+           << "   --etable=<int>         (" << -1 << ")\n"
+           << "   --itable=<int>         (" << -1 << ")\n"
+           << "   --mtable=<int>         (" << -1 << ")\n"
            << "   --adapt_method=<int>   (" << opts.adapt_method << ")\n"
            << "   --maxnef=<int>         (" << opts.maxnef << ")\n"
            << "   --mxhnil=<int>         (" << opts.mxhnil << ")\n"
@@ -220,10 +224,11 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         return(-1);
       }
       cout << "Reading options from file: " << options[ifname].argument << std::endl;
+      int itest, tablenum;
       while (fgets(line, MAX_LINE_LENGTH, FID) != NULL) {
 
-        /* initialize return flag for line */
-        retval = 0;
+        /* initialize return flags for line */
+        retval = 0; itest = 0;
 
         /* read parameters */
         retval += sscanf(line,"xl = %lf", &udata.xl);
@@ -252,7 +257,21 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"showstats = %i", &udata.showstats);
         retval += sscanf(line,"order = %i", &opts.order);
         retval += sscanf(line,"dense_order = %i", &opts.dense_order);
-        retval += sscanf(line,"btable = %i",  &opts.btable);
+        itest = sscanf(line,"etable = %i",  &tablenum);
+        if (itest != 0) {
+          opts.etable = (ARKODE_ERKTableID) tablenum;
+          retval += itest;
+        }
+        itest = sscanf(line,"itable = %i",  &tablenum);
+        if (itest != 0) {
+          opts.itable = (ARKODE_DIRKTableID) tablenum;
+          retval += itest;
+        }
+        itest = sscanf(line,"mtable = %i",  &tablenum);
+        if (itest != 0) {
+          opts.mtable = (ARKODE_MRITableID) tablenum;
+          retval += itest;
+        }
         retval += sscanf(line,"adapt_method = %i", &opts.adapt_method);
         retval += sscanf(line,"maxnef = %i", &opts.maxnef);
         retval += sscanf(line,"mxhnil = %i", &opts.mxhnil);
@@ -319,7 +338,12 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[ishow].count)   udata.showstats   = 1;
     if (options[iord].count)    opts.order        = atoi(options[iord].argument);
     if (options[idord].count)   opts.dense_order  = atoi(options[idord].argument);
-    if (options[ibt].count)     opts.btable       = atoi(options[ibt].argument);
+    if (options[iebt].count)    
+      opts.etable = (ARKODE_ERKTableID)  atoi(options[iebt].argument);
+    if (options[iibt].count)
+      opts.itable = (ARKODE_DIRKTableID) atoi(options[iibt].argument);
+    if (options[imbt].count)
+      opts.mtable = (ARKODE_MRITableID)  atoi(options[imbt].argument);
     if (options[iadmth].count)  opts.adapt_method = atoi(options[iadmth].argument);
     if (options[imnef].count)   opts.maxnef       = atoi(options[imnef].argument);
     if (options[imhnil].count)  opts.mxhnil       = atoi(options[imhnil].argument);
@@ -363,20 +387,22 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     ibuff[10] = (long int) udata.showstats;
     ibuff[11] = (long int) opts.order;
     ibuff[12] = (long int) opts.dense_order;
-    ibuff[13] = (long int) opts.btable;
-    ibuff[14] = (long int) opts.adapt_method;
-    ibuff[15] = (long int) opts.maxnef;
-    ibuff[16] = (long int) opts.mxhnil;
-    ibuff[17] = (long int) opts.mxsteps;
-    ibuff[18] = (long int) opts.pq;
-    ibuff[19] = (long int) restart;
-    ibuff[20] = (long int) opts.predictor;
-    ibuff[21] = (long int) opts.maxniters;
-    ibuff[22] = (long int) opts.fixedstep;
-    ibuff[23] = (long int) opts.fusedkernels;
-    ibuff[24] = (long int) opts.localreduce;
-    ibuff[25] = (long int) opts.iterative;
-    ibuff[26] = (long int) opts.maxliters;
+    ibuff[13] = (long int) opts.etable;
+    ibuff[14] = (long int) opts.itable;
+    ibuff[15] = (long int) opts.mtable;
+    ibuff[16] = (long int) opts.adapt_method;
+    ibuff[17] = (long int) opts.maxnef;
+    ibuff[18] = (long int) opts.mxhnil;
+    ibuff[19] = (long int) opts.mxsteps;
+    ibuff[20] = (long int) opts.pq;
+    ibuff[21] = (long int) restart;
+    ibuff[22] = (long int) opts.predictor;
+    ibuff[23] = (long int) opts.maxniters;
+    ibuff[24] = (long int) opts.fixedstep;
+    ibuff[25] = (long int) opts.fusedkernels;
+    ibuff[26] = (long int) opts.localreduce;
+    ibuff[27] = (long int) opts.iterative;
+    ibuff[28] = (long int) opts.maxliters;
 
     dbuff[0]  = (double) udata.xl;
     dbuff[1]  = (double) udata.xr;
@@ -412,7 +438,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 27, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 29, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
@@ -429,20 +455,22 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   udata.showstats = ibuff[10];
   opts.order = ibuff[11];
   opts.dense_order = ibuff[12];
-  opts.btable = ibuff[13];
-  opts.adapt_method = ibuff[14];
-  opts.maxnef = ibuff[15];
-  opts.mxhnil = ibuff[16];
-  opts.mxsteps = ibuff[17];
-  opts.pq = ibuff[18];
-  restart = ibuff[19];
-  opts.predictor = ibuff[20];
-  opts.maxniters = ibuff[21];
-  opts.fixedstep = ibuff[22];
-  opts.fusedkernels = ibuff[23];
-  opts.localreduce = ibuff[24];
-  opts.iterative = ibuff[25];
-  opts.maxliters = ibuff[26];
+  opts.etable = (ARKODE_ERKTableID)  ibuff[13];
+  opts.itable = (ARKODE_DIRKTableID) ibuff[14];
+  opts.mtable = (ARKODE_MRITableID)  ibuff[15];
+  opts.adapt_method = ibuff[16];
+  opts.maxnef = ibuff[17];
+  opts.mxhnil = ibuff[18];
+  opts.mxsteps = ibuff[19];
+  opts.pq = ibuff[20];
+  restart = ibuff[21];
+  opts.predictor = ibuff[22];
+  opts.maxniters = ibuff[23];
+  opts.fixedstep = ibuff[24];
+  opts.fusedkernels = ibuff[25];
+  opts.localreduce = ibuff[26];
+  opts.iterative = ibuff[27];
+  opts.maxliters = ibuff[28];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -626,7 +654,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 //    h0: current step size, so that simulation resumes normally
 //    htrans: 0.0 since initial transients are already bypassed
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
-                     const EulerData& udata, const ARKodeParameters& opts)
+                     const EulerData& udata, const ARKODEParameters& opts)
 {
   // root process creates restart file
   if (udata.myid == 0) {
@@ -663,7 +691,9 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "showstats = %i\n", udata.showstats);
     fprintf(UFID, "order = %i\n", opts.order);
     fprintf(UFID, "dense_order = %i\n", opts.dense_order);
-    fprintf(UFID, "btable = %i\n",  opts.btable);
+    fprintf(UFID, "etable = %i\n",  (int) opts.etable);
+    fprintf(UFID, "itable = %i\n",  (int) opts.itable);
+    fprintf(UFID, "mtable = %i\n",  (int) opts.mtable);
     fprintf(UFID, "adapt_method = %i\n", opts.adapt_method);
     fprintf(UFID, "maxnef = %i\n", opts.maxnef);
     fprintf(UFID, "mxhnil = %i\n", opts.mxhnil);
@@ -704,7 +734,7 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
 // example code available at:
 // http://www.astro.sunysb.edu/mzingale/io_tutorial/HDF5_parallel/hdf5_parallel.c
 int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
-                    const int& iout, const EulerData& udata, const ARKodeParameters& opts)
+                    const int& iout, const EulerData& udata, const ARKODEParameters& opts)
 {
 #ifdef USEHDF5
 

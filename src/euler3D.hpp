@@ -6,7 +6,7 @@
  For details, see the LICENSE file.
  ----------------------------------------------------------------
  Header file for shared main routine, utility routines,
- ARKodeParameters and EulerData class.
+ ARKODEParameters and EulerData class.
  ---------------------------------------------------------------*/
 
 // only include this file once (if included multiple times)
@@ -20,9 +20,13 @@
 #include <string>
 #include <cstdlib>
 #include <cmath>
+#include <arkode/arkode_butcher_erk.h>
+#include <arkode/arkode_butcher_dirk.h>
+#include <arkode/arkode_mristep.h>
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_manyvector.h>
-#include <nvector/nvector_parallel.h>
+#include <nvector/nvector_serial.h>
+#include <sundials/sundials_memory.h>
 #ifdef USERAJA
 #include <nvector/nvector_raja.h>
 #if defined(RAJA_CUDA)
@@ -30,9 +34,6 @@
 #elif defined(RAJA_HIP)
 #include <sunmemory/sunmemory_hip.h>
 #endif
-#else
-#include <nvector/nvector_serial.h>
-#include <sundials/sundials_memory.h>
 #endif
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
@@ -121,13 +122,15 @@ using namespace std;
 int check_flag(const void *flagvalue, const string funcname, const int opt);
 
 
-// ARKode solver parameters class
-class ARKodeParameters {
+// ARKODE solver parameters class
+class ARKODEParameters {
 
 public:
   int order;           // temporal order of accuracy
   int dense_order;     // dense output order of accuracy (<0 => no interpolation)
-  int btable;          // specific built-in Butcher table to use (<0 => default)
+  ARKODE_ERKTableID  etable;  // specific built-in ERK Butcher table to use
+  ARKODE_DIRKTableID itable;  // specific built-in DIRK Butcher table to use
+  ARKODE_MRITableID  mtable;  // specific MRI method to use (if applicable)
   int adapt_method;    // temporal adaptivity algorithm to use
   int maxnef;          // max num temporal error failures (0 => default)
   int mxhnil;          // max num tn+h=tn warnings (0 => default)
@@ -158,16 +161,17 @@ public:
   int maxliters;       // max number of linear iterations (0 => default)
 
   // constructor (with default values)
-  ARKodeParameters() :
-    order(4), dense_order(-1), btable(-1), adapt_method(0), maxnef(0),
-    mxhnil(0), mxsteps(5000), cflfac(0.0), safety(0.0), bias(0.0),
-    growth(0.0), pq(0), k1(0.0), k2(0.0), k3(0.0), etamx1(0.0),
-    etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0), fixedstep(0), htrans(0.0),
-    predictor(0), maxniters(0), nlconvcoef(0.0), rtol(1e-8), atol(1e-12),
-    fusedkernels(1), localreduce(1), iterative(0), maxliters(0)
+  ARKODEParameters() :
+    order(4), dense_order(-1), etable(ARKODE_ERK_NONE), itable(ARKODE_DIRK_NONE),
+    mtable(ARKODE_MRI_NONE), adapt_method(0), maxnef(0), mxhnil(0), mxsteps(5000),
+    cflfac(0.0), safety(0.0), bias(0.0), growth(0.0), pq(0), k1(0.0), k2(0.0),
+    k3(0.0), etamx1(0.0), etamxf(0.0), h0(0.0), hmin(0.0), hmax(0.0),
+    fixedstep(0), htrans(0.0), predictor(0), maxniters(0), nlconvcoef(0.0),
+    rtol(1e-8), atol(1e-12), fusedkernels(1), localreduce(1), iterative(0),
+    maxliters(0)
   {};
 
-};   // end ARKodeParameters;
+};   // end ARKODEParameters;
 
 
 
@@ -177,6 +181,7 @@ class EulerData {
 public:
   ///// reaction network data structure /////
   void *RxNetData;
+  SUNContext ctx;
   SUNMemoryHelper memhelper;
 
   ///// code profilers /////
@@ -288,7 +293,7 @@ public:
     // reusable arrays for WENO flux calculations
     xflux(NULL), yflux(NULL), zflux(NULL),
     // MPI-specific data
-    comm(MPI_COMM_WORLD), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
+    comm(MPI_COMM_WORLD), ctx(NULL), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
     ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1),
     Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
     Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
@@ -296,8 +301,9 @@ public:
     fchemcur(NULL)
   {
     nchem = (NVAR) - 5;
-    memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip();,
-                             SUNMemoryHelper_Cuda(); )
+    SUNContext_Create((void*) &comm, &ctx);
+    memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip(ctx);,
+                             SUNMemoryHelper_Cuda(ctx); )
   };
 
   // destructor
@@ -318,8 +324,9 @@ public:
     if (yflux != NULL)  delete[] yflux;
     if (zflux != NULL)  delete[] zflux;
     if (RxNetData != NULL)  free(RxNetData);
-    if (fchemcur != NULL) N_VDestroy(fchemcur);
-    if (memhelper != NULL) SUNMemoryHelper_Destroy(memhelper);
+    if (fchemcur != NULL)   N_VDestroy(fchemcur);
+    if (memhelper != NULL)  SUNMemoryHelper_Destroy(memhelper);
+    if (ctx != NULL)        SUNContext_Free(&ctx);
   };
 
   // Update derived unit scaling factors from base factors
@@ -1363,7 +1370,7 @@ public:
 
 //    Load inputs from file
 int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
-                ARKodeParameters& opts, int& restart);
+                ARKODEParameters& opts, int& restart);
 
 //    Initial conditions
 int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata);
@@ -1387,11 +1394,11 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
 
 //    Output current parameters
 int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout,
-                     const EulerData& udata, const ARKodeParameters& opts);
+                     const EulerData& udata, const ARKODEParameters& opts);
 
 //    Output current solution
 int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur,
-                    const int& iout, const EulerData& udata, const ARKodeParameters& opts);
+                    const int& iout, const EulerData& udata, const ARKODEParameters& opts);
 
 //    WENO Div(flux(u)) function
 void face_flux(realtype (&w1d)[6][NVAR], const int& idir,

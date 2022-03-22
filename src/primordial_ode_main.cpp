@@ -9,7 +9,7 @@
  this uses the EulerData structure, we do not actually create the
  fluid fields, and all spatial domain and MPI information is
  ignored.  We only use this infrastructure to enable simplified
- input of the time interval and ARKode solver options, and to
+ input of the time interval and ARKODE solver options, and to
  explore 'equilbrium' configurations for a clumpy density field
  with non-uniform temperature field.
  ---------------------------------------------------------------*/
@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
   SUNMatrix A = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -212,14 +212,14 @@ int main(int argc, char* argv[]) {
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
 #ifdef USERAJA
-  w = N_VNewManaged_Raja(N);
+  w = N_VNewManaged_Raja(N, udata.ctx);
   if (check_flag((void *) w, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
-  atols = N_VNewManaged_Raja(N);
+  atols = N_VNewManaged_Raja(N, udata.ctx);
   if (check_flag((void *) atols, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-  w = N_VNew_Serial(N);
+  w = N_VNew_Serial(N, udata.ctx);
   if (check_flag((void *) w, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
-  atols = N_VNew_Serial(N);
+  atols = N_VNew_Serial(N, udata.ctx);
   if (check_flag((void *) atols, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 
@@ -496,36 +496,38 @@ int main(int argc, char* argv[]) {
 
   // initialize the integrator memory
 #ifdef USE_CVODE
-  arkode_mem = CVodeCreate(CV_BDF);
+  arkode_mem = CVodeCreate(CV_BDF, udata.ctx);
   if (check_flag((void*) arkode_mem, "CVodeCreate (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = CVodeInit(arkode_mem, frhs, udata.t0, w);
   if (check_flag(&retval, "CVodeInit (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-  arkode_mem = ARKStepCreate(NULL, frhs, udata.t0, w);
+  arkode_mem = ARKStepCreate(NULL, frhs, udata.t0, w, udata.ctx);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 
   // create matrix and linear solver modules
   if (opts.iterative) {
-    LS = SUNLinSol_SPGMR(w, PREC_NONE, opts.maxliters);
+    LS = SUNLinSol_SPGMR(w, PREC_NONE, opts.maxliters, udata.ctx);
     if(check_flag((void*) LS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
 #ifdef USEMAGMA
   // Create SUNMatrix for use in linear solves
-  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
+  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, 
+                                udata.memhelper, NULL, udata.ctx);
   if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
   // Create the SUNLinearSolver object
-  LS = SUNLinSol_MagmaDense(w, A);
+  LS = SUNLinSol_MagmaDense(w, A, udata.ctx);
   if(check_flag((void *)LS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
 #if defined RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, 
+                                       cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle);
+    LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle, udata.ctx);
     if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
     // Set the sparsity pattern to be fixed
     retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
@@ -534,14 +536,14 @@ int main(int argc, char* argv[]) {
     retval = initialize_sparse_jacobian_cvklu(A, &udata);
     if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #elif defined CVKLU
-    A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT);
+    A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT, udata.ctx);
     if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    LS = SUNLinSol_KLU(w, A);
+    LS = SUNLinSol_KLU(w, A, udata.ctx);
     if (check_flag((void*) LS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-    A  = SUNDenseMatrix(N, N);
+    A  = SUNDenseMatrix(N, N, udata.ctx);
     if (check_flag((void*) A, "SUNDenseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    LS = SUNLinSol_Dense(w, A);
+    LS = SUNLinSol_Dense(w, A, udata.ctx);
     if (check_flag((void*) LS, "SUNLinSol_Dense (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 #endif
@@ -615,12 +617,12 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSetDiagnostics (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  //    set RK order, or specify individual Butcher table -- "order" overrides "btable"
+  //    set RK order, or specify individual Butcher table -- "order" overrides "itable"
   if (opts.order != 0) {
     retval = ARKStepSetOrder(arkode_mem, opts.order);
     if (check_flag(&retval, "ARKStepSetOrder (main)", 1)) MPI_Abort(udata.comm, 1);
-  } else if (opts.btable != -1) {
-    retval = ARKStepSetTableNum(arkode_mem, opts.btable, -1);
+  } else if (opts.itable != ARKODE_DIRK_NONE) {
+    retval = ARKStepSetTableNum(arkode_mem, opts.itable, ARKODE_ERK_NONE);
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 

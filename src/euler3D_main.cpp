@@ -9,7 +9,7 @@
 
  This evolves the 3D compressible, inviscid Euler equations.
 
- The problem is evolved using ARKode's ARKStep time-stepping
+ The problem is evolved using ARKODE's ARKStep time-stepping
  module for a temporally adaptive explicit Runge--Kutta solve.
  Nearly all adaptivity options are controllable via user inputs.
  If the input file specifies fixedstep=1, then temporal adaptivity
@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot, i;
+  long int N, i;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
   N_Vector *wsubvecs;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 
   //--- General Initialization ---//
 
@@ -147,54 +147,31 @@ int main(int argc, char* argv[]) {
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
-  Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
-    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (opts.localreduce == 0) {
-      wsubvecs[i]->ops->nvdotprodlocal = NULL;
-      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[i]->ops->nvminlocal = NULL;
-      wsubvecs[i]->ops->nvl1normlocal = NULL;
-      wsubvecs[i]->ops->nvinvtestlocal = NULL;
-      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[i]->ops->nvminquotientlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
-    }
+    wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
-    if (opts.localreduce == 0) {
-      wsubvecs[5]->ops->nvdotprodlocal = NULL;
-      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[5]->ops->nvminlocal = NULL;
-      wsubvecs[5]->ops->nvl1normlocal = NULL;
-      wsubvecs[5]->ops->nvinvtestlocal = NULL;
-      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[5]->ops->nvminquotientlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
-    }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
-  if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
+  if (check_flag((void *) w, "N_VMake_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -215,7 +192,7 @@ int main(int argc, char* argv[]) {
   //--- create the ARKStep integrator and set options ---//
 
   // initialize the integrator
-  arkode_mem = ARKStepCreate(fEuler, NULL, udata.t0, w);
+  arkode_mem = ARKStepCreate(fEuler, NULL, udata.t0, w, udata.ctx);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -228,12 +205,12 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "ARKStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // set RK order, or specify individual Butcher table -- "order" overrides "btable"
+  // set RK order, or specify individual Butcher table -- "order" overrides "etable"
   if (opts.order != 0) {
     retval = ARKStepSetOrder(arkode_mem, opts.order);
     if (check_flag(&retval, "ARKStepSetOrder (main)", 1)) MPI_Abort(udata.comm, 1);
-  } else if (opts.btable != -1) {
-    retval = ARKStepSetTableNum(arkode_mem, -1, opts.btable);
+  } else if (opts.etable != ARKODE_ERK_NONE) {
+    retval = ARKStepSetTableNum(arkode_mem, ARKODE_DIRK_NONE, opts.etable);
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 

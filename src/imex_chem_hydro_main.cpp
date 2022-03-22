@@ -13,7 +13,7 @@
  Python library that creates ODE RHS and Jacobian routines for
  arbitrarily-complex chemistry networks.
 
- The problem is evolved using ARKode's ARKStep time-stepping
+ The problem is evolved using ARKODE's ARKStep time-stepping
  module, and is currently hard-coded to use the 4th-order
  ARK437L2SA_DIRK_7_3_4 + ARK437L2SA_ERK_7_3_4 Butcher table pair
  for a temporally adaptive additive Runge--Kutta solve.  Aside
@@ -116,17 +116,17 @@ typedef struct _BDMPIMVContent {
 #define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void *arkode_mem, ARKodeParameters& opts);
-SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
-int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
-                           N_Vector x, N_Vector b, realtype tol);
-int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data,
-                               ATimesFn ATimes);
+                                  void *arkode_mem, ARKODEParameters& opts,
+                                  SUNContext ctx);
+SUNLinearSolver_Type GetType_BDMPIMV(SUNLinearSolver S);
+int Initialize_BDMPIMV(SUNLinearSolver S);
+int Setup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
+int Solve_BDMPIMV(SUNLinearSolver S, SUNMatrix A, N_Vector x,
+                  N_Vector b, realtype tol);
+int SetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes);
 int ATimes_BDMPIMV(void* arkode_mem, N_Vector v, N_Vector z);
-sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolFree_BDMPIMV(SUNLinearSolver S);
+sunindextype LastFlag_BDMPIMV(SUNLinearSolver S);
+int Free_BDMPIMV(SUNLinearSolver S);
 
 
 // Main Program
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot;
+  long int N;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
   SUNLinearSolver BLS = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -305,59 +305,34 @@ int main(int argc, char* argv[]) {
   if (udata.showstats && outproc) {
     DFID=fopen("diags_chem_hydro.txt","w");
   }
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
-  Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
-    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (opts.localreduce == 0) {
-      wsubvecs[i]->ops->nvdotprodlocal = NULL;
-      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[i]->ops->nvminlocal = NULL;
-      wsubvecs[i]->ops->nvl1normlocal = NULL;
-      wsubvecs[i]->ops->nvinvtestlocal = NULL;
-      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[i]->ops->nvminquotientlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
-    }
+    wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
-    if (opts.localreduce == 0) {
-      wsubvecs[5]->ops->nvdotprodlocal = NULL;
-      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[5]->ops->nvminlocal = NULL;
-      wsubvecs[5]->ops->nvl1normlocal = NULL;
-      wsubvecs[5]->ops->nvinvtestlocal = NULL;
-      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[5]->ops->nvminquotientlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
-    }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
-  if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
+  if (check_flag((void *) w, "N_VMake_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
   atols = N_VClone(w);                           // absolute tolerance vector
@@ -390,7 +365,7 @@ int main(int argc, char* argv[]) {
   //--- create the ARKStep integrator and set options ---//
 
   // initialize the integrator
-  arkode_mem = ARKStepCreate(fexpl, fimpl, udata.t0, w);
+  arkode_mem = ARKStepCreate(fexpl, fimpl, udata.t0, w, udata.ctx);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -399,25 +374,27 @@ int main(int argc, char* argv[]) {
 
   // create the fast integrator local linear solver
   if (opts.iterative) {
-    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters);
+    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
 #ifdef USEMAGMA
     // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
+                                  udata.memhelper, NULL, udata.ctx);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
     // Create the SUNLinearSolver object
-    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A);
+    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
     if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem,
+                                       cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
+    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
     // Set the sparsity pattern to be fixed
     retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
@@ -426,9 +403,9 @@ int main(int argc, char* argv[]) {
     retval = initialize_sparse_jacobian_cvklu(A, &udata);
     if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
+    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
     if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_KLU(wsubvecs[5], A);
+    BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
     if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 #endif
@@ -436,7 +413,7 @@ int main(int argc, char* argv[]) {
 
   // create linear solver wrapper and attach the matrix and linear solver to the
   // integrator and set the Jacobian for direct linear solvers
-  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, arkode_mem, opts);
+  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, arkode_mem, opts, udata.ctx);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -456,7 +433,7 @@ int main(int argc, char* argv[]) {
   }
 
   // set ARK Butcher tables
-  retval = ARKStepSetTableNum(arkode_mem, ARK437L2SA_DIRK_7_3_4, ARK437L2SA_ERK_7_3_4);
+  retval = ARKStepSetTableNum(arkode_mem, opts.itable, opts.etable);
   if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set dense output order
@@ -962,13 +939,13 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   fwchem = N_VGetSubvector_MPIManyVector(fw, 5);
   if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp1chem = NULL;
-  tmp1chem = N_VGetSubvector_MPIManyVector(fw, 5);
+  tmp1chem = N_VGetSubvector_MPIManyVector(tmp1, 5);
   if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp2chem = NULL;
-  tmp2chem = N_VGetSubvector_MPIManyVector(fw, 5);
+  tmp2chem = N_VGetSubvector_MPIManyVector(tmp2, 5);
   if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
   N_Vector tmp3chem = NULL;
-  tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
+  tmp3chem = N_VGetSubvector_MPIManyVector(tmp3, 5);
   if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jimpl)", 0)) return(-1);
 
   // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
@@ -1188,26 +1165,25 @@ void cleanup(void **arkode_mem, EulerData& udata, SUNLinearSolver BLS,
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
                                   void* arkode_mem,
-                                  ARKodeParameters& opts)
+                                  ARKODEParameters& opts, SUNContext ctx)
 {
   // Check compatibility with supplied N_Vector
   if (N_VGetVectorID(x) != SUNDIALS_NVEC_MPIMANYVECTOR) return(NULL);
   if (subvec >= N_VGetNumSubvectors_MPIManyVector(x)) return(NULL);
 
   // Create an empty linear solver
-  SUNLinearSolver S = SUNLinSolNewEmpty();
+  SUNLinearSolver S = SUNLinSolNewEmpty(ctx);
   if (S == NULL) return(NULL);
 
   // Attach operations (use defaults whenever possible)
-  S->ops->gettype    = SUNLinSolGetType_BDMPIMV;
-  S->ops->initialize = SUNLinSolInitialize_BDMPIMV;
-  S->ops->setup      = SUNLinSolSetup_BDMPIMV;
-  S->ops->solve      = SUNLinSolSolve_BDMPIMV;
-  S->ops->lastflag   = SUNLinSolLastFlag_BDMPIMV;
-  if (opts.iterative) {
-     S->ops->setatimes  = SUNLinSolSetATimes_BDMPIMV;
-  }
-  S->ops->free       = SUNLinSolFree_BDMPIMV;
+  S->ops->gettype     = GetType_BDMPIMV;
+  S->ops->initialize  = Initialize_BDMPIMV;
+  S->ops->setup       = Setup_BDMPIMV;
+  S->ops->solve       = Solve_BDMPIMV;
+  S->ops->lastflag    = LastFlag_BDMPIMV;
+  if (opts.iterative)
+    S->ops->setatimes = SetATimes_BDMPIMV;
+  S->ops->free        = Free_BDMPIMV;
 
   // Create, fill and attach content
   BDMPIMVContent content = NULL;
@@ -1231,7 +1207,7 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   return(S);
 }
 
-SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S)
+SUNLinearSolver_Type GetType_BDMPIMV(SUNLinearSolver S)
 {
   if (BDMPIMV_WORK(S))
     return(SUNLINEARSOLVER_ITERATIVE);
@@ -1239,30 +1215,30 @@ SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S)
     return(SUNLINEARSOLVER_DIRECT);
 }
 
-int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S)
+int Initialize_BDMPIMV(SUNLinearSolver S)
 {
   // pass initialize call down to block linear solver
   BDMPIMV_LASTFLAG(S) = SUNLinSolInitialize(BDMPIMV_BLS(S));
   return(BDMPIMV_LASTFLAG(S));
 }
 
-int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A)
+int Setup_BDMPIMV(SUNLinearSolver S, SUNMatrix A)
 {
   // pass setup call down to block linear solver
   int retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
+  if (check_flag(&retval, "Profile::start (Setup_BDMPIMV)", 1))  return(retval);
   BDMPIMV_LASTFLAG(S) = SUNLinSolSetup(BDMPIMV_BLS(S), A);
   retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
+  if (check_flag(&retval, "Profile::stop (Setup_BDMPIMV)", 1))  return(retval);
   return(BDMPIMV_LASTFLAG(S));
 }
 
-int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
+int Solve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
                            N_Vector x, N_Vector b, realtype tol)
 {
   // start profiling timer
   int retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::start (Solve_BDMPIMV)", 1))  return(-1);
 
   // access desired subvector from MPIManyVector objects
   N_Vector xsub, bsub;
@@ -1282,28 +1258,28 @@ int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   int ierrs[2], globerrs[2];
   ierrs[0] = ierr; ierrs[1] = -ierr;
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::start (Solve_BDMPIMV)", 1))  return(-1);
   retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, BDMPIMV_UDATA(S)->comm);
-  if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
+  if (check_flag(&retval, "MPI_Alleduce (Solve_BDMPIMV)", 3)) return(-1);
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::stop (Solve_BDMPIMV)", 1))  return(-1);
 
   // check whether an unrecoverable failure occured
   BDMPIMV_LASTFLAG(S) = globerrs[0];
   if (globerrs[0] < 0) {
     retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-    if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+    if (check_flag(&retval, "Profile::stop (Solve_BDMPIMV)", 1))  return(-1);
     return(globerrs[0]);
   }
 
   // otherwise return the success and/or recoverable failure flag
   BDMPIMV_LASTFLAG(S) = -globerrs[1];
   retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  if (check_flag(&retval, "Profile::stop (Solve_BDMPIMV)", 1))  return(-1);
   return(-globerrs[1]);
 }
 
-int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
+int SetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
 {
   // Ignore the input ARKODE ATimes function and attach a custom ATimes function
   BDMPIMV_LASTFLAG(S) = SUNLinSolSetATimes(BDMPIMV_BLS(S), BDMPIMV_CONTENT(S),
@@ -1323,19 +1299,19 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   // Get the current time, gamma, and error weights
   realtype tcur;
   int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
-  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes_BDMPIMV)", 1)) return(-1);
 
   N_Vector ycur;
   retval = ARKStepGetCurrentState(arkode_mem, &ycur);
-  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes_BDMPIMV)", 1)) return(-1);
 
   realtype gamma;
   retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
-  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes_BDMPIMV)", 1)) return(-1);
 
   N_Vector work = content->work;
   retval = ARKStepGetErrWeights(arkode_mem, work);
-  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes_BDMPIMV)", 1)) return(-1);
 
   // Get ycur and weight vector for chem species
   N_Vector y = N_VGetSubvector_MPIManyVector(ycur, content->subvec);
@@ -1343,7 +1319,7 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
 
   // Start timer
   retval = udata->profile[PR_LATIMES].start();
-  if (check_flag(&retval, "Profile::start (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "Profile::start (Atimes_BDMPIMV)", 1)) return(-1);
 
   // Set perturbation to 1/||v||
   realtype sig = ONE / N_VWrmsNorm(v, w);
@@ -1359,7 +1335,7 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   retval = calculate_rhs_cvklu(tcur, w, z, udata->RxNetData);
 #endif
   content->nfeDQ++;
-  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
+  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes_BDMPIMV)", 1)) return(retval);
 
   // scale wchemdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, z, z);
@@ -1373,18 +1349,18 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
 
   // Stop timer and return
   retval = udata->profile[PR_LATIMES].stop();
-  if (check_flag(&retval, "Profile::stop (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "Profile::stop (Atimes_BDMPIMV)", 1)) return(-1);
 
   return(0);
 }
 
-sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
+sunindextype LastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
 }
 
 
-int SUNLinSolFree_BDMPIMV(SUNLinearSolver S)
+int Free_BDMPIMV(SUNLinearSolver S)
 {
   BDMPIMVContent content = BDMPIMV_CONTENT(S);
   if (content == NULL) return(0);

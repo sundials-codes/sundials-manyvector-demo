@@ -13,13 +13,13 @@
  creates ODE RHS and Jacobian routines for arbitrarily-complex
  chemistry networks.
 
- The slow time scale is evolved explicitly using ARKode's MRIStep
+ The slow time scale is evolved explicitly using ARKODE's MRIStep
  time-stepping module, with it's default 3rd-order integration
  method, and a fixed time step given by either the user-input
  "initial" time step value, h0, or calculated to equal the time
  interval between solution outputs.
 
- The fast time scale is evolved implicitly using ARKode's ARKStep
+ The fast time scale is evolved implicitly using ARKODE's ARKStep
  time-stepping module, using the DIRK Butcher tableau that is
  specified by the user.  Here, time adaptivity is employed, with
  nearly all adaptivity options controllable via user inputs.
@@ -94,16 +94,37 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void* user_data);
 static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                  void* user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
 static int fslow(realtype t, N_Vector w, N_Vector wdot, void* user_data);
-// static int PostprocessFast(realtype t, N_Vector y, void* user_data);
-
-// utility routines
-void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, EulerData& udata,
-             SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A,
-             N_Vector w, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
 
 
-// custom Block-Diagonal MPIManyVector SUNLinearSolver module
-typedef struct _BDMPIMVContent {
+// custom MPI rank-local fast integrator
+struct RankLocalStepperContent {
+   void* solver_mem = NULL;              // local integrator memory structure
+   MRIStepInnerStepper stepper = NULL;   // inner stepper memory structure
+   EulerData* udata = NULL;              // user data pointer
+   bool disable_forcing = false;         // flag to disable forcing in RHS
+};
+static int RankLocalStepper_Evolve(MRIStepInnerStepper stepper, realtype t0,
+                                   realtype tout, N_Vector y);
+static int RankLocalStepper_FullRhs(MRIStepInnerStepper stepper, realtype t,
+                                   N_Vector y, N_Vector f, int mode);
+static int RankLocalStepper_Reset(MRIStepInnerStepper stepper, realtype tR,
+                                   N_Vector yR);
+static int RankLocalStepper_GetStats(void* inner_arkode_mem, EulerData& udata,
+                                     SUNLinearSolver& ranklocalLS,
+                                     long int& nstf_max, long int& nstf_min,
+                                     long int& nstf_a_max, long int& nstf_a_min,
+                                     long int& nfi_max, long int& nfi_min,
+                                     long int& netf_max, long int& netf_min,
+                                     long int& nni_max, long int& nni_min,
+                                     long int& ncf_max, long int& ncf_min,
+                                     long int& nls_max, long int& nls_min,
+                                     long int& nje_max, long int& nje_min,
+                                     long int& nli_max, long int& nli_min,
+                                     long int& nlcf_max, long int& nlcf_min,
+                                     long int& nlfs_max, long int& nlfs_min);
+
+// custom rank-local chemistry SUNLinearSolver module
+typedef struct _RankLocalLSContent {
   SUNLinearSolver blockLS;
   sunindextype    subvec;
   sunindextype    lastflag;
@@ -111,27 +132,35 @@ typedef struct _BDMPIMVContent {
   void*           arkode_mem;
   N_Vector        work;
   long int        nfeDQ;
-} *BDMPIMVContent;
-#define BDMPIMV_CONTENT(S)  ( (BDMPIMVContent)(S->content) )
-#define BDMPIMV_BLS(S)      ( BDMPIMV_CONTENT(S)->blockLS )
-#define BDMPIMV_SUBVEC(S)   ( BDMPIMV_CONTENT(S)->subvec )
-#define BDMPIMV_LASTFLAG(S) ( BDMPIMV_CONTENT(S)->lastflag )
-#define BDMPIMV_UDATA(S)    ( BDMPIMV_CONTENT(S)->udata )
-#define BDMPIMV_WORK(S)     ( BDMPIMV_CONTENT(S)->work )
-#define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
-SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
+} *RankLocalLSContent;
+#define RankLocalLS_CONTENT(S)  ( (RankLocalLSContent)(S->content) )
+#define RankLocalLS_BLS(S)      ( RankLocalLS_CONTENT(S)->blockLS )
+#define RankLocalLS_SUBVEC(S)   ( RankLocalLS_CONTENT(S)->subvec )
+#define RankLocalLS_LASTFLAG(S) ( RankLocalLS_CONTENT(S)->lastflag )
+#define RankLocalLS_UDATA(S)    ( RankLocalLS_CONTENT(S)->udata )
+#define RankLocalLS_WORK(S)     ( RankLocalLS_CONTENT(S)->work )
+#define RankLocalLS_NFEDQ(S)    ( RankLocalLS_CONTENT(S)->nfeDQ )
+SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
-                                  void *arkode_mem, ARKodeParameters& opts);
-SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
-int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
-                           N_Vector x, N_Vector b, realtype tol);
-int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data,
-                               ATimesFn ATimes);
-int ATimes_BDMPIMV(void* arkode_mem, N_Vector v, N_Vector z);
-sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S);
-int SUNLinSolFree_BDMPIMV(SUNLinearSolver S);
+                                  void *arkode_mem, ARKODEParameters& opts,
+                                  SUNContext ctx);
+SUNLinearSolver_Type GetType_RankLocalLS(SUNLinearSolver S);
+int Initialize_RankLocalLS(SUNLinearSolver S);
+int Setup_RankLocalLS(SUNLinearSolver S, SUNMatrix A);
+int Solve_RankLocalLS(SUNLinearSolver S, SUNMatrix A,
+                      N_Vector x, N_Vector b, realtype tol);
+int SetATimes_RankLocalLS(SUNLinearSolver S, void* A_data, ATimesFn ATimes);
+int ATimes_RankLocalLS(void* arkode_mem, N_Vector v, N_Vector z);
+sunindextype LastFlag_RankLocalLS(SUNLinearSolver S);
+int Free_RankLocalLS(SUNLinearSolver S);
+
+
+// utility routines
+void cleanup(void **outer_arkode_mem, void **inner_arkode_mem,
+             MRIStepInnerStepper stepper,
+             RankLocalStepperContent *inner_content, EulerData& udata,
+             SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A, N_Vector w,
+             N_Vector wloc, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs);
 
 
 // Main Program
@@ -142,22 +171,24 @@ int main(int argc, char* argv[]) {
 #endif
 
   // general problem variables
-  long int N, Ntot;
+  long int N;
   int Nsubvecs;
   int retval;                    // reusable error-checking flag
   int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   int NoOutput;                  // flag for case when no output is desired
-  N_Vector w = NULL;             // empty vectors for storing overall solution
-  N_Vector *wsubvecs;
+  N_Vector w = NULL;             // empty vectors
+  N_Vector wloc = NULL;
+  N_Vector *wsubvecs = NULL;
   N_Vector atols = NULL;
   SUNMatrix A = NULL;            // empty matrix and linear solver structures
   SUNLinearSolver LS = NULL;
   SUNLinearSolver BLS = NULL;
+  MRIStepInnerStepper stepper = NULL;
   void *outer_arkode_mem = NULL; // empty ARKStep memory structures
   void *inner_arkode_mem = NULL;
   EulerData udata;               // solver data structures
-  ARKodeParameters opts;
+  ARKODEParameters opts;
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
   cusolverSpHandle_t cusol_handle;
@@ -316,62 +347,41 @@ int main(int argc, char* argv[]) {
     DFID_OUTER=fopen("diags_hydro.txt","w");
     DFID_INNER=fopen("diags_chem.txt","w");
   }
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
 
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
-  Ntot = (udata.nx)*(udata.ny)*(udata.nz);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
   wsubvecs = new N_Vector[Nsubvecs];
   for (int i=0; i<5; i++) {
     wsubvecs[i] = NULL;
-    wsubvecs[i] = N_VNew_Parallel(udata.comm, N, Ntot);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Parallel (main)", 0)) MPI_Abort(udata.comm, 1);
-    retval = N_VEnableFusedOps_Parallel(wsubvecs[i], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Parallel (main)", 1)) MPI_Abort(udata.comm, 1);
-    if (opts.localreduce == 0) {
-      wsubvecs[i]->ops->nvdotprodlocal = NULL;
-      wsubvecs[i]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[i]->ops->nvminlocal = NULL;
-      wsubvecs[i]->ops->nvl1normlocal = NULL;
-      wsubvecs[i]->ops->nvinvtestlocal = NULL;
-      wsubvecs[i]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[i]->ops->nvminquotientlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[i]->ops->nvwsqrsummasklocal = NULL;
-    }
+    wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    retval = N_VEnableFusedOps_Serial(wsubvecs[i], opts.fusedkernels);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
-    wsubvecs[5] = N_VNew_Serial(N*udata.nchem);
+    wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
 #endif
-    if (opts.localreduce == 0) {
-      wsubvecs[5]->ops->nvdotprodlocal = NULL;
-      wsubvecs[5]->ops->nvmaxnormlocal = NULL;
-      wsubvecs[5]->ops->nvminlocal = NULL;
-      wsubvecs[5]->ops->nvl1normlocal = NULL;
-      wsubvecs[5]->ops->nvinvtestlocal = NULL;
-      wsubvecs[5]->ops->nvconstrmasklocal = NULL;
-      wsubvecs[5]->ops->nvminquotientlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsumlocal = NULL;
-      wsubvecs[5]->ops->nvwsqrsummasklocal = NULL;
-    }
   }
-  w = N_VNew_MPIManyVector(Nsubvecs, wsubvecs);  // combined solution vector
-  if (check_flag((void *) w, "N_VNew_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector
+  if (check_flag((void *) w, "N_VMake_MPIManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = N_VEnableFusedOps_MPIManyVector(w, opts.fusedkernels);
   if (check_flag(&retval, "N_VEnableFusedOps_MPIManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
-  atols = N_VClone(w);                           // absolute tolerance vector for fast stepper
+  wloc = N_VNew_ManyVector(Nsubvecs, wsubvecs, udata.ctx);  // rank-local solution vector (fast stepper)
+  if (check_flag((void *) wloc, "N_VNew_ManyVector (main)", 0)) MPI_Abort(udata.comm, 1);
+  retval = N_VEnableFusedOps_ManyVector(wloc, opts.fusedkernels);
+  if (check_flag(&retval, "N_VEnableFusedOps_ManyVector (main)", 1)) MPI_Abort(udata.comm, 1);
+  atols = N_VClone(wloc);                             // absolute tolerance vector (fast stepper)
   if (check_flag((void *) atols, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   N_VConst(opts.atol, atols);
 
@@ -379,7 +389,8 @@ int main(int argc, char* argv[]) {
   retval = initialize_Dengo_structures(udata);
   if (check_flag(&retval, "initialize_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // set initial conditions (or restart from file)
+  // set initial conditions into overall solution vector (or restart from file)
+  // [note: since w and wloc share the same component N_Vectors, this also initializes wloc]
   if (restart < 0) {
     retval = initial_conditions(udata.t0, w, udata);
     if (check_flag(&retval, "initial_conditions (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -393,42 +404,61 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  // prepare Dengo structures and initial condition vector for fast time scale evolution
+  // prepare Dengo structures and initial condition vector(s) for fast time scale evolution
   retval = prepare_Dengo_structures(udata.t0, w, udata);
   if (check_flag(&retval, "prepare_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
   //--- create the fast integrator and set options ---//
 
-  // initialize the fast integrator
-  inner_arkode_mem = ARKStepCreate(NULL, ffast, udata.t0, w);
-  if (check_flag((void*) inner_arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
+  // create MRIStepInnerStepper wrapper for fast integrator, and set functions
+  retval = MRIStepInnerStepper_Create(udata.ctx, &stepper);
+  if (check_flag(&retval, "MRIStepInnerStepper_Create (main)", 1)) MPI_Abort(udata.comm, 1);
+  RankLocalStepperContent *inner_content = new RankLocalStepperContent;
+  inner_content->udata = &udata;
+  inner_content->stepper = stepper;
+  retval = MRIStepInnerStepper_SetContent(stepper, inner_content);
+  if (check_flag(&retval, "MRIStepInnerStepper_SetContent", 1)) return 1;
+  retval = MRIStepInnerStepper_SetEvolveFn(stepper, RankLocalStepper_Evolve);
+  if (check_flag(&retval, "MRIStepInnerStepper_SetEvolve", 1)) return 1;
+  retval = MRIStepInnerStepper_SetFullRhsFn(stepper, RankLocalStepper_FullRhs);
+  if (check_flag(&retval, "MRIStepInnerStepper_SetFullRhsFn", 1)) return 1;
+  retval = MRIStepInnerStepper_SetResetFn(stepper, RankLocalStepper_Reset);
+  if (check_flag(&retval, "MRIStepInnerStepper_SetResetFn", 1)) return 1;
 
-  // pass udata to user functions
-  retval = ARKStepSetUserData(inner_arkode_mem, (void *) (&udata));
+  // initialize the fast integrator using only the chemistry subvector,
+  // and attach to MRIStepInnerStepper content
+  inner_arkode_mem = ARKStepCreate(NULL, ffast, udata.t0, wloc, udata.ctx);
+  if (check_flag((void*) inner_arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
+  inner_content->solver_mem = inner_arkode_mem;
+
+  // pass inner_content to fast integrator user functions
+  retval = ARKStepSetUserData(inner_arkode_mem, (void*) inner_content);
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // create the fast integrator local linear solver
   if (opts.iterative) {
-    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters);
+    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
   } else {
 #ifdef USEMAGMA
     // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, udata.memhelper, NULL);
+    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
+                                  udata.memhelper, NULL, udata.ctx);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
-    // Create the SUNLinearSolver object
-    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A);
+    // Create the custom SUNLinearSolver object
+    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
     if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem, cusp_handle);
+    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem,
+                                       cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle);
+    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
     if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
     // Set the sparsity pattern to be fixed
     retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
@@ -437,9 +467,9 @@ int main(int argc, char* argv[]) {
     retval = initialize_sparse_jacobian_cvklu(A, &udata);
     if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
-    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT);
+    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
     if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_KLU(wsubvecs[5], A);
+    BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
     if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
 #endif
@@ -447,8 +477,8 @@ int main(int argc, char* argv[]) {
 
   // create linear solver wrapper and attach the matrix and linear solver to the
   // integrator and set the Jacobian for direct linear solvers
-  LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, inner_arkode_mem, opts);
-  if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
+  LS = SUNLinSol_RankLocalLS(BLS, wloc, 5, &udata, inner_arkode_mem, opts, udata.ctx);
+  if (check_flag((void*) LS, "SUNLinSol_RankLocalLS (main)", 0)) MPI_Abort(udata.comm, 1);
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
   if (!opts.iterative) {
@@ -463,8 +493,8 @@ int main(int argc, char* argv[]) {
   }
 
   // set inner RK Butcher table
-  if (opts.btable != -1) {
-    retval = ARKStepSetTableNum(inner_arkode_mem, opts.btable, -1);
+  if (opts.itable != ARKODE_DIRK_NONE) {
+    retval = ARKStepSetTableNum(inner_arkode_mem, opts.itable, ARKODE_ERK_NONE);
     if (check_flag(&retval, "ARKStepSetTableNum (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
@@ -545,11 +575,12 @@ int main(int argc, char* argv[]) {
 
 
   //--- create the slow integrator and set options ---//
+
   retval = udata.profile[PR_MRISETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // initialize the integrator memory
-  outer_arkode_mem = MRIStepCreate(fslow, udata.t0, w, MRISTEP_ARKSTEP, inner_arkode_mem);
+  outer_arkode_mem = MRIStepCreate(fslow, NULL, udata.t0, w, stepper, udata.ctx);
   if (check_flag((void*) outer_arkode_mem, "MRIStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
@@ -562,6 +593,14 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "MRIStepSStolerances (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
+  // set MRI coupling table (if specified)
+  if (opts.mtable != ARKODE_MRI_NONE) {
+    MRIStepCoupling Gamma = MRIStepCoupling_LoadTable(opts.mtable);
+    retval = MRIStepSetCoupling(outer_arkode_mem, Gamma);
+    MRIStepCoupling_Free(Gamma);
+    if (check_flag(&retval, "MRIStepSetCoupling (main)", 1)) MPI_Abort(udata.comm, 1);
+  }
+
   // set slow time step size
   retval = MRIStepSetFixedStep(outer_arkode_mem, hslow);
   if (check_flag(&retval, "MRIStepSetFixedStep (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -572,7 +611,7 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_MRISETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // finish initialization
   realtype t = udata.t0;
   realtype tout = udata.t0+dTout;
@@ -639,8 +678,8 @@ int main(int argc, char* argv[]) {
     retval = MRIStepEvolve(outer_arkode_mem, tout, w, &t, ARK_NORMAL);
     if (retval < 0) {    // unsuccessful solve: break
       if (outproc)  cerr << "Solver failure, stopping integration\n";
-      cleanup(&outer_arkode_mem, &inner_arkode_mem, udata, BLS,
-              LS, A, w, atols, wsubvecs, Nsubvecs);
+      cleanup(&outer_arkode_mem, &inner_arkode_mem, stepper, inner_content,
+              udata, BLS, LS, A, w, wloc, atols, wsubvecs, Nsubvecs);
       return(1);
     }
 
@@ -648,49 +687,49 @@ int main(int argc, char* argv[]) {
     retval = udata.profile[PR_TRANS].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
+    // output transient solver statistics
+    long int nsts, nfs_e, nfs_i, nstf_max, nstf_min, nstf_a_max, nstf_a_min;
+    long int nffi_max, nffi_min, netf_max, netf_min, nni_max, nni_min;
+    long int ncf_max, ncf_min, nls_max, nls_min, nje_max, nje_min;
+    long int nli_max, nli_min, nlcf_max, nlcf_min, nlfs_max, nlfs_min;
+    nsts = nfs_e = nfs_i = 0;
+    retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
+    if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs_e, &nfs_i);
+    if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+    retval = RankLocalStepper_GetStats(inner_arkode_mem, udata, LS, nstf_max, nstf_min,
+                                       nstf_a_max, nstf_a_min, nffi_max, nffi_min,
+                                       netf_max, netf_min, nni_max, nni_min, ncf_max,
+                                       ncf_min, nls_max, nls_min, nje_max, nje_min, nli_max,
+                                       nli_min, nlcf_max, nlcf_min, nlfs_max, nlfs_min);
+    if (check_flag(&retval, "RankLocalStepper_GetStats (main)", 1)) MPI_Abort(udata.comm, 1);
     if (outproc) {
-      long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nni, ncf;
-      long int nls, nje, nli, nlcf;
-      nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nni = ncf = 0;
-      nls = nje = nli = nlcf = 0;
-      retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
-      if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
-      if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
-      if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
-      if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
-      if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
-      if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
-      if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
-      if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
-      if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumLinIters(inner_arkode_mem, &nli);
-      if (check_flag(&retval, "ARKStepGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
-      retval = ARKStepGetNumLinConvFails(inner_arkode_mem, &nlcf);
-      if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
       cout << "\nTransient portion of simulation complete:\n";
       cout << "   Slow solver steps = " << nsts << "\n";
-      cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
-      cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
-      cout << "   Total number of fast error test failures = " << netf << "\n";
-      if (opts.iterative && nli > 0) {
-        cout << "   Total number of fast lin iters = " << nli << "\n";
-        cout << "   Total number of fast lin conv fails = " << nlcf << "\n";
-        cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
-      } else if (nls > 0) {
-        cout << "   Total number of fast lin solv setups = " << nls << "\n";
-        cout << "   Total number of fast Jac evals = " << nje << "\n";
+      cout << "   Fast solver steps = (" << nstf_min << ", " << nstf_max
+           << "), attempted = (" << nstf_a_min << ", " << nstf_a_max << ")\n";
+      cout << "   Total RHS evals:  Fs = " << nfs_e << ",  Ff = (" << nffi_min
+           << ", " << nffi_max << ")\n";
+      cout << "   Total number of fast error test failures = (" << netf_min << ", "
+           << netf_max << ")\n";
+      if (opts.iterative && nli_max > 0) {
+        cout << "   Total number of fast lin iters = (" << nli_min << ", "
+             << nli_max << ")\n";
+        cout << "   Total number of fast lin conv fails = (" << nlcf_min << ", "
+             << nlcf_max << ")\n";
+        cout << "   Total number of fast lin RHS evals = (" << nlfs_min << ", "
+             << nlfs_max << ")\n";
+      } else if (nls_max > 0) {
+        cout << "   Total number of fast lin solv setups = (" << nls_min << ", "
+             << nls_max << ")\n";
+        cout << "   Total number of fast Jac evals = (" << nje_min << ", "
+             << nje_max << ")\n";
       }
-      if (nni > 0) {
-        cout << "   Total number of fast nonlin iters = " << nni << "\n";
-        cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
+      if (nni_max > 0) {
+        cout << "   Total number of fast nonlin iters = (" << nni_min << ", "
+             << nni_max << ")\n";
+        cout << "   Total number of fast nonlin conv fails = (" << ncf_min << ", "
+             << ncf_max << ")\n";
       }
       cout << "\nCurrent profiling results:\n";
     }
@@ -781,8 +820,8 @@ int main(int argc, char* argv[]) {
       tout = min(tout+dTout, udata.tf);
     } else {                                   // unsuccessful solve: break
       if (outproc)  cerr << "Solver failure, stopping integration\n";
-      cleanup(&outer_arkode_mem, &inner_arkode_mem, udata, BLS,
-              LS, A, w, atols, wsubvecs, Nsubvecs);
+      cleanup(&outer_arkode_mem, &inner_arkode_mem, stepper, inner_content,
+              udata, BLS, LS, A, w, wloc, atols, wsubvecs, Nsubvecs);
       return(1);
     }
 
@@ -840,49 +879,48 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Print some final statistics
+  long int nsts, nfs_e, nfs_i, nstf_max, nstf_min, nstf_a_max, nstf_a_min;
+  long int nffi_max, nffi_min, netf_max, netf_min, nni_max, nni_min;
+  long int ncf_max, ncf_min, nls_max, nls_min, nje_max, nje_min;
+  long int nli_max, nli_min, nlcf_max, nlcf_min, nlfs_max, nlfs_min;
+  nsts = nfs_e = nfs_i = 0;
+  retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
+  if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs_e, &nfs_i);
+  if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = RankLocalStepper_GetStats(inner_arkode_mem, udata, LS, nstf_max, nstf_min,
+                                     nstf_a_max, nstf_a_min, nffi_max, nffi_min,
+                                     netf_max, netf_min, nni_max, nni_min, ncf_max,
+                                     ncf_min, nls_max, nls_min, nje_max, nje_min, nli_max,
+                                     nli_min, nlcf_max, nlcf_min, nlfs_max, nlfs_min);
+  if (check_flag(&retval, "RankLocalStepper_GetStats (main)", 1)) MPI_Abort(udata.comm, 1);
   if (outproc) {
-    long int nsts, nfs, nstf, nstf_a, nfe, nfi, netf, nni, ncf;
-    long int nls, nje, nli, nlcf;
-    nsts = nfs = nstf = nstf_a = nfe = nfi = netf = nni = ncf = 0;
-    nls = nje = nli = nlcf = 0;
-    retval = MRIStepGetNumSteps(outer_arkode_mem, &nsts);
-    if (check_flag(&retval, "MRIStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = MRIStepGetNumRhsEvals(outer_arkode_mem, &nfs);
-    if (check_flag(&retval, "MRIStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumSteps(inner_arkode_mem, &nstf);
-    if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumStepAttempts(inner_arkode_mem, &nstf_a);
-    if (check_flag(&retval, "ARKStepGetNumStepAttempts (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumRhsEvals(inner_arkode_mem, &nfe, &nfi);
-    if (check_flag(&retval, "ARKStepGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumErrTestFails(inner_arkode_mem, &netf);
-    if (check_flag(&retval, "ARKStepGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNonlinSolvStats(inner_arkode_mem, &nni, &ncf);
-    if (check_flag(&retval, "ARKStepGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumLinSolvSetups(inner_arkode_mem, &nls);
-    if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumJacEvals(inner_arkode_mem, &nje);
-    if (check_flag(&retval, "ARKStepGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumLinIters(inner_arkode_mem, &nli);
-    if (check_flag(&retval, "ARKStepGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
-    retval = ARKStepGetNumLinConvFails(inner_arkode_mem, &nlcf);
-    if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
     cout << "\nOverall Solver Statistics:\n";
     cout << "   Slow solver steps = " << nsts << "\n";
-    cout << "   Fast solver steps = " << nstf << " (attempted = " << nstf_a << ")\n";
-    cout << "   Total RHS evals:  Fs = " << nfs << ",  Ff = " << nfi << "\n";
-    cout << "   Total number of fast error test failures = " << netf << "\n";
-    if (opts.iterative && nli > 0) {
-      cout << "   Total number of fast lin iters = " << nli << "\n";
-      cout << "   Total number of fast lin conv fails = " << nlcf << "\n";
-      cout << "   Total number of fast lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
-    } else if (nls > 0) {
-      cout << "   Total number of fast lin solv setups = " << nls << "\n";
-      cout << "   Total number of fast Jac evals = " << nje << "\n";
+    cout << "   Fast solver steps = (" << nstf_min << ", " << nstf_max
+         << "), attempted = (" << nstf_a_min << ", " << nstf_a_max << ")\n";
+    cout << "   Total RHS evals:  Fs = " << nfs_e << ",  Ff = (" << nffi_min
+         << ", " << nffi_max << ")\n";
+    cout << "   Total number of fast error test failures = (" << netf_min << ", "
+         << netf_max << ")\n";
+    if (opts.iterative && nli_max > 0) {
+      cout << "   Total number of fast lin iters = (" << nli_min << ", "
+           << nli_max << ")\n";
+      cout << "   Total number of fast lin conv fails = (" << nlcf_min << ", "
+           << nlcf_max << ")\n";
+      cout << "   Total number of fast lin RHS evals = (" << nlfs_min << ", "
+           << nlfs_max << ")\n";
+    } else if (nls_max > 0) {
+      cout << "   Total number of fast lin solv setups = (" << nls_min << ", "
+           << nls_max << ")\n";
+      cout << "   Total number of fast Jac evals = (" << nje_min << ", "
+           << nje_max << ")\n";
     }
-    if (nni > 0) {
-      cout << "   Total number of fast nonlin iters = " << nni << "\n";
-      cout << "   Total number of fast nonlin conv fails = " << ncf << "\n";
+    if (nni_max > 0) {
+      cout << "   Total number of fast nonlin iters = (" << nni_min << ", "
+           << nni_max << ")\n";
+      cout << "   Total number of fast nonlin conv fails = (" << ncf_min << ", "
+           << ncf_max << ")\n";
     }
     cout << "\nFinal profiling results:\n";
   }
@@ -916,8 +954,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up, finalize MPI, and return with successful completion
-  cleanup(&outer_arkode_mem, &inner_arkode_mem, udata,
-          BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+  cleanup(&outer_arkode_mem, &inner_arkode_mem, stepper, inner_content,
+          udata, BLS, LS, A, w, wloc, atols, wsubvecs, Nsubvecs);
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   // Destroy the cuSOLVER and cuSPARSE handles
   if (!opts.iterative) {
@@ -936,42 +974,60 @@ int main(int argc, char* argv[]) {
 
 static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  // start timer
-  EulerData *udata = (EulerData*) user_data;
+  // access problem data structure and start timer
+  RankLocalStepperContent *inner_content = (RankLocalStepperContent*) user_data;
+  EulerData *udata = inner_content->udata;
   int retval = udata->profile[PR_RHSFAST].start();
   if (check_flag(&retval, "Profile::start (ffast)", 1)) return(-1);
 
-  // initialize all outputs to zero (necessary!!)
+  // initialize all outputs to zero
   N_VConst(ZERO, wdot);
 
-  // unpack chemistry subvectors
-  N_Vector wchem = NULL;
-  wchem = N_VGetSubvector_MPIManyVector(w, 5);
-  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(-1);
-  N_Vector wchemdot = NULL;
-  wchemdot = N_VGetSubvector_MPIManyVector(wdot, 5);
-  if (check_flag((void *) wchemdot, "N_VGetSubvector_MPIManyVector (ffast)", 0)) return(-1);
-
-  // NOTE: if Dengo RHS ever does depend on fluid field inputs, those must
-  // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
-
-  // call Dengo RHS routine
+  // call Dengo RHS routine on chemistry subvectors
+  N_Vector wchem = N_VGetSubvector_ManyVector(w, 5);
+  if (check_flag((void *) wchem, "N_VGetSubvector_ManyVector (ffast)", 0))  return(-1);
+  N_Vector wchemdot = N_VGetSubvector_ManyVector(wdot, 5);
+  if (check_flag((void *) wchemdot, "N_VGetSubvector_ManyVector (ffast)", 0))  return(-1);
 #ifdef USERAJA
-  retval = calculate_rhs_cvklu(t, wchem, wchemdot, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_rhs_cvklu(t, wchem, wchemdot,
+                               (udata->nxl)*(udata->nyl)*(udata->nzl),
                                udata->RxNetData);
 #else
   retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
 #endif
   if (check_flag(&retval, "calculate_rhs_cvklu (ffast)", 1)) return(retval);
 
-  // NOTE: if fluid fields were rescaled to physical units above, they
-  // must be converted back to code units here
-
-  // scale wchemdot by TimeUnits to handle step size nondimensionalization
+  // scale wdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, wchemdot, wchemdot);
 
+  // update wdot with forcing terms from slow time scale (if applicable)
+  if (!inner_content->disable_forcing) {
+    int nforcing;
+    realtype tshift, tscale;
+    N_Vector *forcing;   // Note: this is an array of MPIManyVectors
+    retval = MRIStepInnerStepper_GetForcingData(inner_content->stepper, &tshift,
+                                                &tscale, &forcing, &nforcing);
+    if (check_flag(&retval, "MRIStepInnerStepper_GetForcingData (ffast)", 1)) return(retval);
+
+    // apply forcing separately on each component vector
+    N_Vector Xvecs[10];   // to be safe, set arrays much longer than needed
+    realtype cvals[10] = {ONE, ONE, ONE, ONE, ONE, ONE, ONE, ONE, ONE, ONE};
+    realtype tau = (t-tshift) / tscale;
+    for (int ivec=0; ivec<6; ivec++) {
+      Xvecs[0] = N_VGetSubvector_ManyVector(wdot, ivec);
+      if (check_flag((void *) Xvecs[0], "N_VGetSubvector_ManyVector (ffast)", 0))  return(-1);
+      for (int i=0; i<nforcing; i++) {
+        cvals[i+1] = SUNRpowerI(tau, i);
+        Xvecs[i+1] = N_VGetSubvector_MPIManyVector(forcing[i], ivec);
+        if (check_flag((void *) Xvecs[i+1], "N_VGetSubvector_MPIManyVector (ffast)", 0))  return(-1);
+      }
+      retval = N_VLinearCombination(nforcing+1, cvals, Xvecs, Xvecs[0]);
+      if (check_flag(&retval, "N_VLinearCombination (ffast)", 1)) return(retval);
+    }
+  }
+
   // save chem RHS for use in ATimes (iterative linear solvers)
-  if (udata->fchemcur) N_VScale(ONE, wchemdot, udata->fchemcur);
+  if (udata->fchemcur) N_VScale(ONE, wdot, udata->fchemcur);
 
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
@@ -982,43 +1038,25 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                  void *user_data, N_Vector tmp1, N_Vector tmp2, N_Vector tmp3)
 {
-  // start timer
-  EulerData *udata = (EulerData*) user_data;
+  // access problem data structure and start timer
+  RankLocalStepperContent *inner_content = (RankLocalStepperContent*) user_data;
+  EulerData *udata = inner_content->udata;
   int retval = udata->profile[PR_JACFAST].start();
   if (check_flag(&retval, "Profile::start (Jfast)", 1)) return(-1);
 
-  // unpack chemistry subvectors
-  N_Vector wchem = NULL;
-  wchem = N_VGetSubvector_MPIManyVector(w, 5);
-  if (check_flag((void *) wchem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
-  N_Vector fwchem = NULL;
-  fwchem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) fwchem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
-  N_Vector tmp1chem = NULL;
-  tmp1chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp1chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
-  N_Vector tmp2chem = NULL;
-  tmp2chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp2chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
-  N_Vector tmp3chem = NULL;
-  tmp3chem = N_VGetSubvector_MPIManyVector(fw, 5);
-  if (check_flag((void *) tmp3chem, "N_VGetSubvector_MPIManyVector (Jfast)", 0)) return(-1);
-
-  // NOTE: if Dengo Jacobian ever does depend on fluid field inputs, those must
-  // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
-
   // call Jacobian routine
+  N_Vector wchem = N_VGetSubvector_ManyVector(w, 5);
+  if (check_flag((void *) wchem, "N_VGetSubvector_ManyVector (Jfast)", 0))  return(-1);
+  N_Vector fwchem = N_VGetSubvector_ManyVector(fw, 5);
+  if (check_flag((void *) fwchem, "N_VGetSubvector_ManyVector (Jfast)", 0))  return(-1);
 #ifdef USERAJA
-  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
-                                    udata->RxNetData, tmp1chem, tmp2chem, tmp3chem);
+  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac,
+                                    (udata->nxl)*(udata->nyl)*(udata->nzl),
+                                    udata->RxNetData, tmp1, tmp2, tmp3);
 #else
-  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
-                                    tmp1chem, tmp2chem, tmp3chem);
+  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData, tmp1, tmp2, tmp3);
 #endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jfast)", 1)) return(retval);
-
-  // NOTE: if fluid fields were rescaled to physical units above, they
-  // must be converted back to code units here
 
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
@@ -1045,7 +1083,6 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= TUnit;
 #endif
 #endif
-
 
   // stop timer and return
   retval = udata->profile[PR_JACFAST].stop();
@@ -1143,79 +1180,258 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 }
 
 
-//---- postprocess routine to bring solution information from fast to slow time scale memory
-
-// static int PostprocessFast(realtype t, N_Vector w, void *user_data)
-// {
-//   long int i, j, k, l, idx, idx2;
-
-//   cout << "Entering PostprocessFast\n";
-
-//   // access user_data structure and Dengo data structure
-//   EulerData *udata = (EulerData*) user_data;
-
-//   // start timer
-//   int retval = udata->profile[PR_POSTFAST].start();
-//   if (check_flag(&retval, "Profile::start (PostprocessFast)", 1)) return(-1);
-
-//   // copy chemistry solution values from device to host
-
-//   // stop timer and return
-//   retval = udata->profile[PR_POSTFAST].stop();
-//   if (check_flag(&retval, "Profile::stop (PostprocessFast)", 1)) return(-1);
-//   return(0);
-// }
-
-
 //---- utility routines ----
 
-void cleanup(void **outer_arkode_mem, void **inner_arkode_mem, EulerData& udata,
+void cleanup(void **outer_arkode_mem, void **inner_arkode_mem,
+             MRIStepInnerStepper stepper,
+             RankLocalStepperContent *inner_content, EulerData& udata,
              SUNLinearSolver BLS, SUNLinearSolver LS, SUNMatrix A, N_Vector w,
-             N_Vector atols, N_Vector *wsubvecs, int Nsubvecs)
+             N_Vector wloc, N_Vector atols, N_Vector *wsubvecs, int Nsubvecs)
 {
+  delete inner_content;
+  MRIStepInnerStepper_Free(&stepper);
   MRIStepFree(outer_arkode_mem);   // Free integrator memory
   ARKStepFree(inner_arkode_mem);
   SUNLinSolFree(BLS);              // Free matrix and linear solvers
   SUNLinSolFree(LS);
   SUNMatDestroy(A);
-  N_VDestroy(w);                   // Free solution/tolerance vectors
-  for (int i=0; i<Nsubvecs; i++)
+  for (int i=0; i<Nsubvecs; i++)   // Free solution/tolerance vectors
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
+  N_VDestroy(w);
+  N_VDestroy(wloc);
   N_VDestroy(atols);
   free_Dengo_structures(udata);
 }
 
 
+//---- custom MRIStepInnerStepper module ----
+
+//   Rank-local stepper time evolution routine
+static int RankLocalStepper_Evolve(MRIStepInnerStepper stepper, realtype t0,
+                                   realtype tout, N_Vector y) {
+
+  // access inner stepper content structure
+  int retval;
+  void *inner_content = NULL;
+  retval = MRIStepInnerStepper_GetContent(stepper, &inner_content);
+  if (check_flag(&retval, "MRIStepInnerStepper_GetContent (RankLocalStepper_Evolve)", 1))
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  RankLocalStepperContent *content = (RankLocalStepperContent*) inner_content;
+
+  // create ManyVector version of input MPIManyVector (reuse y's context object)
+  N_Vector ysubvecs[6];
+  for (int ivec=0; ivec<6; ivec++)
+    ysubvecs[ivec] = N_VGetSubvector_MPIManyVector(y, ivec);
+  N_Vector yloc = N_VNew_ManyVector(6, ysubvecs, y->sunctx);
+  if (check_flag((void *) yloc, "N_VNewManyVector (RankLocalStepper_Evolve)", 0))
+    return(-1);
+
+  // set the stop time for the rank-local ARKStep solver
+  retval = ARKStepSetStopTime(content->solver_mem, tout);
+  if (check_flag(&retval, "ARKStepSetStopTime (RankLocalStepper_Evolve)", 1)) {
+    N_VDestroy(yloc);
+    return(1);
+  }
+
+  // call ARKStepEvolve to perform fast integration
+  realtype tret;
+  retval = ARKStepEvolve(content->solver_mem, tout, yloc, &tret, ARK_NORMAL);
+
+  // free ManyVector wrapper
+  N_VDestroy(yloc);
+
+  // determine return flag via reduction across ranks
+  int ierrs[2], globerrs[2];
+  ierrs[0] = retval; ierrs[1] = -retval;
+  retval = content->udata->profile[PR_MPI].start();
+  if (check_flag(&retval, "Profile::start (RankLocalStepper_Evolve)", 1))  return(-1);
+  retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, content->udata->comm);
+  if (check_flag(&retval, "MPI_Alleduce (RankLocalStepper_Evolve)", 3)) return(-1);
+  retval = content->udata->profile[PR_MPI].stop();
+  if (check_flag(&retval, "Profile::stop (RankLocalStepper_Evolve)", 1))  return(-1);
+
+  // return unrecoverable failure if relevant;
+  // otherwise return the success and/or recoverable failure flag
+  if (globerrs[0] < 0) return(globerrs[0]);
+  else                 return(-globerrs[1]);
+}
+
+
+//   Rank-local stepper full right-hand side calculation routine
+static int RankLocalStepper_FullRhs(MRIStepInnerStepper stepper, realtype t,
+                                    N_Vector y, N_Vector f, int mode) {
+
+  // access inner stepper content structure
+  int retval;
+  void *inner_content = NULL;
+  retval = MRIStepInnerStepper_GetContent(stepper, &inner_content);
+  if (check_flag(&retval, "MRIStepInnerStepper_GetContent (RankLocalStepper_FullRhs)", 1))
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  RankLocalStepperContent *content = (RankLocalStepperContent*) inner_content;
+
+  // create ManyVector versions of input MPIManyVectors (reuse context objects)
+  N_Vector subvecs[6];
+  for (int ivec=0; ivec<6; ivec++)
+    subvecs[ivec] = N_VGetSubvector_MPIManyVector(y, ivec);
+  N_Vector yloc = N_VNew_ManyVector(6, subvecs, y->sunctx);
+  if (check_flag((void *) yloc, "N_VNewManyVector (RankLocalStepper_FullRhs)", 0))
+    return(-1);
+  for (int ivec=0; ivec<6; ivec++)
+    subvecs[ivec] = N_VGetSubvector_MPIManyVector(f, ivec);
+  N_Vector floc = N_VNew_ManyVector(6, subvecs, f->sunctx);
+  if (check_flag((void *) floc, "N_VNewManyVector (RankLocalStepper_FullRhs)", 0))
+    return(-1);
+    
+  // call ffast with forcing disabled
+  content->disable_forcing = true;
+  retval = ffast(t, yloc, floc, inner_content);
+  content->disable_forcing = false;
+
+  // free ManyVector wrappers and return
+  N_VDestroy(yloc);
+  N_VDestroy(floc);
+  return retval;
+}
+
+
+//   Rank-local stepper solver "reset" routine
+static int RankLocalStepper_Reset(MRIStepInnerStepper stepper, realtype tR, N_Vector yR) {
+
+  // access inner stepper content structure
+  int retval;
+  void *inner_content = NULL;
+  retval = MRIStepInnerStepper_GetContent(stepper, &inner_content);
+  if (check_flag(&retval, "MRIStepInnerStepper_GetContent (RankLocalStepper_Reset)", 1))
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  RankLocalStepperContent *content = (RankLocalStepperContent*) inner_content;
+
+  // create ManyVector versions of input MPIManyVectors (reuse context objects)
+  N_Vector ysubvecs[6];
+  for (int ivec=0; ivec<6; ivec++)
+    ysubvecs[ivec] = N_VGetSubvector_MPIManyVector(yR, ivec);
+  N_Vector yloc = N_VNew_ManyVector(6, ysubvecs, yR->sunctx);
+  if (check_flag((void *) yloc, "N_VNewManyVector (RankLocalStepper_Reset)", 0))
+    return(-1);
+
+  // call ARKStep reset routine, free ManyVector wrapper, and return
+  retval = ARKStepReset(content->solver_mem, tR, yloc);
+  N_VDestroy(yloc);
+  return retval;
+}
+
+
+//   Rank-local stepper statistics retrieval (must be called on all MPI ranks)
+static int RankLocalStepper_GetStats(void* arkode_mem, EulerData& udata,
+                                     SUNLinearSolver& ranklocalLS,
+                                     long int& nst_max, long int& nst_min,
+                                     long int& nst_a_max, long int& nst_a_min,
+                                     long int& nfi_max, long int& nfi_min,
+                                     long int& netf_max, long int& netf_min,
+                                     long int& nni_max, long int& nni_min,
+                                     long int& ncf_max, long int& ncf_min,
+                                     long int& nls_max, long int& nls_min,
+                                     long int& nje_max, long int& nje_min,
+                                     long int& nli_max, long int& nli_min,
+                                     long int& nlcf_max, long int& nlcf_min,
+                                     long int& nlfs_max, long int& nlfs_min) {
+
+  // access statistics from rank-local integrator
+  int retval;
+  long int nst, nst_a, nfe, nfi, netf, nni, ncf, nls, nje, nli, nlcf, nlfs;
+  nst = nst_a = nfe = nfi = netf = nni = ncf = nls = nje = nli = nlcf = nlfs = 0;
+  retval = ARKStepGetNumSteps(arkode_mem, &nst);
+  if (check_flag(&retval, "ARKStepGetNumSteps (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
+  if (check_flag(&retval, "ARKStepGetNumStepAttempts (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumRhsEvals(arkode_mem, &nfe, &nfi);
+  if (check_flag(&retval, "ARKStepGetNumRhsEvals (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumErrTestFails(arkode_mem, &netf);
+  if (check_flag(&retval, "ARKStepGetNumErrTestFails (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNonlinSolvStats(arkode_mem, &nni, &ncf);
+  if (check_flag(&retval, "ARKStepGetNonlinSolvStats (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinSolvSetups(arkode_mem, &nls);
+  if (check_flag(&retval, "ARKStepGetNumLinSolvSetups (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumJacEvals(arkode_mem, &nje);
+  if (check_flag(&retval, "ARKStepGetNumJacEvals (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinIters(arkode_mem, &nli);
+  if (check_flag(&retval, "ARKStepGetNumLinIters (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  retval = ARKStepGetNumLinConvFails(arkode_mem, &nlcf);
+  if (check_flag(&retval, "ARKStepGetNumLinConvFails (RankLocalStepper_GetStats)", 1))
+    MPI_Abort(udata.comm, 1);
+  nlfs = RankLocalLS_NFEDQ(ranklocalLS);
+
+  // Perform MPI reductions to determine min/max for each statistic
+  long int stats[11] = {nst, nst_a, nfi, netf, nni, ncf, nls, nje, nli, nlcf, nlfs};
+  long int stats_min[11];
+  long int stats_max[11];
+  retval = MPI_Reduce(stats, stats_min, 11, MPI_LONG, MPI_MIN, 0, udata.comm);
+  if (retval != MPI_SUCCESS)  return 1;
+  retval = MPI_Reduce(stats, stats_max, 11, MPI_LONG, MPI_MAX, 0, udata.comm);
+  if (retval != MPI_SUCCESS)  return 1;
+
+  // unpack statistics and return
+  nst_max   = stats_max[0];
+  nst_a_max = stats_max[1];
+  nfi_max   = stats_max[2];
+  netf_max  = stats_max[3];
+  nni_max   = stats_max[4];
+  ncf_max   = stats_max[5];
+  nls_max   = stats_max[6];
+  nje_max   = stats_max[7];
+  nli_max   = stats_max[8];
+  nlcf_max  = stats_max[9];
+  nlfs_max  = stats_max[10];
+  nst_min   = stats_min[0];
+  nst_a_min = stats_min[1];
+  nfi_min   = stats_min[2];
+  netf_min  = stats_min[3];
+  nni_min   = stats_min[4];
+  ncf_min   = stats_min[5];
+  nls_min   = stats_min[6];
+  nje_min   = stats_min[7];
+  nli_min   = stats_min[8];
+  nlcf_min  = stats_min[9];
+  nlfs_min  = stats_min[10];
+  return 0;
+}
+
 //---- custom SUNLinearSolver module ----
 
-SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
-                                  sunindextype subvec, EulerData* udata,
-                                  void* arkode_mem,
-                                  ARKodeParameters& opts)
+SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver BLS, N_Vector x,
+                                      sunindextype subvec, EulerData* udata,
+                                      void* arkode_mem,
+                                      ARKODEParameters& opts, SUNContext ctx)
 {
   // Check compatibility with supplied N_Vector
-  if (N_VGetVectorID(x) != SUNDIALS_NVEC_MPIMANYVECTOR) return(NULL);
-  if (subvec >= N_VGetNumSubvectors_MPIManyVector(x)) return(NULL);
+  if (N_VGetVectorID(x) != SUNDIALS_NVEC_MANYVECTOR) return(NULL);
+  if (subvec >= N_VGetNumSubvectors_ManyVector(x)) return(NULL);
 
   // Create an empty linear solver
-  SUNLinearSolver S = SUNLinSolNewEmpty();
+  SUNLinearSolver S = SUNLinSolNewEmpty(ctx);
   if (S == NULL) return(NULL);
 
   // Attach operations (use defaults whenever possible)
-  S->ops->gettype    = SUNLinSolGetType_BDMPIMV;
-  S->ops->initialize = SUNLinSolInitialize_BDMPIMV;
-  S->ops->setup      = SUNLinSolSetup_BDMPIMV;
-  S->ops->solve      = SUNLinSolSolve_BDMPIMV;
-  S->ops->lastflag   = SUNLinSolLastFlag_BDMPIMV;
-  if (opts.iterative) {
-    S->ops->setatimes  = SUNLinSolSetATimes_BDMPIMV;
-  }
-  S->ops->free       = SUNLinSolFree_BDMPIMV;
+  S->ops->gettype     = GetType_RankLocalLS;
+  S->ops->initialize  = Initialize_RankLocalLS;
+  S->ops->setup       = Setup_RankLocalLS;
+  S->ops->solve       = Solve_RankLocalLS;
+  S->ops->lastflag    = LastFlag_RankLocalLS;
+  if (opts.iterative)
+    S->ops->setatimes = SetATimes_RankLocalLS;
+  S->ops->free        = Free_RankLocalLS;
 
   // Create, fill and attach content
-  BDMPIMVContent content = NULL;
-  content = (BDMPIMVContent) malloc(sizeof *content);
+  RankLocalLSContent content = NULL;
+  content = (RankLocalLSContent) malloc(sizeof *content);
   if (content == NULL) { SUNLinSolFree(S); return(NULL); }
 
   content->blockLS    = BLS;
@@ -1225,7 +1441,7 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   content->nfeDQ      = 0;
   if (opts.iterative) {
     content->work   = N_VClone(x);
-    udata->fchemcur = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
+    udata->fchemcur = N_VClone(N_VGetSubvector_ManyVector(x, subvec));
   } else {
     content->work   = NULL;
     udata->fchemcur = NULL;
@@ -1235,89 +1451,65 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   return(S);
 }
 
-SUNLinearSolver_Type SUNLinSolGetType_BDMPIMV(SUNLinearSolver S)
+SUNLinearSolver_Type GetType_RankLocalLS(SUNLinearSolver S)
 {
-  if (BDMPIMV_WORK(S))
+  if (RankLocalLS_WORK(S))
     return(SUNLINEARSOLVER_ITERATIVE);
   else
     return(SUNLINEARSOLVER_DIRECT);
 }
 
-int SUNLinSolInitialize_BDMPIMV(SUNLinearSolver S)
+int Initialize_RankLocalLS(SUNLinearSolver S)
 {
   // pass initialize call down to block linear solver
-  BDMPIMV_LASTFLAG(S) = SUNLinSolInitialize(BDMPIMV_BLS(S));
-  return(BDMPIMV_LASTFLAG(S));
+  RankLocalLS_LASTFLAG(S) = SUNLinSolInitialize(RankLocalLS_BLS(S));
+  return(RankLocalLS_LASTFLAG(S));
 }
 
-int SUNLinSolSetup_BDMPIMV(SUNLinearSolver S, SUNMatrix A)
+int Setup_RankLocalLS(SUNLinearSolver S, SUNMatrix A)
 {
   // pass setup call down to block linear solver
-  int retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
-  BDMPIMV_LASTFLAG(S) = SUNLinSolSetup(BDMPIMV_BLS(S), A);
-  retval = BDMPIMV_UDATA(S)->profile[PR_LSETUP].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSetup_BDMPIMV)", 1))  return(retval);
-  return(BDMPIMV_LASTFLAG(S));
+  int retval = RankLocalLS_UDATA(S)->profile[PR_LSETUP].start();
+  if (check_flag(&retval, "Profile::start (Setup_RankLocalLS)", 1))  return(retval);
+  RankLocalLS_LASTFLAG(S) = SUNLinSolSetup(RankLocalLS_BLS(S), A);
+  retval = RankLocalLS_UDATA(S)->profile[PR_LSETUP].stop();
+  if (check_flag(&retval, "Profile::stop (Setup_RankLocalLS)", 1))  return(retval);
+  return(RankLocalLS_LASTFLAG(S));
 }
 
-int SUNLinSolSolve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
-                           N_Vector x, N_Vector b, realtype tol)
+int Solve_RankLocalLS(SUNLinearSolver S, SUNMatrix A,
+                      N_Vector x, N_Vector b, realtype tol)
 {
   // start profiling timer
-  int retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
+  int retval = RankLocalLS_UDATA(S)->profile[PR_LSOLVE].start();
+  if (check_flag(&retval, "Profile::start (Solve_RankLocalLS)", 1))  return(-1);
 
-  // access desired subvector from MPIManyVector objects
-  N_Vector xsub, bsub;
-  xsub = bsub = NULL;
-  xsub = N_VGetSubvector_MPIManyVector(x, BDMPIMV_SUBVEC(S));
-  bsub = N_VGetSubvector_MPIManyVector(b, BDMPIMV_SUBVEC(S));
+  // access desired subvector from ManyVector objects
+  N_Vector xsub = N_VGetSubvector_ManyVector(x, RankLocalLS_SUBVEC(S));
+  N_Vector bsub = N_VGetSubvector_ManyVector(b, RankLocalLS_SUBVEC(S));
   if ((xsub == NULL) || (bsub == NULL)) {
-    BDMPIMV_LASTFLAG(S) = SUNLS_MEM_FAIL;
-    return(BDMPIMV_LASTFLAG(S));
+    RankLocalLS_LASTFLAG(S) = SUNLS_MEM_FAIL;
+    return(RankLocalLS_LASTFLAG(S));
   }
 
-  // pass solve call down to the block linear solver
-  int ierr = SUNLinSolSolve(BDMPIMV_BLS(S), A, xsub, bsub, tol);
-
-  // check if any of the block solvers failed
-  int ierrs[2], globerrs[2];
-  ierrs[0] = ierr; ierrs[1] = -ierr;
-  retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].start();
-  if (check_flag(&retval, "Profile::start (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
-  retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, BDMPIMV_UDATA(S)->comm);
-  if (check_flag(&retval, "MPI_Alleduce (SUNLinSolSolve_BDMPIMV)", 3)) return(-1);
-  retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVEMPI].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
-
-  // check whether an unrecoverable failure occured
-  BDMPIMV_LASTFLAG(S) = globerrs[0];
-  if (globerrs[0] < 0) {
-    retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-    if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
-    return(globerrs[0]);
-  }
-
-  // otherwise return the success and/or recoverable failure flag
-  BDMPIMV_LASTFLAG(S) = -globerrs[1];
-  retval = BDMPIMV_UDATA(S)->profile[PR_LSOLVE].stop();
-  if (check_flag(&retval, "Profile::stop (SUNLinSolSolve_BDMPIMV)", 1))  return(-1);
-  return(-globerrs[1]);
+  // pass solve call down to the block linear solver, and return resulting flag
+  RankLocalLS_LASTFLAG(S) = SUNLinSolSolve(RankLocalLS_BLS(S), A, xsub, bsub, tol);
+  return(RankLocalLS_LASTFLAG(S));
 }
 
-int SUNLinSolSetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
+int SetATimes_RankLocalLS(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
 {
   // Ignore the input ARKODE ATimes function and attach a custom ATimes function
-  BDMPIMV_LASTFLAG(S) = SUNLinSolSetATimes(BDMPIMV_BLS(S), BDMPIMV_CONTENT(S),
-                                           ATimes_BDMPIMV);
-  return(BDMPIMV_LASTFLAG(S));
+  RankLocalLS_LASTFLAG(S) = SUNLinSolSetATimes(RankLocalLS_BLS(S),
+                                               RankLocalLS_CONTENT(S),
+                                               ATimes_RankLocalLS);
+  return(RankLocalLS_LASTFLAG(S));
 }
 
-int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
+int ATimes_RankLocalLS(void* A_data, N_Vector v, N_Vector z)
 {
   // Access the linear solver content
-  BDMPIMVContent content = (BDMPIMVContent) A_data;
+  RankLocalLSContent content = (RankLocalLSContent) A_data;
 
   // Shortcuts to content
   EulerData* udata      = content->udata;
@@ -1326,23 +1518,23 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   // Get the current time, gamma, and error weights
   realtype tcur;
   int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
-  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes_RankLocalLS)", 1)) return(-1);
 
   N_Vector ycur;
   retval = ARKStepGetCurrentState(arkode_mem, &ycur);
-  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes_RankLocalLS)", 1)) return(-1);
 
   realtype gamma;
   retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
-  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes_RankLocalLS)", 1)) return(-1);
 
   N_Vector work = content->work;
   retval = ARKStepGetErrWeights(arkode_mem, work);
-  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes)", 1)) return(-1);
+  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes_RankLocalLS)", 1)) return(-1);
 
   // Get ycur and weight vector for chem species
-  N_Vector y = N_VGetSubvector_MPIManyVector(ycur, content->subvec);
-  N_Vector w = N_VGetSubvector_MPIManyVector(work, content->subvec);
+  N_Vector y = N_VGetSubvector_ManyVector(ycur, content->subvec);
+  N_Vector w = N_VGetSubvector_ManyVector(work, content->subvec);
 
   // Start timer
   retval = udata->profile[PR_LATIMES].start();
@@ -1354,7 +1546,7 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   // Set work = y + sig * v
   N_VLinearSum(sig, v, ONE, y, w);
 
-  // Set z = ffast(t, y + sig * v)
+  // Set z = fchem(t, y + sig * v)
 #ifdef USERAJA
   retval = calculate_rhs_cvklu(tcur, w, z, (udata->nxl)*(udata->nyl)*(udata->nzl),
                                udata->RxNetData);
@@ -1381,15 +1573,15 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   return(0);
 }
 
-sunindextype SUNLinSolLastFlag_BDMPIMV(SUNLinearSolver S)
+sunindextype LastFlag_RankLocalLS(SUNLinearSolver S)
 {
-  return(BDMPIMV_LASTFLAG(S));
+  return(RankLocalLS_LASTFLAG(S));
 }
 
 
-int SUNLinSolFree_BDMPIMV(SUNLinearSolver S)
+int Free_RankLocalLS(SUNLinearSolver S)
 {
-  BDMPIMVContent content = BDMPIMV_CONTENT(S);
+  RankLocalLSContent content = RankLocalLS_CONTENT(S);
   if (content == NULL) return(0);
   if (content->work) N_VDestroy(content->work);
   free(S->ops);

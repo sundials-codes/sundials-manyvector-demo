@@ -48,7 +48,9 @@ foreach(nvar ${_nvar_values})
     PUBLIC
     MPI::MPI_CXX
     SUNDIALS::nvecparallel
+    SUNDIALS::nvecserial
     SUNDIALS::nvecmpimanyvector
+    SUNDIALS::nvecmanyvector    
     SUNDIALS::sunmatrixsparse
     SUNDIALS::arkode
     SUNDIALS::cvode)

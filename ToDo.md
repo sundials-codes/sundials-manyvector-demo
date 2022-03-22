@@ -34,16 +34,46 @@
       'duplicate' version of the energy/temperature, so that all
       chemistry calculations can eventually reside on the GPU. [done]
 
-   b. Couple chemistry to fluid via existing MRIStep module. [in progress]
+   b. Couple chemistry to fluid via existing MRIStep module. [done]
 
    c. 'Custom' inner time-stepper for MRIStep, so that fast time scale
       problems can be evolved separately (e.g., MPI process-local, or
-      even more refined such as strips or individual cells).  [yet to begin]
+      even more refined such as strips or individual cells).  [in progress]
+
+      **Need to change how this is implemented:**
+
+        - convert overall vector data structure to use N_VSerial component
+          vectors for hydrodynamic variables (but retain MPIManyVector in
+          general).  [done]
+
+        - convert "fast" integrator to use a ManyVector with the same
+          structure as the overall solution (including hydrodynamic
+          variables), since at present the hydrodynamic variables are not
+          being evolved at the fast time scale.  [done]
+
+        - update "fast" rhs function to explicitly consider the MRI forcing
+          data as an MPIManyVector array, but to consider its own input/output
+          vectors as ManyVector.  Determine whether it needs to cast the
+          components of the MPIManyVector as a ManyVector for this to work, or
+          if it's call to the linear combination routine can work with a
+          mixture of ManyVector and MPIManyVector arguments.  [done]
+
+        - update node-local fast integrator to accept the MPIManyVector as
+          input, grab the vector array, create ManyVector with those same
+          subvectors, and then call ARKStep Evolve on that ManyVector.
+          [done]
+
+        - create a custom SUNLinearSolver for the rank-local problem that
+          treats the Jacobian of the hydrodynamic variables as 0 (thus
+          $I-gamma J = I$), and farms out the chemical solver to Magma.
+          [done]
+
+      **The above code has been developed and runs to completion; need to verify accuracy against archived results**
 
    d. Convert chemical reaction network and inner DIRK solver to reside
       on GPU.  This will initially retain control structures on CPU,
       but do 'number crunching' for RHS, Jacobian and linear solves on
-      GPU.  [yet to begin]
+      GPU.  [done]
 
 3. More refined profiling, either via a true profiling tool (e.g.,
    PAPI), or if we don't want to depend on many external modules, then
