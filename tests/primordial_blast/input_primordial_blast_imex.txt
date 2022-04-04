@@ -45,7 +45,7 @@ showstats = 1       # enable (1) / disable (0) diagnostic solution output
 #### ARKStep Options ####
 order = 0           # temporal order of accuracy (0 => use specified table)
 dense_order = -1    # dense output order of accuracy (<0 => no interpolation)
-etable = -1         # specific built-in ERK Butcher table to use (<0 => default)
+etable = 13         # specific built-in ERK Butcher table to use (<0 => default)
 itable = 112        # specific built-in DIRK Butcher table to use (<0 => default)
 mtable = -1         # specific built-in MRI coupling table to use (<0 => default)
 adapt_method = 2    # temporal adaptivity algorithm to use
