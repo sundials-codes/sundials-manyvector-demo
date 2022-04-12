@@ -211,16 +211,12 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   if (myid == 0)  cout << "Initializing problem\n";
-  retval = MPI_Barrier(MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // read problem and solver parameters from input file / command line
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   if (myid == 0)  cout << "Setting up parallel decomposition\n";
-  retval = MPI_Barrier(MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // set up udata structure
   retval = udata.SetupDecomp();
@@ -238,6 +234,9 @@ int main(int argc, char* argv[]) {
   realtype dTout = (udata.tf-udata.t0)/udata.nout;
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  retval = udata.profile[PR_SETUP1].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // set slow timestep size as h0 (if >0), or dTout otherwise
   realtype hslow = (opts.h0 > 0) ? opts.h0 : dTout;
@@ -348,6 +347,11 @@ int main(int argc, char* argv[]) {
     DFID_INNER=fopen("diags_chem.txt","w");
   }
 
+  retval = udata.profile[PR_SETUP1].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP2].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
@@ -385,9 +389,19 @@ int main(int argc, char* argv[]) {
   if (check_flag((void *) atols, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   N_VConst(opts.atol, atols);
 
+  retval = udata.profile[PR_SETUP2].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP3].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // initialize Dengo data structure, "network_data" (stored within udata)
   retval = initialize_Dengo_structures(udata);
   if (check_flag(&retval, "initialize_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  retval = udata.profile[PR_SETUP3].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP4].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // set initial conditions into overall solution vector (or restart from file)
   // [note: since w and wloc share the same component N_Vectors, this also initializes wloc]
@@ -404,9 +418,19 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
+  retval = udata.profile[PR_SETUP4].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP5].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // prepare Dengo structures and initial condition vector(s) for fast time scale evolution
   retval = prepare_Dengo_structures(udata.t0, w, udata);
   if (check_flag(&retval, "prepare_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  retval = udata.profile[PR_SETUP5].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP6].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
 
   //--- create the fast integrator and set options ---//
@@ -436,6 +460,11 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetUserData(inner_arkode_mem, (void*) inner_content);
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  retval = udata.profile[PR_SETUP6].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP7].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // create the fast integrator local linear solver
   if (opts.iterative) {
     BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
@@ -447,9 +476,20 @@ int main(int argc, char* argv[]) {
                                   udata.memhelper, NULL, udata.ctx);
     if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
+    retval = udata.profile[PR_SETUP7].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    retval = udata.profile[PR_SETUP7A].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
     // Create the custom SUNLinearSolver object
     BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
     if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
+
+    retval = udata.profile[PR_SETUP7A].stop();
+    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    retval = udata.profile[PR_SETUP7B].start();
+    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #else
 #ifdef RAJA_CUDA
     // Initialize cuSOLVER and cuSPARSE handles
@@ -475,16 +515,38 @@ int main(int argc, char* argv[]) {
 #endif
   }
 
+  retval = udata.profile[PR_SETUP7B].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP7C].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // create linear solver wrapper and attach the matrix and linear solver to the
   // integrator and set the Jacobian for direct linear solvers
   LS = SUNLinSol_RankLocalLS(BLS, wloc, 5, &udata, inner_arkode_mem, opts, udata.ctx);
   if (check_flag((void*) LS, "SUNLinSol_RankLocalLS (main)", 0)) MPI_Abort(udata.comm, 1);
+
+  retval = udata.profile[PR_SETUP7C].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP7D].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  retval = udata.profile[PR_SETUP7D].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP7E].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   if (!opts.iterative) {
     retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
     if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
   }
+
+  retval = udata.profile[PR_SETUP7E].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP8].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // set diagnostics file
   if (udata.showstats && outproc) {
@@ -573,15 +635,21 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetNonlinConvCoef(inner_arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  retval = udata.profile[PR_SETUP8].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_SETUP9].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   //--- create the slow integrator and set options ---//
-
-  retval = udata.profile[PR_MRISETUP].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // initialize the integrator memory
   outer_arkode_mem = MRIStepCreate(fslow, NULL, udata.t0, w, stepper, udata.ctx);
   if (check_flag((void*) outer_arkode_mem, "MRIStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
+
+  retval = udata.profile[PR_SETUP9].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = udata.profile[PR_MRISETUP].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // pass udata to user functions
   retval = MRIStepSetUserData(outer_arkode_mem, (void *) (&udata));
@@ -733,10 +801,22 @@ int main(int argc, char* argv[]) {
       }
       cout << "\nCurrent profiling results:\n";
     }
-    retval = MPI_Barrier(udata.comm);
-    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
     udata.profile[PR_SETUP].print_cumulative_times("setup");
     udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
+    udata.profile[PR_SETUP1].print_cumulative_times("setup-phase1");
+    udata.profile[PR_SETUP2].print_cumulative_times("setup-phase2");
+    udata.profile[PR_SETUP3].print_cumulative_times("setup-phase3");
+    udata.profile[PR_SETUP4].print_cumulative_times("setup-phase4");
+    udata.profile[PR_SETUP5].print_cumulative_times("setup-phase5");
+    udata.profile[PR_SETUP6].print_cumulative_times("setup-phase6");
+    udata.profile[PR_SETUP7].print_cumulative_times("setup-phase7");
+    udata.profile[PR_SETUP7A].print_cumulative_times("setup-phase7a");
+    udata.profile[PR_SETUP7B].print_cumulative_times("setup-phase7b");
+    udata.profile[PR_SETUP7C].print_cumulative_times("setup-phase7c");
+    udata.profile[PR_SETUP7D].print_cumulative_times("setup-phase7d");
+    udata.profile[PR_SETUP7E].print_cumulative_times("setup-phase7e");
+    udata.profile[PR_SETUP8].print_cumulative_times("setup-phase8");
+    udata.profile[PR_SETUP9].print_cumulative_times("setup-phase9");
     udata.profile[PR_MRISETUP].print_cumulative_times("MRIsetup");
     udata.profile[PR_IO].print_cumulative_times("I/O");
     udata.profile[PR_MPI].print_cumulative_times("MPI");
@@ -924,10 +1004,22 @@ int main(int argc, char* argv[]) {
     }
     cout << "\nFinal profiling results:\n";
   }
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   udata.profile[PR_SETUP].print_cumulative_times("setup");
   udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
+  udata.profile[PR_SETUP1].print_cumulative_times("setup-phase1");
+  udata.profile[PR_SETUP2].print_cumulative_times("setup-phase2");
+  udata.profile[PR_SETUP3].print_cumulative_times("setup-phase3");
+  udata.profile[PR_SETUP4].print_cumulative_times("setup-phase4");
+  udata.profile[PR_SETUP5].print_cumulative_times("setup-phase5");
+  udata.profile[PR_SETUP6].print_cumulative_times("setup-phase6");
+  udata.profile[PR_SETUP7].print_cumulative_times("setup-phase7");
+  udata.profile[PR_SETUP7A].print_cumulative_times("setup-phase7a");
+  udata.profile[PR_SETUP7B].print_cumulative_times("setup-phase7b");
+  udata.profile[PR_SETUP7C].print_cumulative_times("setup-phase7c");
+  udata.profile[PR_SETUP7D].print_cumulative_times("setup-phase7d");
+  udata.profile[PR_SETUP7E].print_cumulative_times("setup-phase7e");
+  udata.profile[PR_SETUP8].print_cumulative_times("setup-phase8");
+  udata.profile[PR_SETUP9].print_cumulative_times("setup-phase9");
   udata.profile[PR_MRISETUP].print_cumulative_times("MRIsetup");
   udata.profile[PR_IO].print_cumulative_times("I/O");
   udata.profile[PR_MPI].print_cumulative_times("MPI");
@@ -954,6 +1046,8 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up, finalize MPI, and return with successful completion
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   cleanup(&outer_arkode_mem, &inner_arkode_mem, stepper, inner_content,
           udata, BLS, LS, A, w, wloc, atols, wsubvecs, Nsubvecs);
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
@@ -963,8 +1057,6 @@ int main(int argc, char* argv[]) {
     cusolverSpDestroy(cusol_handle);
   }
 #endif
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }
@@ -1282,7 +1374,7 @@ static int RankLocalStepper_FullRhs(MRIStepInnerStepper stepper, realtype t,
   N_Vector floc = N_VNew_ManyVector(6, subvecs, f->sunctx);
   if (check_flag((void *) floc, "N_VNewManyVector (RankLocalStepper_FullRhs)", 0))
     return(-1);
-    
+
   // call ffast with forcing disabled
   content->disable_forcing = true;
   retval = ffast(t, yloc, floc, inner_content);

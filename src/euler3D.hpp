@@ -94,28 +94,42 @@ using namespace std;
 
 
 // profiler IDs used in code
-#define  MAXPROFILES  20
+#define  MAXPROFILES   40
 
-#define  PR_MPI        0
-#define  PR_SETUP      1
-#define  PR_IO         2
-#define  PR_PACKDATA   3
-#define  PR_FACEFLUX   4
-#define  PR_RHSEULER   5
-#define  PR_RHSSLOW    6
-#define  PR_RHSFAST    7
-#define  PR_JACFAST    8
-#define  PR_POSTFAST   9
-#define  PR_SIMUL     10
-#define  PR_TRANS     11
-#define  PR_DTSTAB    12
-#define  PR_LSETUP    13
-#define  PR_LSOLVE    14
-#define  PR_LATIMES   15
-#define  PR_TOTAL     16
-#define  PR_LSOLVEMPI 17
-#define  PR_CHEMSETUP 18
-#define  PR_MRISETUP  19
+#define  PR_MPI         0
+#define  PR_SETUP       1
+#define  PR_IO          2
+#define  PR_PACKDATA    3
+#define  PR_FACEFLUX    4
+#define  PR_RHSEULER    5
+#define  PR_RHSSLOW     6
+#define  PR_RHSFAST     7
+#define  PR_JACFAST     8
+#define  PR_POSTFAST    9
+#define  PR_SIMUL      10
+#define  PR_TRANS      11
+#define  PR_DTSTAB     12
+#define  PR_LSETUP     13
+#define  PR_LSOLVE     14
+#define  PR_LATIMES    15
+#define  PR_TOTAL      16
+#define  PR_LSOLVEMPI  17
+#define  PR_CHEMSETUP  18
+#define  PR_MRISETUP   19
+#define  PR_SETUP1     20
+#define  PR_SETUP2     21
+#define  PR_SETUP3     22
+#define  PR_SETUP4     23
+#define  PR_SETUP5     24
+#define  PR_SETUP6     25
+#define  PR_SETUP7     26
+#define  PR_SETUP8     27
+#define  PR_SETUP9     28
+#define  PR_SETUP7A    29
+#define  PR_SETUP7B    30
+#define  PR_SETUP7C    31
+#define  PR_SETUP7D    32
+#define  PR_SETUP7E    33
 
 
 // Utility routine to check function return values:
