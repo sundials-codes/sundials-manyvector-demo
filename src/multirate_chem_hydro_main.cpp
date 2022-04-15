@@ -73,6 +73,7 @@
 #endif
 
 //#define DISABLE_HYDRO
+//#define SETUP_ONLY
 
 // macros for handling formatting of diagnostic output
 #define PRINT_CGS 1
@@ -235,6 +236,9 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+
   retval = udata.profile[PR_SETUP1].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -349,6 +353,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP1].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP2].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -391,6 +397,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP2].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP3].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -400,6 +408,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP3].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP4].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -420,6 +430,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP4].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP5].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -429,6 +441,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP5].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP6].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -462,6 +476,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP6].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP7].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -478,6 +494,8 @@ int main(int argc, char* argv[]) {
 
     retval = udata.profile[PR_SETUP7].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    retval = MPI_Barrier(udata.comm);
+    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_SETUP7A].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -487,6 +505,8 @@ int main(int argc, char* argv[]) {
 
     retval = udata.profile[PR_SETUP7A].stop();
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+    retval = MPI_Barrier(udata.comm);
+    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
     retval = udata.profile[PR_SETUP7B].start();
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -517,6 +537,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP7B].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP7C].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -527,6 +549,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP7C].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP7D].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -535,6 +559,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP7D].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP7E].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -545,6 +571,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP7E].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP8].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -637,6 +665,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP8].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_SETUP9].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -648,6 +678,8 @@ int main(int argc, char* argv[]) {
 
   retval = udata.profile[PR_SETUP9].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   retval = udata.profile[PR_MRISETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -727,7 +759,7 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_SETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
-
+#ifndef SETUP_ONLY
   //--- Initial transient evolution: call MRIStepEvolve to perform integration   ---//
   //--- over [t0,t0+htrans], then disable adaptivity and set fixed-step size     ---//
   //--- to use for remainder of fast time scale simulation.                      ---//
@@ -955,6 +987,7 @@ int main(int argc, char* argv[]) {
   // compute simulation time, total time
   retval = udata.profile[PR_SIMUL].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+#endif
   retval = udata.profile[PR_TOTAL].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
