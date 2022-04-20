@@ -106,57 +106,78 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   }
 #endif
 
-  // root process determines locations, radii and strength of density clumps
-  long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
-  double *clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
-  if (udata.myid == 0) {
+  // each process determines the locations, radii and strength of its density clumps
+  long int nclumps = CLUMPS_PER_PROC*27;  // also store all clumps for nearest neighbors in every direction
+  double clump_data[5*27*CLUMPS_PER_PROC];
+  for (i=0; i<5*27*CLUMPS_PER_PROC; i++)  clump_data[i] = 0.0;
 
-    // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
-    std::mt19937_64 gen(udata.nprocs);
-    std::uniform_real_distribution<> cx_d(udata.xl, udata.xr);
-    std::uniform_real_distribution<> cy_d(udata.yl, udata.yr);
-    std::uniform_real_distribution<> cz_d(udata.zl, udata.zr);
-    std::uniform_real_distribution<> cr_d(MIN_CLUMP_RADIUS,MAX_CLUMP_RADIUS);
-    std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
+  // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
+  std::mt19937_64 gen(udata.nprocs);
+  std::uniform_real_distribution<> cx_d(udata.is*udata.dx + udata.xl, (udata.is+udata.nxl)*udata.dx + udata.xl);
+  std::uniform_real_distribution<> cy_d(udata.js*udata.dy + udata.yl, (udata.js+udata.nyl)*udata.dy + udata.yl);
+  std::uniform_real_distribution<> cz_d(udata.ks*udata.dz + udata.zl, (udata.ks+udata.nzl)*udata.dz + udata.zl);
+  std::uniform_real_distribution<> cr_d(MIN_CLUMP_RADIUS,MAX_CLUMP_RADIUS);
+  std::uniform_real_distribution<> cs_d(ZERO, MAX_CLUMP_STRENGTH);
 
-    // fill clump information
-    for (i=0; i<nclumps; i++) {
+  // fill local clump information
+  for (i=0; i<CLUMPS_PER_PROC; i++) {
 
-      // global (x,y,z) coordinates for this clump center
-      clump_data[5*i+0] = cx_d(gen);
-      clump_data[5*i+1] = cy_d(gen);
-      clump_data[5*i+2] = cz_d(gen);
+    // global (x,y,z) coordinates for this clump center
+    clump_data[5*i+0] = cx_d(gen);
+    clump_data[5*i+1] = cy_d(gen);
+    clump_data[5*i+2] = cz_d(gen);
 
-      // radius of clump
-      clump_data[5*i+3] = cr_d(gen);
+    // radius of clump
+    clump_data[5*i+3] = cr_d(gen);
 
-      // strength of clump
-      clump_data[5*i+4] = cs_d(gen);
-
-    }
+    // strength of clump
+    clump_data[5*i+4] = cs_d(gen);
 
   }
 
-  // root process broadcasts clump information
-  retval = MPI_Bcast(clump_data, nclumps*5, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
-
+  // communicate with nearest neighbors to fill remainder of clump_data
+  MPI_Request req[52];
+  MPI_Status stat[52];
+  int neighbors[26], nb;
+  int dims[3], periods[3], coords[3], nbcoords[3];
+  int num_neighbors=0;
+  //    determine set of *unique* neighboring ranks
+  retval = MPI_Cart_get(udata.comm, 3, dims, periods, coords);
+  if (check_flag(&retval, "MPI_Cart_get (initial_conditions)", 3)) return -1;
+  for (k=-1; k<=1; k++)
+    for (j=-1; j<=1; j++)
+      for (i=-1; i<=1; i++) {
+        nbcoords[0] = coords[0]+i;
+        nbcoords[1] = coords[1]+j;
+        nbcoords[2] = coords[2]+k;
+        if ((nbcoords[0] < 0) && (udata.xlbc != BC_PERIODIC)) continue;
+        if ((nbcoords[1] < 0) && (udata.ylbc != BC_PERIODIC)) continue;
+        if ((nbcoords[2] < 0) && (udata.zlbc != BC_PERIODIC)) continue;
+        if ((nbcoords[0] >= dims[0]) && (udata.xlbc != BC_PERIODIC)) continue;
+        if ((nbcoords[1] >= dims[1]) && (udata.xlbc != BC_PERIODIC)) continue;
+        if ((nbcoords[2] >= dims[2]) && (udata.xlbc != BC_PERIODIC)) continue;
+        retval = MPI_Cart_rank(udata.comm, nbcoords, &nb);
+        if (check_flag(&retval, "MPI_Cart_rank (initial_conditions)", 3)) return -1;
+        for (int l=0; l<num_neighbors; l++)  if (nb == neighbors[l]) continue;
+        if (nb == udata.myid) continue;
+        neighbors[num_neighbors++] = nb;
+      }
+  //    initiate communications
+  for (i=0; i<num_neighbors; i++) {
+    retval = MPI_Irecv(&(clump_data[(i+1)*5*CLUMPS_PER_PROC]), 5*CLUMPS_PER_PROC,
+                       MPI_SUNREALTYPE, neighbors[i], MPI_ANY_TAG, udata.comm, &(req[2*i]));
+    if (check_flag(&retval, "MPI_Irecv (initial_conditions)", 3)) return -1;
+    retval = MPI_Isend(clump_data, 5*CLUMPS_PER_PROC, MPI_SUNREALTYPE, neighbors[i],
+                       i, udata.comm, &(req[2*i+1]));
+    if (check_flag(&retval, "MPI_Isend (initial_conditions)", 3)) return -1;
+  }
+  //    wait for communications to complete
+  retval = MPI_Waitall(2*num_neighbors, req, stat);
+  if (check_flag(&retval, "MPI_Waitall (initial_conditions)", 3)) return -1;
 
   // output clump information
-  if (udata.myid == 0) {
-    cout << "\nInitializing problem with " << nclumps << " clumps\n";
-    // for (i=0; i<nclumps; i++)
-    //   cout << "   clump " << i << ", center = (" << clump_data[5*i+0] << ","
-    //        << clump_data[5*i+1] << "," << clump_data[5*i+2] << "),  \tradius = "
-    //        << clump_data[5*i+3] << " cells,  \tstrength = " << clump_data[5*i+4] << std::endl;
-    // cout << "\n'Blast' clump:\n"
-    //      << "       overdensity = " << BLAST_DENSITY << std::endl
-    //      << "   overtemperature = " << BLAST_TEMPERATURE << std::endl
-    //      << "            radius = " << BLAST_RADIUS << std::endl
-    //      << "            center = " << BLAST_CENTER_X << ", "
-    //      << BLAST_CENTER_Y << ", " << BLAST_CENTER_Z << std::endl;
-  }
-
+  if (udata.myid == 0)
+    cout << "\nInitializing problem with " << CLUMPS_PER_PROC*udata.nprocs << " clumps\n";
 
   // initial condition values -- essentially-neutral primordial gas
   realtype tiny = 1e-40;
@@ -200,12 +221,9 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
           cz = clump_data[5*idx+2];
           cr = clump_data[5*idx+3]*udata.dx;
           cs = clump_data[5*idx+4];
-          //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-          //ydist = min( abs(yloc-cy), min( abs(yloc-cy+udata.yr), abs(yloc-cy-udata.yr) ) );
-          //zdist = min( abs(zloc-cz), min( abs(zloc-cz+udata.zr), abs(zloc-cz-udata.zr) ) );
-          xdist = abs(xloc-cx);
-          ydist = abs(yloc-cy);
-          zdist = abs(zloc-cz);
+          xdist = udata.xDistance(xloc,cx);
+          ydist = udata.yDistance(yloc,cy);
+          zdist = udata.zDistance(zloc,cz);
           rsq = xdist*xdist + ydist*ydist + zdist*zdist;
           density += cs*exp(-2.0*rsq/cr/cr);
         }
@@ -215,14 +233,11 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         cx = udata.xl + BLAST_CENTER_X*(udata.xr - udata.xl);
         cy = udata.yl + BLAST_CENTER_Y*(udata.yr - udata.yl);
         cz = udata.zl + BLAST_CENTER_Z*(udata.zr - udata.zl);
-        //xdist = min( abs(xloc-cx), min( abs(xloc-cx+udata.xr), abs(xloc-cx-udata.xr) ) );
-        //ydist = min( abs(yloc-cy), min( abs(yloc-cy+udata.yr), abs(yloc-cy-udata.yr) ) );
-        //zdist = min( abs(zloc-cz), min( abs(zloc-cz+udata.zr), abs(zloc-cz-udata.zr) ) );
         cr = BLAST_RADIUS*min( udata.xr-udata.xl, min(udata.yr-udata.yl, udata.zr-udata.zl));
         cs = density0*BLAST_DENSITY;
-        xdist = abs(xloc-cx);
-        ydist = abs(yloc-cy);
-        zdist = abs(zloc-cz);
+        xdist = udata.xDistance(xloc,cx);
+        ydist = udata.yDistance(yloc,cy);
+        zdist = udata.zDistance(zloc,cz);
         rsq = xdist*xdist + ydist*ydist + zdist*zdist;
         density += cs*exp(-2.0*rsq/cr/cr);
 
@@ -301,7 +316,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
 
-  free(clump_data);
+  //free(clump_data);
 
   return 0;
 }
@@ -320,7 +335,7 @@ int initialize_Dengo_structures(EulerData& udata) {
   // start profiler
   int retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA

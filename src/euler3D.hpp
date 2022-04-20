@@ -1375,6 +1375,26 @@ public:
     return(dfail+efail+pfail);
   }
 
+  // Utility routines to compute the distance between two points (including domain periodicity)
+  inline realtype xDistance(realtype x1, realtype x2) const
+  {
+    return (xlbc == BC_PERIODIC) ?
+      (min( abs(x1-x2), min( abs(x1-x2+(xr-xl)), abs(x1-x2-(xr-xl)) ) )) :
+      (abs(x1-x2));
+  }
+  inline realtype yDistance(realtype y1, realtype y2) const
+  {
+    return (ylbc == BC_PERIODIC) ?
+      (min( abs(y1-y2), min( abs(y1-y2+(yr-yl)), abs(y1-y2-(yr-yl)) ) )) :
+      (abs(y1-y2));
+  }
+  inline realtype zDistance(realtype z1, realtype z2) const
+  {
+    return (zlbc == BC_PERIODIC) ?
+      (min( abs(z1-z2), min( abs(z1-z2+(zr-zl)), abs(z1-z2-(zr-zl)) ) )) :
+      (abs(z1-z2));
+  }
+
 };   // end EulerData;
 
 
