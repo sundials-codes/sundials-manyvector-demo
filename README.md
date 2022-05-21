@@ -2,97 +2,78 @@
 
 [Note: this project is in active development.]
 
-This is a SUNDIALS-based demonstration application to assess and demonstrate the
-large-scale parallel performance of new capabilities that have been added to
-SUNDIALS in recent years. Namely:
+This is a SUNDIALS-based demonstration application to assess and demonstrate
+the large-scale parallel performance of new capabilities that have been added
+to SUNDIALS in recent years. Namely:
 
-1. The new SUNDIALS MPIManyVector module, that allows extreme flexibility in how
-   a solution "vector" is staged on computational resources (e.g., CPUs and
-   GPUs).
+1. The new SUNDIALS MPIManyVector module, that allows extreme flexibility in
+   how a solution "vector" is staged on computational resources (e.g., CPUs
+   and GPUs).
 
 2. The new ARKODE multirate integration module, MRIStep, allowing high-order
    accurate calculations that subcycle "fast" processes within "slow" ones.
 
-3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined use
-   of problem specific and scalable linear solver libraries (e.g., *hypre*,
-   PETSc and Trilinos).
-
-## Table of Contents
-
-* [Model Equations](#model-equations)
-* [Discretization](#discretization)
-* [Building](#building)
-* [Running](#running)
-* [Adding New Tests](#adding-new-tests)
-* [Authors](#authors)
+3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined
+   use of problem specific and scalable linear solver libraries (e.g., 
+   *hypre*, PETSc, and Trilinos).
 
 ## Model Equations
 
-This code simulates a 3D nonlinear inviscid compressible Euler
-equation with advection and reaction of chemical species,
-<p align="center"><img src="/tex/77d55513ca92983b2a16bf2c0d217d53.svg?invert_in_darkmode&sanitize=true" align=middle width=208.23551595pt height=16.438356pt/></p>
-for independent variables
-<p align="center"><img src="/tex/b1fb667c457471aa9a6fe9b8a16c5c51.svg?invert_in_darkmode&sanitize=true" align=middle width=227.07922545pt height=17.031940199999998pt/></p>
-where the spatial domain is a three-dimensional cube,
-<p align="center"><img src="/tex/724344359d58ffb008954bfadd390bc2.svg?invert_in_darkmode&sanitize=true" align=middle width=210.46034459999998pt height=16.438356pt/></p>
+This code simulates a 3D nonlinear inviscid compressible Euler equation with
+advection and reaction of chemical species,
+
+$$w_t = -\nabla\cdot F(w) + G(X,t,w),$$
+
+for independent variables $(X,t) = (x,y,z,t) \in \Omega \times [t_0, t_f]$ 
+where the spatial domain is a three-dimensional cube, 
+$\Omega = [x_l, x_r] \times [y_l, y_r] \times [z_l, z_r]$.
+
 The differential equation is completed using initial condition
-<p align="center"><img src="/tex/5270774dab046199071bafaa705bfac0.svg?invert_in_darkmode&sanitize=true" align=middle width=128.36284064999998pt height=16.438356pt/></p>
-and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x
-[zlbc, zrbc], where each may be any one of
-
-* periodic (0),
-* homogeneous Neumann (1),
-* homogeneous Dirichlet (2), or
-* reflecting (3)
-
-under the restriction that if any boundary is set to "periodic" then
-the opposite face must also indicate a periodic condition.
+$w(X,t_0) = w_0(X)$ and face-specific boundary conditions may be periodic (0),
+homogeneous Neumann (1), homogeneous Dirichlet (2), or reflecting (3) under the
+restriction that if any boundary is set to "periodic" then the opposite face
+must also indicate a periodic condition.
 
 Here, the 'solution' is given by
-<img src="/tex/28187201df21690b7d306712905d18e4.svg?invert_in_darkmode&sanitize=true" align=middle width=468.60549779999997pt height=35.5436301pt/>,
-that corresponds to the density, x,y,z-momentum, total energy
-per unit volume, and any number of chemical densities
-<img src="/tex/b8b6bd2b662b75b8e135f6da0bd323ce.svg?invert_in_darkmode&sanitize=true" align=middle width=79.96356884999999pt height=27.91243950000002pt/> that are advected along with the
-fluid.  The fluxes are given by
-<p align="center"><img src="/tex/3a03e5f8f13d64219de34f4e89ece974.svg?invert_in_darkmode&sanitize=true" align=middle width=425.4109365pt height=23.5253469pt/></p>
-<p align="center"><img src="/tex/6de6c35f4b2af691b7c615d7455c9eb9.svg?invert_in_darkmode&sanitize=true" align=middle width=423.2250824999999pt height=23.9085792pt/></p>
-<p align="center"><img src="/tex/9ab5c11c75414d0f6469ee8b93a5d46b.svg?invert_in_darkmode&sanitize=true" align=middle width=429.71667914999995pt height=23.5253469pt/></p>
-The external force
-<p align="center"><img src="/tex/fdd8b43797ed57d5386562a0b6c3a124.svg?invert_in_darkmode&sanitize=true" align=middle width=72.46420829999998pt height=24.65753399999998pt/></p>
-is test-problem-dependent, and the ideal gas equation of state gives
-<p align="center"><img src="/tex/272a02648ae7ce4db259539aa98655dc.svg?invert_in_darkmode&sanitize=true" align=middle width=218.4856146pt height=36.09514755pt/></p>
-and
-<p align="center"><img src="/tex/fcab1314e35d6d578ef90227b587c829.svg?invert_in_darkmode&sanitize=true" align=middle width=200.67741375pt height=29.47417935pt/></p>
-or equivalently,
-<p align="center"><img src="/tex/c525acb8ade640e26804cc23100fc642.svg?invert_in_darkmode&sanitize=true" align=middle width=250.13614230000002pt height=30.1801401pt/></p>
-and
-<p align="center"><img src="/tex/bb93cc09da34e3117795a4e98a4e4db6.svg?invert_in_darkmode&sanitize=true" align=middle width=215.21714114999997pt height=32.6705313pt/></p>
+$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c} \end{bmatrix}^T$
+corresponding to the density, momentum in the x, y, and z directions, total
+energy per unit volume, and any number of chemical densities 
+$\mathbf{c}\in\mathbb{R}^{nchem}$ that are advected along with the fluid. The
+fluxes are given by
+$$ F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p) & \mathbf{c} v_x \end{bmatrix}^T,$$
+$$ F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p) & \mathbf{c} v_y \end{bmatrix}^T,$$
+$$ F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.$$
+
+The external force $G(X,t,w)$ is test-problem-dependent, and the ideal gas
+equation of state gives $p = \frac{R}{c_v}(e_t - \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2))$
+and $e_t = \frac{pc_v}{R} + \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$
+or equivalently, $p = (\gamma-1) (e_t - \frac{\rho}{2} (v_x^2 + v_y^2 + v_z^2))$ 
+and $e_t = \frac{p}{\gamma - 1}\frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2)$.
 
 We have the physical parameters:
 
-* R is the specific ideal gas constant (287.14 J/kg/K).
+* $R$ is the specific ideal gas constant (287.14 J/kg/K),
 
-* <img src="/tex/aa8cfea83e4502fbd685d6c095494147.svg?invert_in_darkmode&sanitize=true" align=middle width=14.102064899999991pt height=14.15524440000002pt/> is
-the specific heat capacity at constant volume (717.5 J/kg/K),
+* $c_v$ is the specific heat capacity at constant volume (717.5 J/kg/K),
 
-* <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> is the ratio of specific heats, <img src="/tex/f8415659af3e4a9e110591f46cc2875e.svg?invert_in_darkmode&sanitize=true" align=middle width=113.34245999999997pt height=28.670654099999997pt/> (1.4),
+* $\gamma = c_p/c_v = 1 + R/c_v$ is the ratio of specific heats (1.4),
 
 corresponding to air (predominantly an ideal diatomic gas). The speed
-of sound in the gas is then given by
-<p align="center"><img src="/tex/e55dd025376e04a1ada428d642da3089.svg?invert_in_darkmode&sanitize=true" align=middle width=67.10942039999999pt height=39.452455349999994pt/></p>
-The fluid variables above are non-dimensionalized; in standard SI
-units these would be:
+of sound in the gas is then given by $c = \sqrt{\dfrac{\gamma p}{\rho}}$.
 
-* [rho] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>,
+The fluid variables above are non-dimensionalized; in standard SI units
+these would be:
 
-* [vx] = [vy] = [vz] = m/s, which implies that [mx] = [my] = [mz] = kg / m<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/> / s
+* $[\rho] = kg / m^3$,
 
-* [et] = kg / m / s<img src="/tex/e18b24c87a7c52fd294215d16b42a437.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>, and
+* $[v_x] = [v_y] = [v_z] = m/s$, which implies $[m_x] = [m_y] = [m_z] = kg / m^2 / s$
 
-* [c_i] = kg / m<img src="/tex/b6c5b75bafc8bbc771fa716cb26245ff.svg?invert_in_darkmode&sanitize=true" align=middle width=6.5525476499999895pt height=26.76175259999998pt/>
+* $[e_t] = kg / m / s^2$, and
 
-Note: the fluid portion of the above description follows section 7.3.1-7.3.3 of
-https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
+* $[\mathbf{c}_i] = kg / m^3$
+
+Note: the fluid portion of the above description follows [here](https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html)
+in sections 7.3.1 - 7.3.3.
 
 ## Discretization
 
@@ -106,15 +87,12 @@ to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
 `ny = nz = 200`.  When run in parallel, only 'active' spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
-Each fluid field
-(<img src="/tex/6dec54c48a0438a5fcde6053bdb9d712.svg?invert_in_darkmode&sanitize=true" align=middle width=8.49888434999999pt height=14.15524440000002pt/>, <img src="/tex/f8eec81a1374c2e08228fb574a0e5fdf.svg?invert_in_darkmode&sanitize=true" align=middle width=21.88747274999999pt height=14.15524440000002pt/>, <img src="/tex/e4c6c96061743e44c44edafd6e06abe7.svg?invert_in_darkmode&sanitize=true" align=middle width=21.512706599999987pt height=14.15524440000002pt/>, <img src="/tex/b9034568c7237b47ca94b79611bd9fd9.svg?invert_in_darkmode&sanitize=true" align=middle width=21.18545879999999pt height=14.15524440000002pt/> and <img src="/tex/71c0437a67c94e48f18cc11d0c17a38c.svg?invert_in_darkmode&sanitize=true" align=middle width=12.61992929999999pt height=14.15524440000002pt/>)
-is stored in its own parallel `N_Vector` object. Chemical species at all spatial
-locations over a single MPI rank are collocated into a single serial or RAJA
-`N_Vector` object when running on the CPU or GPU respectively. The five fluid
-vectors and the chemical species vector are combined together to form the full
-"solution" vector
- <img src="/tex/31fae8b8b78ebe01cbfbe2fe53832624.svg?invert_in_darkmode&sanitize=true" align=middle width=12.210846449999991pt height=14.15524440000002pt/>
-using the `MPIManyVector` `N_Vector` module.
+Each fluid field ($\rho$, $m_x$, $m_y$, $m_z$, $e_t$) is stored in its serial
+`N_Vector` on each rank. Chemical species at all spatial locations over a single
+MPI rank are collocated into a single serial or RAJA `N_Vector` when running on
+the CPU or GPU, respectively. The five fluid vectors and the chemical species
+vector are combined together to form the full "solution" vector $w$ using a 
+the `MPIManyVector` `N_Vector`.
 
 For non-reactive flows, the resulting initial-value problem is evolved in times
 using an adaptive step explicit Runge-Kutta method from the ARKStep module in
@@ -136,7 +114,6 @@ In both of the approaches above, the resulting MPI rank-local implicit systems
 are solved using the default (modified or inexact) Newton nonlinear solver,
 with a custom linear solver that solves each rank-local linear system using
 either the KLU, cuSPRASE batched-QR, or GMRES SUNLinearSolver linear solver module.
-
 
 ## Building
 
@@ -284,11 +261,11 @@ updated).
 
 The input files contain parameters to set up the physical problem:
 
-* spatial domain, <img src="/tex/9432d83304c1eb0dcb05f092d30a767f.svg?invert_in_darkmode&sanitize=true" align=middle width=11.87217899999999pt height=22.465723500000017pt/> -- `xl`, `xr`, `yl`, `yr`, `zl`, `zr`
+* spatial domain, $\Omega$ -- `xl`, `xr`, `yl`, `yr`, `zl`, `zr`
 
-* time interval, <img src="/tex/bbde6652efaeb60e967ee67be6440eb7.svg?invert_in_darkmode&sanitize=true" align=middle width=46.033257599999985pt height=24.65753399999998pt/> -- `t0`, `tf`
+* time interval, $[t_0, t_f]$ -- `t0`, `tf`
 
-* the ratio of specific heats, <img src="/tex/11c596de17c342edeed29f489aa4b274.svg?invert_in_darkmode&sanitize=true" align=middle width=9.423880949999988pt height=14.15524440000002pt/> -- `gamma`
+* the ratio of specific heats, $\gamma$ -- `gamma`
 
 * spatial discretization dimensions -- `nx`, `ny`, `nz`
 
@@ -305,7 +282,7 @@ Parameters to control the execution of the code:
 Numerous parameters are also provided to control how time integration is
 performed (these are passed directly to ARKODE). For further information on the
 ARKODE solver parameters and the meaning of individual values, see the
-[ARKODE documentation](http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html).
+[ARKODE documentation](https://sundials.readthedocs.io/en/latest/index.html).
 
 To specify an input file to the executable, the input filename should be
 provided using the `-f` flag e.g.,
@@ -364,17 +341,13 @@ specify `NVAR` when adding a new test/executable.
 
 The auxiliary source code files for creating a new test must contain three
 functions. Each of these must return an integer flag indicating success (0) or
-failure (nonzero). The initial condition function
-<img src="/tex/d3cb4393199b89ca003e78d3486fa147.svg?invert_in_darkmode&sanitize=true" align=middle width=46.837068299999984pt height=24.65753399999998pt/>
-must have the signature
+failure (nonzero). The initial condition function $w_0(X)$ must have the signature
 
 ```C++
   int initial_conditions(const realtype& t, N_Vector w, const UserData& udata);
 ```
 
-and the forcing function
-<img src="/tex/c441e18e502be64ac772003edac839dc.svg?invert_in_darkmode&sanitize=true" align=middle width=52.94748029999999pt height=24.65753399999998pt/>
-must have the signature
+and the forcing function $G(X,t,w)$ must have the signature
 
 ```C++
   int external_forces(const realtype& t, N_Vector G, const UserData& udata);
