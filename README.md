@@ -2,20 +2,21 @@
 
 [Note: this project is in active development.]
 
-This is a SUNDIALS-based demonstration application to assess and demonstrate
-the large-scale parallel performance of new capabilities that have been added
-to SUNDIALS in recent years. Namely:
+This is a [SUNDIALS](https://github.com/LLNL/sundials)-based demonstration
+application to assess and demonstrate the large-scale parallel performance of
+new capabilities that have been added to SUNDIALS in recent years. Namely:
 
-1. The new SUNDIALS MPIManyVector module, that allows extreme flexibility in
-   how a solution "vector" is staged on computational resources (e.g., CPUs
-   and GPUs).
+1. The new SUNDIALS [MPIManyVector](https://sundials.readthedocs.io/en/latest/nvectors/NVector_links.html#the-nvector-mpimanyvector-module)
+   implementation, that enables flexibility in how a solution "vector" is
+   partitioned across computational resources e.g., CPUs and GPUs.
 
-2. The new ARKODE multirate integration module, MRIStep, allowing high-order
-   accurate calculations that subcycle "fast" processes within "slow" ones.
+2. The new [ARKODE](https://sundials.readthedocs.io/en/latest/arkode/index.html)
+   multirate integration module, MRIStep, allowing high-order accurate
+   calculations that subcycle "fast" processes within "slow" ones.
 
-3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined
-   use of problem specific and scalable linear solver libraries (e.g., 
-   *hypre*, PETSc, and Trilinos).
+3. The new flexible SUNDIALS [SUNLinearSolver](https://sundials.readthedocs.io/en/latest/sunlinsol/index.html)
+   interfaces, to enable streamlined use of problem specific and scalable
+   linear solver libraries e.g., *hypre*, PETSc, and Trilinos.
 
 ## Model Equations
 
@@ -72,7 +73,8 @@ these would be:
 
 * $[\mathbf{c}_i] = kg / m^3$
 
-Note: the fluid portion of the above description follows [here](https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html)
+Note: the fluid portion of the description above follows the presentation
+[here](https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html)
 in sections 7.3.1 - 7.3.3.
 
 ## Discretization
