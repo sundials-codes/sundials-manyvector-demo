@@ -89,12 +89,12 @@ to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
 `ny = nz = 200`.  When run in parallel, only 'active' spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
-Each fluid field ($\rho$, $m_x$, $m_y$, $m_z$, $e_t$) is stored in its serial
+Each fluid field ($\rho$, $m_x$, $m_y$, $m_z$, $e_t$) is stored in a serial
 `N_Vector` on each rank. Chemical species at all spatial locations over a single
 MPI rank are collocated into a single serial or RAJA `N_Vector` when running on
 the CPU or GPU, respectively. The five fluid vectors and the chemical species
 vector are combined together to form the full "solution" vector $w$ using a 
-the `MPIManyVector` `N_Vector`.
+`MPIManyVector` `N_Vector`.
 
 For non-reactive flows, the resulting initial-value problem is evolved in times
 using an adaptive step explicit Runge-Kutta method from the ARKStep module in
@@ -103,7 +103,7 @@ may be solved using one of two approaches.
 
 1. It may be treated as a multirate initial-value problem, that is solved using
    the MRIStep module in ARKODE, wherein the gas dynamics equations are evolved
-   explicitly at the 'slow' time scale, while the chemical kinetics are evolved
+   explicitly at the slow time scale, while the chemical kinetics are evolved
    at a faster time scale using a temporally-adaptive, diagonally-implicit
    Runge-Kutta method from the ARKStep module.
 
@@ -367,7 +367,7 @@ If no diagnostics information is desired, then this routine may just return 0.
 Here, the `initial_conditions` routine will be called once when the simulation
 begins, `external_forces` will be called on every evaluation of the ODE
 right-hand side function for the Euler equations (it is assumed that this does
-not require the results from `UserData::ExchangeStart`
+not require the results from (`UserData::ExchangeStart`
 / `UserData::ExchangeEnd`), and `output_diagnostics` will be called at the same
 frequency as the solution is output to disk.
 
