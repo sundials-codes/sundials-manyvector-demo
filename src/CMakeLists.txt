@@ -442,4 +442,5 @@ sundemo_add_executable(fluid_blast.exe
     SUNDIALS::sunmatrixmagmadense
     SUNDIALS::sunlinsolmagmadense
   COMPILE_DEFINITIONS
-    NTHREADS=1)
+    NTHREADS=1
+    NVAR=15)

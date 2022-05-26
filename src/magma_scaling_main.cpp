@@ -15,6 +15,7 @@
 
 // Header files
 #include <euler3D.hpp>
+#include <arkode/arkode_arkstep.h>
 #ifdef USERAJA
 #include <nvector/nvector_raja.h>
 #else
@@ -41,8 +42,7 @@ int main(int argc, char* argv[]) {
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vector for storing overall solution
   SUNMatrix A = NULL;            // empty matrix and linear solver structures
-  SUNLinearSolver BLS = NULL;
-  EulerData udata;               // solver data structures
+  SUNLinearSolver LS = NULL;
   ARKODEParameters opts;
   SUNProfiler profobj = NULL;    // empty profiler object
 
@@ -53,7 +53,9 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-  bool outproc = (myid == 0);
+
+  // declare user data structure once MPI has been initialized
+  EulerData udata;
 
   // initial setup
   retval = MPI_Barrier(MPI_COMM_WORLD);
@@ -64,6 +66,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
+  bool outproc = (udata.myid == 0);
   retval = SUNContext_GetProfiler(udata.ctx, &profobj);
   if(check_flag(&retval, "SUNContext_GetProfiler", 1)) MPI_Abort(udata.comm, 1);
 
@@ -74,7 +77,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   SUNDIALS_MARK_BEGIN(profobj, "SetupDecomp");
   udata.nxl = udata.nyl = udata.nzl = 25;
-  N = udata.nxl*udata.nyl*udata.nzl;
+  N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   udata.nchem = 10;
   if (outproc) {
     cout << "\nMagma scaling driver:\n";
@@ -110,21 +113,20 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   SUNDIALS_MARK_BEGIN(profobj, "SUNLinSolInit");
   if (myid == 0)  cout << "Initializing SUNLinSol\n";
-  BLS = SUNLinSol_MagmaDense(w, A, udata.ctx);
-  if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
+  LS = SUNLinSol_MagmaDense(w, A, udata.ctx);
+  if(check_flag((void *) LS, "SUNLinSol_MagmaDense", 0)) return(1);
   SUNDIALS_MARK_END(profobj, "SUNLinSolInit");
 
   // Output all profiling results
   SUNDIALS_MARK_FUNCTION_END(profobj);
   if (myid == 0)  cout << "Overall profiling results:\n";
-  retval = SUNProfiler_Print(profobj, stdout);
-  if (check_flag(&retval, "SUNProfiler_Print (main)", 1)) MPI_Abort(udata.comm, 1);
+  // retval = SUNProfiler_Print(profobj, stdout);
+  // if (check_flag(&retval, "SUNProfiler_Print (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Clean up, finalize MPI, and return with successful completion
-  SUNLinSolFree(BLS);
+  SUNLinSolFree(LS);
   SUNMatDestroy(A);
   N_VDestroy(w);
-  MPI_Finalize();
   return 0;
 }
 
