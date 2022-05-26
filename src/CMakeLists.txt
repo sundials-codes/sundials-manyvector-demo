@@ -50,7 +50,7 @@ foreach(nvar ${_nvar_values})
     SUNDIALS::nvecparallel
     SUNDIALS::nvecserial
     SUNDIALS::nvecmpimanyvector
-    SUNDIALS::nvecmanyvector    
+    SUNDIALS::nvecmanyvector
     SUNDIALS::sunmatrixsparse
     SUNDIALS::arkode
     SUNDIALS::cvode)
@@ -432,3 +432,14 @@ sundemo_add_executable(fluid_blast.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     NVAR=5)
+
+  # magma scaling test
+  sundemo_add_executable(magma_scaling.exe
+  SOURCES
+    magma_scaling_main.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_15
+    SUNDIALS::sunmatrixmagmadense
+    SUNDIALS::sunlinsolmagmadense
+  COMPILE_DEFINITIONS
+    NTHREADS=1)
