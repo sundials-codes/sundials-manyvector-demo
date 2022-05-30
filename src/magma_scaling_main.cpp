@@ -121,8 +121,8 @@ int main(int argc, char* argv[]) {
   // Output all profiling results
   SUNDIALS_MARK_FUNCTION_END(profobj);
   if (myid == 0)  cout << "Overall profiling results:\n";
-  // retval = SUNProfiler_Print(profobj, stdout);
-  // if (check_flag(&retval, "SUNProfiler_Print (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = SUNProfiler_Print(profobj, stdout);
+  if (check_flag(&retval, "SUNProfiler_Print (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Clean up, finalize MPI, and return with successful completion
   SUNLinSolFree(LS);
