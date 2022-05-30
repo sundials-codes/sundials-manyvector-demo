@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
   // general problem variables
   long int N;
   int retval;                    // reusable error-checking flag
+  int numranks;                  // number of MPI ranks
   int myid;                      // MPI rank ID
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vector for storing overall solution
@@ -53,6 +54,8 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Comm_size(MPI_COMM_WORLD, &numranks);
+  if (check_flag(&retval, "MPI_Comm_size (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // declare user data structure once MPI has been initialized
   EulerData udata;
@@ -64,13 +67,12 @@ int main(int argc, char* argv[]) {
   if (myid == 0)  cout << "Initializing problem\n";
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
+  udata.nx = 25*numranks; udata.ny = udata.nz = 25;
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
   bool outproc = (udata.myid == 0);
   retval = SUNContext_GetProfiler(udata.ctx, &profobj);
   if(check_flag(&retval, "SUNContext_GetProfiler", 1)) MPI_Abort(udata.comm, 1);
-
-  SUNDIALS_MARK_FUNCTION_BEGIN(profobj);
 
   // set up overall grid parameters
   retval = MPI_Barrier(udata.comm);
@@ -86,7 +88,6 @@ int main(int argc, char* argv[]) {
     cout << "   spatial grid: " << udata.nxl*udata.nprocs << " x " << udata.nyl << " x " << udata.nzl << "\n";
     cout << "   overall problem size: " << N*udata.nprocs*udata.nchem << "\n";
   }
-  SUNDIALS_MARK_END(profobj, "SetupDecomp");
 
   // Initialize N_Vector data structures with configured vector operations
   retval = MPI_Barrier(udata.comm);
