@@ -477,6 +477,9 @@ int main(int argc, char* argv[]) {
       wview(k,j,i,l) = ONE;
     }
    });
+
+  // compute auxiliary values within network_data structure
+  setting_up_extra_variables(network_data, nstrip);
 #else
   double *sc = network_data->scale[0];
   double *isc = network_data->inv_scale[0];
@@ -489,10 +492,10 @@ int main(int argc, char* argv[]) {
           isc[idx] = ONE / wdata[idx];
           wdata[idx] = ONE;
         }
-#endif
 
   // compute auxiliary values within network_data structure
-  setting_up_extra_variables(network_data, nstrip);
+  setting_up_extra_variables(network_data, sc, nstrip);
+#endif
 
   // initialize the integrator memory
 #ifdef USE_CVODE
@@ -512,7 +515,7 @@ int main(int argc, char* argv[]) {
   } else {
 #ifdef USEMAGMA
   // Create SUNMatrix for use in linear solves
-  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE, 
+  A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
                                 udata.memhelper, NULL, udata.ctx);
   if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 
@@ -524,7 +527,7 @@ int main(int argc, char* argv[]) {
     // Initialize cuSOLVER and cuSPARSE handles
     cusparseCreate(&cusp_handle);
     cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem, 
+    A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem,
                                        cusp_handle, udata.ctx);
     if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
     LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle, udata.ctx);
@@ -943,8 +946,8 @@ static int Jrhs(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   retval = calculate_jacobian_cvklu(t, w, fw, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
                                     udata->RxNetData, tmp1, tmp2, tmp3);
 #else
-  retval = calculate_jacobian_cvklu(t, w, fw, Jac, udata->RxNetData,
-                                    tmp1, tmp2, tmp3);
+  retval = calculate_sparse_jacobian_cvklu(t, w, fw, Jac, udata->RxNetData,
+                                           tmp1, tmp2, tmp3);
 #endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jrhs)", 1)) return(retval);
 

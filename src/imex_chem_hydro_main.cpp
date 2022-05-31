@@ -1104,8 +1104,8 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
                                     udata->RxNetData, tmp1chem, tmp2chem, tmp3chem);
 #else
-  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
-                                    tmp1chem, tmp2chem, tmp3chem);
+  retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
+                                           tmp1chem, tmp2chem, tmp3chem);
 #endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jimpl)", 1)) return(retval);
 

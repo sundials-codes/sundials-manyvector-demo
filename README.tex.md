@@ -15,7 +15,7 @@ SUNDIALS in recent years. Namely:
 
 3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined use
    of problem specific and scalable linear solver libraries (e.g., *hypre*,
-   PETSc and Trilinos).
+   MAGMA and Ginko).
 
 ## Table of Contents
 
@@ -56,7 +56,7 @@ and face-specific boundary conditions, [xlbc, xrbc] x [ylbc, yrbc] x
 under the restriction that if any boundary is set to "periodic" then
 the opposite face must also indicate a periodic condition.
 
-Here, the 'solution' is given by
+Here, the "solution" is given by
 $w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T
 = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c}\end{bmatrix}^T$,
 that corresponds to the density, x,y,z-momentum, total energy
@@ -119,34 +119,41 @@ https://www.theoretical-physics.net/dev/fluid-dynamics/euler.html
 
 ## Discretization
 
-This program solves the above problem using a finite volume spatial
-semi-discretization over a uniform grid of dimensions `nx` x `ny` x `nz`, with
-fluxes calculated using a 5th-order FD-WENO reconstruction. The spatial domain
-uses a 3D domain decomposition approach for parallelism over `nprocs` MPI
-processes, with layout `npx` x `npy` x `npz` defined automatically via the
+We discretize this problem using the method of lines, where we first semi-discretize
+in space using a regular finite volume grid with dimensions `nx` x `ny` x `nz`, with
+fluxes at cell faces calculated using a 5th-order FD-WENO reconstruction.  MPI
+parallelization is achieved using a standard 3D domain decomposition, using `nprocs`
+MPI ranks, with layout `npx` x `npy` x `npz` defined automatically via the
 `MPI_Dims_create` utility routine.  The minimum size for any dimension is 3, so
 to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
-`ny = nz = 200`.  When run in parallel, only 'active' spatial dimensions (those
+`ny = nz = 200`.  When run in parallel, only "active" spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
 Each fluid field
 ($\rho$, $m_x$, $m_y$, $m_z$ and $e_t$)
-is stored in its own parallel `N_Vector` object. Chemical species at all spatial
-locations over a single MPI rank are collocated into a single serial or RAJA
-`N_Vector` object when running on the CPU or GPU respectively. The five fluid
-vectors and the chemical species vector are combined together to form the full
-"solution" vector
+is stored in its own serial `N_Vector` object on each MPI rank. Chemical species
+at all spatial locations over each MPI rank are collocated into a single
+serial or RAJA `N_Vector` object when running on the CPU or GPU respectively. The
+five fluid vectors and the chemical species vector are combined together to form
+the full "solution" vector
 $w$
 using the `MPIManyVector` `N_Vector` module.
 
-For non-reactive flows, the resulting initial-value problem is evolved in times
+After spatial semi-discretization, we are faced with a large IVP system,
+$$
+  w'(t) = f_1(w) + f_2(w), \quad w(t_0)=w_0,
+$$
+where $f_1(w)$ and $f_2(w)$ contain the spatially discretized forms of
+$-\nabla\cdot F(w)$ and G(X,t,w)$, respectively.
+
+For non-reactive flows, the resulting initial-value problem is evolved in time
 using an adaptive step explicit Runge-Kutta method from the ARKStep module in
 ARKODE. For problems involving (typically stiff) chemical reactions, the problem
 may be solved using one of two approaches.
 
 1. It may be treated as a multirate initial-value problem, that is solved using
    the MRIStep module in ARKODE, wherein the gas dynamics equations are evolved
-   explicitly at the 'slow' time scale, while the chemical kinetics are evolved
+   explicitly at the "slow" time scale, while the chemical kinetics are evolved
    at a faster time scale using a temporally-adaptive, diagonally-implicit
    Runge-Kutta method from the ARKStep module.
 
@@ -155,10 +162,31 @@ may be solved using one of two approaches.
    the chemical kinetics are treated implicitly, using an additive Runge-Kutta
    method from the ARKStep module.
 
-In both of the approaches above, the resulting MPI rank-local implicit systems
-are solved using the default (modified or inexact) Newton nonlinear solver,
-with a custom linear solver that solves each rank-local linear system using
-either the KLU, cuSPRASE batched-QR, or GMRES SUNLinearSolver linear solver module.
+For (1) we use SUNDIALS' modified Newton solver to handle the global nonlinear
+algebraic systems arising at each implicit stage of each time step.  Since only
+$f_2$ is treated implicitly and the reactions are purely local in space, the
+Newton linear systems are block-diagonal. As such, we provide a custom
+`SUNLinearSolver` implementation that solves each MPI rank-local linear system
+independently. The portion of the Jacobian matrix on each rank is itself
+block-diagonal. We further leverage this structure by solving each rank-local
+linear system using either the sparse KLU, batched sparse NVIDIA (GPU-enabled),
+or batched dense MAGMA (GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
+
+The multirate approach (2) can leverage the structure of $f_2$ at a higher level.
+Since the MRI method applied to this problem evolves "fast" sub-problems of the form
+$$
+   v'(t) = f_2(t,v) + r_i(t), \quad i=2,\ldots,s,
+$$
+and all MPI communication necessary to construct the forcing functions, $r_i(t)$,
+has already been performed, each sub-problem consists of `nx` x `ny` x `nz`
+spatially-decoupled fast IVPs. We construct a custom fast integrator that groups
+all the independent fast IVPs on an MPI rank together as a single system evolved
+using a rank-local ARKStep instance.  The code for this custom integrator itself
+is minimal, primarily consisting of steps to access the local subvectors in $w$
+on a given MPI rank and wrapping them in MPI-unaware ManyVectors provided to the
+local ARKStep instance. The collection of independent local IVPs also leads to a
+block diagonal Jacobian, and we again utilize the `SUNLinearSolver` modules listed
+above for linear systems that arise within the modified Newton iteration.
 
 
 ## Building
@@ -183,18 +211,23 @@ To compile the code you will need:
 * the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
   integrators and nonlinear solvers
 
-* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
-  of sparse direct linear solvers (specifically KLU)
-
 * the [HDF5](https://www.hdfgroup.org/) high-performance data management and
   storage suite
 
-For running on systems with GPUs you will additionally need:
+Optionally, when solving problems that involve chemistry on the CPU you will need:
 
-* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the nvcc
-  compiler and cuSPRASE library)
+* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
+  of sparse direct linear solvers (specifically KLU).
+
+Optionally, for problems that involve chemistry that will run on GPUs you will
+additionally need:
+
+* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the `nvcc`
+  compiler and optionally the cuSPARSE library)
 
 * the [RAJA](https://github.com/LLNL/RAJA) performance portability library
+
+* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver "multicore+GPU" library
 
 To assist in building the code the [scripts](./scripts) directory contains shell
 scripts to setup the environment on specific systems and install some of the required
@@ -207,6 +240,7 @@ used to setup the environment and install the necessary dependencies:
   source setup_summit.sh
   ./build-klu.sh
   ./build-raja.sh
+  ./build-magma.sh
   ./build-sundials.sh
 ```
 
@@ -220,6 +254,7 @@ with the [Spack](https://github.com/spack/spack) package manager e.g.,
   spack/bin/spack install mpi
   spack/bin/spack install hdf5 +mpi +pic +szip
   spack/bin/spack isntall suitesparse
+  spack/bin/spack isntall magma
   spack/bin/spack install raja +cuda
   spack/bin/spack install sundials +klu +mpi +raja +cuda
 ```
@@ -267,6 +302,10 @@ may also be set:
 * `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use
 
 * `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
+
+* `ENABLE_MAGMA` - build with MAGMA linear solver support, defaults to `OFF`.
+  This requires that SUNDIALS was built with MAGMA support; CMake will automatically
+  utilize the same MAGMA library that was used for SUNDIALS
 
 In-source builds are not permitted and as such the code should be configured and
 built from a separate build directory. For example, continuing with the Summit
@@ -328,7 +367,7 @@ Parameters to control the execution of the code:
 Numerous parameters are also provided to control how time integration is
 performed (these are passed directly to ARKODE). For further information on the
 ARKODE solver parameters and the meaning of individual values, see the
-[ARKODE documentation](http://runge.math.smu.edu/arkode_dev/doc/guide/build/html/index.html).
+[ARKODE documentation](https://sundials.readthedocs.io/en/latest/arkode/index.html).
 
 To specify an input file to the executable, the input filename should be
 provided using the `-f` flag e.g.,
@@ -426,5 +465,5 @@ To add a new executable using these auxiliary source code file(s), update
 
 ## Authors
 
-[Daniel R. Reynolds](http://faculty.smu.edu/reynolds) and
+[Daniel R. Reynolds](https://people.smu.edu/dreynolds) and
 [David J. Gardner](https://people.llnl.gov/gardner48)

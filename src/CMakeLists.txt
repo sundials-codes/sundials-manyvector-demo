@@ -433,8 +433,9 @@ sundemo_add_executable(fluid_blast.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
-  # magma scaling test
-  sundemo_add_executable(magma_scaling.exe
+# magma scaling test
+if (ENABLE_MAGMA)
+sundemo_add_executable(magma_scaling.exe
   SOURCES
     magma_scaling_main.cpp
   LINK_LIBRARIES
@@ -444,3 +445,4 @@ sundemo_add_executable(fluid_blast.exe
   COMPILE_DEFINITIONS
     NTHREADS=1
     NVAR=15)
+endif()

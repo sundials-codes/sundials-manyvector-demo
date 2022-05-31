@@ -195,7 +195,7 @@ int initialize_Dengo_structures(EulerData& udata) {
   // start profiler
   int retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-  
+
   // initialize primordial rate tables, etc
   cvklu_data *network_data = NULL;
 #ifdef USERAJA
@@ -243,7 +243,11 @@ int initialize_Dengo_structures(EulerData& udata) {
 // Utility routine to free Dengo data structures
 void free_Dengo_structures(EulerData& udata) {
   // call utility routine to free contents of Dengo_data structure
+#ifdef USERAJA
   cvklu_free_data(udata.RxNetData, udata.memhelper);
+#else
+  cvklu_free_data(udata.RxNetData);
+#endif
   udata.RxNetData = NULL;
 }
 
@@ -274,6 +278,9 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
       cview(k,j,i,l) = ONE;
     }
    });
+
+  // compute auxiliary values within network_data structure
+  setting_up_extra_variables( network_data, udata.nxl*udata.nyl*udata.nzl );
 #else
   realtype *sc = network_data->scale[0];
   realtype *isc = network_data->scale[0];
@@ -288,10 +295,10 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
           isc[idx] = ONE / sc[idx];
           chem[idx] = ONE;
         }
-#endif
 
   // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, udata.nxl*udata.nyl*udata.nzl );
+  setting_up_extra_variables( network_data, sc, udata.nxl*udata.nyl*udata.nzl );
+#endif
 
   return(0);
 }

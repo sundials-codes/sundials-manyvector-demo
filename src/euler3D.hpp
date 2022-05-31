@@ -316,8 +316,8 @@ public:
   {
     nchem = (NVAR) - 5;
     SUNContext_Create((void*) &comm, &ctx);
-    memhelper = HIP_OR_CUDA( SUNMemoryHelper_Hip(ctx);,
-                             SUNMemoryHelper_Cuda(ctx); )
+    HIP_OR_CUDA( memhelper = SUNMemoryHelper_Hip(ctx);,
+                 memhelper = SUNMemoryHelper_Cuda(ctx); )
   };
 
   // destructor

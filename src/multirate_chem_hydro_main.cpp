@@ -1210,7 +1210,8 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
                                     (udata->nxl)*(udata->nyl)*(udata->nzl),
                                     udata->RxNetData, tmp1, tmp2, tmp3);
 #else
-  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData, tmp1, tmp2, tmp3);
+  retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac,
+                                           udata->RxNetData, tmp1, tmp2, tmp3);
 #endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jfast)", 1)) return(retval);
 
