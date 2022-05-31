@@ -97,9 +97,9 @@ species vector are combined together to form the full "solution" vector $w$ usin
 the `MPIManyVector` `N_Vector` module.
 
 After spatial semi-discretization, we are faced with a large IVP system,
-$$
-  w'(t) = f_1(w) + f_2(w), \quad w(t_0)=w_0,
-$$
+
+$$w'(t) = f_1(w) + f_2(w), \quad w(t_0)=w_0,$$
+
 where $f_1(w)$ and $f_2(w)$ contain the spatially discretized forms of
 $-\nabla\cdot F(w)$ and $G(X,t,w)$, respectively.
 
@@ -131,9 +131,9 @@ or batched dense MAGMA (GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
 
 The multirate approach (2) can leverage the structure of $f_2$ at a higher level.
 Since the MRI method applied to this problem evolves "fast" sub-problems of the form
-$$
-   v'(t) = f_2(t,v) + r_i(t), \quad i=2,\ldots,s,
-$$
+
+$$v'(t) = f_2(t,v) + r_i(t), \quad i=2,\ldots,s,$$
+
 and all MPI communication necessary to construct the forcing functions, $r_i(t)$,
 has already been performed, each sub-problem consists of `nx` x `ny` x `nz`
 spatially-decoupled fast IVPs. We construct a custom fast integrator that groups
