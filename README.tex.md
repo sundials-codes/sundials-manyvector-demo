@@ -15,7 +15,7 @@ SUNDIALS in recent years. Namely:
 
 3. The new flexible SUNDIALS linear solver interfaces, to enable streamlined use
    of problem specific and scalable linear solver libraries (e.g., *hypre*,
-   MAGMA and Ginko).
+   MAGMA and NVIDIA cuSPARSE).
 
 ## Table of Contents
 
