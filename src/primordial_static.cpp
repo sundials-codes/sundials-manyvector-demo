@@ -196,47 +196,53 @@ int initialize_Dengo_structures(EulerData& udata) {
   int retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
+  // base initialization logic off of whether reaction network is handled on CPU vs GPU
 #ifdef USERAJA
-  // initialize primordial rate tables, etc
-  SUNMemory network_mem = cvklu_setup_data("primordial_tables.h5",
-                                           udata.nxl * udata.nyl * udata.nzl,
-                                           udata.memhelper, -1.0);
-  if (network_mem == NULL)  return(1);
-  cvklu_data *network_data = (cvklu_data *) (network_mem->ptr);
 
-  // initialize 'scale' and 'inv_scale' to valid values
-  double *sc = network_data->scale->ptr;
-  double *isc = network_data->inv_scale->ptr;
+  // Initialize SUNMemoryMirror for host/device reaction rate structure.
+  SUNMemoryMirror<cvklu_data> network_data = cvklu_setup_data(udata.comm,
+                                                              "primordial_tables.h5",
+                                                              udata.nxl * udata.nyl * udata.nzl,
+                                                              udata.memhelper, -1.0, nullptr);
+  if (!network_data.IsValid())  return(1);
+
+  // Initialize "scale" and "inv_scale".
+  cvklu_data *hdata = network_data.HPtr();
+  double *sc = hdata->scale;
+  double *isc = hdata->inv_scale;
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0, udata.nxl * udata.nyl * udata.nzl * udata.nchem),
                            [=] RAJA_DEVICE (long int i) {
     sc[i] = ONE;
     isc[i] = ONE;
   });
 
-  // ensure that newtork_data structure is synchronized between host/device device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  if ( HIP_OR_CUDA( hipGetLastError(), cudaGetLastError() ) != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-    std::cerr << ">>> ERROR in initialize_Dengo_structures: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(hipGetLastError()), cudaGetErrorName(cudaGetLastError()) );
-    return(-1);
-  }
+  // Store pointer to network_data in udata.
+  udata.RxNetData = (void*) &network_data;
 
 #else
-  // initialize primordial rate tables, etc
-  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
-  network_data->current_z = -1.0;
-  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
+
+  // Initialize primordial rate tables.
+  cvklu_data *network_data = NULL;
+  network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
   if (network_data == NULL)  return(1);
 
-  // initialize 'scale' and 'inv_scale' to valid values
+  // Overwrite internal strip size
+  network_data->nstrip = (udata.nxl * udata.nyl * udata.nzl);
+
+  // Set redshift value for non-cosmological run
+  network_data->current_z = -1.0;
+
+  // Initialize "scale" and "inv_scale".
   for (long int i=0; i< (udata.nxl * udata.nyl * udata.nzl * udata.nchem); i++) {
     network_data->scale[0][i] = ONE;
     network_data->inv_scale[0][i] = ONE;
   }
+
+  // Store pointer to network_data in udata.
+  udata.RxNetData = (void*) network_data;
 #endif
 
-  // store pointer to network_data in udata, stop profiler, and return
-  udata.RxNetData = (void*) network_data;
+  // Stop profiler and return.
   retval = udata.profile[PR_CHEMSETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   return(0);
@@ -247,7 +253,8 @@ int initialize_Dengo_structures(EulerData& udata) {
 void free_Dengo_structures(EulerData& udata) {
   // call utility routine to free contents of Dengo_data structure
 #ifdef USERAJA
-  cvklu_free_data(udata.RxNetData, udata.memhelper);
+  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  cvklu_free_data(*data);
 #else
   cvklu_free_data(udata.RxNetData);
 #endif
@@ -259,14 +266,16 @@ void free_Dengo_structures(EulerData& udata) {
 // for subsequent chemical evolution
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 {
-  // move current chemical solution values into 'network_data->scale' structure
 #ifdef USERAJA
-  SUNMemory network_data = (SUNMemory) udata.RxNetData;
-  cvklu_data *network = (cvklu_data*) (network_data->ptr);
+  // Sccess SUNMemory mirror for Dengo data structure.
+  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  cvklu_data *network_data = data->HPtr();
+
+  // Move current chemical solution values into 'network_data->scale' structure.
   int nchem = udata.nchem;
-  RAJA::View<double, RAJA::Layout<4> > scview(network->scale->ptr, udata.nzl,
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
-  RAJA::View<double, RAJA::Layout<4> > iscview(network->inv_scale->ptr, udata.nzl,
+  RAJA::View<double, RAJA::Layout<4> > iscview(network_data->inv_scale, udata.nzl,
                                                udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -281,10 +290,13 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
     }
    });
 
-  // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, udata.nxl*udata.nyl*udata.nzl );
+  // Compute auxiliary values within network_data structure.
+  setting_up_extra_variables( *data, udata.nxl*udata.nyl*udata.nzl );
 #else
+  // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // move current chemical solution values into 'network_data->scale' structure
   realtype *sc = network_data->scale[0];
   realtype *isc = network_data->scale[0];
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
@@ -311,12 +323,14 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 // into overall N_Vector solution (does not change 'scale')
 int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  // update current overall solution using 'network_data->scale' structure
 #ifdef USERAJA
-  SUNMemory network_mem = (SUNMemory) udata.RxNetData;
-  cvklu_data *network_data = (cvklu_data*) (network_mem->ptr);
+  // Access SUNMemory mirror for Dengo data structure.
+  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  cvklu_data *network_data = data->HPtr();
+
+  // Update current overall solution using 'network_data->scale' structure.
   int nchem = udata.nchem;
-  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale->ptr,
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -329,7 +343,10 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
     }
   });
 #else
+  // Access Dengo data structure.
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // Update current overall solution using 'network_data->scale' structure.
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
   for (int k=0; k<udata.nzl; k++)
@@ -347,12 +364,14 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 // Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  // update current overall solution using 'network_data->scale' structure
 #ifdef USERAJA
-  SUNMemory network_mem = (SUNMemory) udata.RxNetData;
-  cvklu_data *network_data = (cvklu_data*) (network_mem->ptr);
+  // Access SUNMemory mirror for Dengo data structure.
+  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  cvklu_data *network_data = data->HPtr();
+
+  // Update current overall solution using 'network_data->scale' structure.
   int nchem = udata.nchem;
-  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale->ptr,
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -365,7 +384,10 @@ int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
     }
    });
 #else
+  // Access Dengo data structure.
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+
+  // Update current overall solution using 'network_data->scale' structure.
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
   if (check_flag((void *) chem, "N_VGetSubvectorArrayPointer (prepare_Dengo_structures)", 0)) return -1;
   for (int k=0; k<udata.nzl; k++)
@@ -400,9 +422,11 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
 
   // print solutions at first location
 #ifdef USERAJA
-  SUNMemory network_mem = (SUNMemory) udata.RxNetData;
-  cvklu_data *network_data = (cvklu_data*) (network_mem->ptr);
-  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale->ptr, udata.nzl,
+  // Access SUNMemory mirror for Dengo data structure.
+  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  cvklu_data *network_data = data->HPtr();
+
+  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -467,7 +491,9 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
          i2, j2, k2, ch0b.get(), ch1b.get(), ch2b.get(), ch3b.get(), ch4b.get(),
          ch5b.get(), ch6b.get(), ch7b.get(), ch8b.get(), ch9b.get());
 #else
+  // access Dengo data structure
   cvklu_data* network_data = (cvklu_data*) udata.RxNetData;
+
   long int idx1 = BUFIDX(0,i1,j1,k1,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
   long int idx2 = BUFIDX(0,i2,j2,k2,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
   realtype *chem = N_VGetSubvectorArrayPointer_MPIManyVector(w,5);
