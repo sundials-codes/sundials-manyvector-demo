@@ -340,13 +340,13 @@ int initialize_Dengo_structures(EulerData& udata) {
 #ifdef USERAJA
 
   // Initialize ReactionNetwork for host/device reaction rate structure.
-  ReactionNetwork network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
-                                                  udata.nxl * udata.nyl * udata.nzl,
-                                                  -1.0, nullptr);
-  if (!network_data.IsValid())  return(1);
+  ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                                   udata.nxl * udata.nyl * udata.nzl,
+                                                   -1.0, nullptr);
+  if (network_data == nullptr)  return(1);
 
   // Initialize "scale" and "inv_scale".
-  cvklu_data *hdata = network_data.HPtr();
+  cvklu_data *hdata = network_data->HPtr();
   double *sc = hdata->scale;
   double *isc = hdata->inv_scale;
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,udata.nxl * udata.nyl * udata.nzl * udata.nchem),
@@ -356,7 +356,7 @@ int initialize_Dengo_structures(EulerData& udata) {
   });
 
   // Store pointer to network_data in udata.
-  udata.RxNetData = (void*) &network_data;
+  udata.RxNetData = (void*) network_data;
 
 #else
 
@@ -393,7 +393,7 @@ void free_Dengo_structures(EulerData& udata) {
   // call utility routine to free contents of reaction network structure
 #ifdef USERAJA
   ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
-  cvklu_free_data(*data);
+  cvklu_free_data(data);
 #else
   cvklu_free_data(udata.RxNetData);
 #endif
@@ -431,7 +431,7 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
    });
 
   // Compute auxiliary values within network_data structure.
-  setting_up_extra_variables( *data, udata.nxl*udata.nyl*udata.nzl );
+  setting_up_extra_variables( data, udata.nxl*udata.nyl*udata.nzl );
 #else
   // access Dengo data structure
   cvklu_data *network_data = (cvklu_data*) udata.RxNetData;

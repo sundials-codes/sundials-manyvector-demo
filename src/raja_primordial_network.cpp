@@ -42,8 +42,8 @@
 // HDF5 table lookup size
 #define TSIZE 1024
 
-ReactionNetwork cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
-                                 long int ncells, double current_z, void *queue)
+ReactionNetwork* cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
+                                  long int ncells, double current_z, void *queue)
 {
 
   //-----------------------------------------------------
@@ -54,12 +54,12 @@ ReactionNetwork cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
   //-----------------------------------------------------
 
   // Allocate both host and device cvklu_data structures (return on failure)
-  ReactionNetwork data(true);
-  if (!data.IsValid())  return data;
+  ReactionNetwork *data = new ReactionNetwork(true);
+  if (data == nullptr)  return nullptr;
 
   // Access host and device cvklu_data structures
-  cvklu_data *hdata = data.HPtr();
-  cvklu_data *ddata = data.DPtr();
+  cvklu_data *hdata = data->HPtr();
+  cvklu_data *ddata = data->DPtr();
 
   // Number of cells to be solved in a batch; set the current redshift
   hdata->nstrip = ncells;
@@ -241,10 +241,8 @@ ReactionNetwork cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
   if (cvklu_read_gamma(hdata, FileLocation, comm) != 0)           passfail += 1;
 
   // Copy the host cvklu_data structure contents to the device cvklu_data structure,
-  if (data.HostToDevice() != 0)
+  if (data->HostToDevice() != 0)
     passfail += 1;
-  else
-    return data;
 
   // Determine overall success/failure of this routine; if any failure occurred return an invalid object.
   int allpass = 0;
@@ -254,12 +252,12 @@ ReactionNetwork cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
   if (allpass == 0) {
     return data;
   } else {
-    return ReactionNetwork(false);
+    return nullptr;
   }
 }
 
 
-void cvklu_free_data(ReactionNetwork data)
+void cvklu_free_data(ReactionNetwork *data)
 {
 
   //-----------------------------------------------------
@@ -269,7 +267,7 @@ void cvklu_free_data(ReactionNetwork data)
   //-----------------------------------------------------
 
   // Access the host cvklu_data data within the ReactionNetwork.
-  cvklu_data *hdata = data.HPtr();
+  cvklu_data *hdata = data->HPtr();
 
   // Free device arrays from within the cvklu_data structure
   if (hdata->scale != nullptr)  dfree(hdata->scale);
@@ -422,7 +420,7 @@ void cvklu_free_data(ReactionNetwork data)
   if (hdata->g_dgammaH2_1_dT != nullptr)  dfree(hdata->g_dgammaH2_1_dT);
   if (hdata->g_gammaH2_2 != nullptr)  dfree(hdata->g_gammaH2_2);
   if (hdata->g_dgammaH2_2_dT != nullptr)  dfree(hdata->g_dgammaH2_2_dT);
-
+  delete data;
 }
 
 
@@ -2086,9 +2084,9 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
 
 
-void setting_up_extra_variables( ReactionNetwork data, long int nstrip ){
+void setting_up_extra_variables( ReactionNetwork *data, long int nstrip ){
 
-  cvklu_data *hdata = data.HPtr();
+  cvklu_data *hdata = data->HPtr();
   double *sc = hdata->scale;
   double *mdens = hdata->mdensity;
   double *imdens = hdata->inv_mdensity;

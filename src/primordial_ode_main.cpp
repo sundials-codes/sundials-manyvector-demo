@@ -194,11 +194,11 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 #ifdef USERAJA
   // Initialize ReactionNetwork for host/device reaction rate structure.
-  ReactionNetwork network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
-                                                  nstrip, -1.0, nullptr);
-  if (!network_data.IsValid())  return(1);
+  ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                                   nstrip, -1.0, nullptr);
+  if (network_data == nullptr)  return(1);
   //    store pointer to network_data in udata
-  udata.RxNetData = (void*) &network_data;
+  udata.RxNetData = (void*) network_data;
 #else
   cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
 
@@ -467,7 +467,7 @@ int main(int argc, char* argv[]) {
 
   // move input solution values into 'scale' components of network_data structure
 #ifdef USERAJA
-  cvklu_data *h_data = network_data.HPtr();
+  cvklu_data *h_data = network_data->HPtr();
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(h_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
@@ -716,7 +716,7 @@ int main(int argc, char* argv[]) {
 
   //    Output problem-specific diagnostic information
 #ifdef USERAJA
-  print_info(arkode_mem, udata.t0, w, network_data.HPtr(), udata);
+  print_info(arkode_mem, udata.t0, w, network_data->HPtr(), udata);
 #else
   print_info(arkode_mem, udata.t0, w, network_data, udata);
 #endif
@@ -764,7 +764,7 @@ int main(int argc, char* argv[]) {
 
     //    output statistics to stdout
 #ifdef USERAJA
-    print_info(arkode_mem, t, w, network_data.HPtr(), udata);
+    print_info(arkode_mem, t, w, network_data->HPtr(), udata);
 #else
     print_info(arkode_mem, t, w, network_data, udata);
 #endif

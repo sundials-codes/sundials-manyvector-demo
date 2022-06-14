@@ -351,9 +351,6 @@ public:
   cvklu_data* HPtr() { return host_; }
   cvklu_data* DPtr() { return device_; }
 
-  // Query routine to check for valid ReactionNetwork object
-  bool IsValid() { return ((host_ != nullptr) && (device_ != nullptr)); }
-
 private:
 
   cvklu_data* host_;
@@ -367,15 +364,15 @@ typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix ,
                      void *, N_Vector, N_Vector, N_Vector);
 
-ReactionNetwork cvklu_setup_data(MPI_Comm, const char *, long int,
-                                 realtype, void *);
-void cvklu_free_data(ReactionNetwork);
+ReactionNetwork* cvklu_setup_data(MPI_Comm, const char *, long int,
+                                  realtype, void *);
+void cvklu_free_data(ReactionNetwork*);
 int cvklu_read_rate_tables(cvklu_data*, const char *, MPI_Comm);
 int cvklu_read_cooling_tables(cvklu_data*, const char *, MPI_Comm);
 int cvklu_read_gamma(cvklu_data*, const char *, MPI_Comm);
 RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
                                             const long int, double &, double &);
-void setting_up_extra_variables(ReactionNetwork, long int);
+void setting_up_extra_variables(ReactionNetwork*, long int);
 
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
 int calculate_jacobian_cvklu( realtype t, N_Vector y, N_Vector fy,
