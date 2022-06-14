@@ -193,11 +193,9 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 #ifdef USERAJA
-  // Initialize SUNMemoryMirror for host/device reaction rate structure.
-  SUNMemoryMirror<cvklu_data> network_data = cvklu_setup_data(udata.comm,
-                                                              "primordial_tables.h5",
-                                                              nstrip, udata.memhelper,
-                                                              -1.0, nullptr);
+  // Initialize ReactionNetwork for host/device reaction rate structure.
+  ReactionNetwork network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                                  nstrip, -1.0, nullptr);
   if (!network_data.IsValid())  return(1);
   //    store pointer to network_data in udata
   udata.RxNetData = (void*) &network_data;
@@ -890,7 +888,7 @@ int main(int argc, char* argv[]) {
 
   // Clean up and return with successful completion
 #ifdef USERAJA
-  cvklu_free_data(network_data);  // Free mirrored Dengo data structure
+  cvklu_free_data(network_data);  // Free ReactionNetwork data structure
 #else
   free(network_data);
 #endif

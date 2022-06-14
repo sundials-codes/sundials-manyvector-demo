@@ -199,11 +199,10 @@ int initialize_Dengo_structures(EulerData& udata) {
   // base initialization logic off of whether reaction network is handled on CPU vs GPU
 #ifdef USERAJA
 
-  // Initialize SUNMemoryMirror for host/device reaction rate structure.
-  SUNMemoryMirror<cvklu_data> network_data = cvklu_setup_data(udata.comm,
-                                                              "primordial_tables.h5",
-                                                              udata.nxl * udata.nyl * udata.nzl,
-                                                              udata.memhelper, -1.0, nullptr);
+  // Initialize ReactionNetwork for host/device reaction rate structure.
+  ReactionNetwork network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                                  udata.nxl * udata.nyl * udata.nzl,
+                                                  -1.0, nullptr);
   if (!network_data.IsValid())  return(1);
 
   // Initialize "scale" and "inv_scale".
@@ -253,7 +252,7 @@ int initialize_Dengo_structures(EulerData& udata) {
 void free_Dengo_structures(EulerData& udata) {
   // call utility routine to free contents of Dengo_data structure
 #ifdef USERAJA
-  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_free_data(*data);
 #else
   cvklu_free_data(udata.RxNetData);
@@ -267,8 +266,8 @@ void free_Dengo_structures(EulerData& udata) {
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 {
 #ifdef USERAJA
-  // Sccess SUNMemory mirror for Dengo data structure.
-  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  // Access ReactionNetwork for Dengo data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
   // Move current chemical solution values into 'network_data->scale' structure.
@@ -324,8 +323,8 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
 #ifdef USERAJA
-  // Access SUNMemory mirror for Dengo data structure.
-  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  // Access ReactionNetwork for Dengo data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
   // Update current overall solution using 'network_data->scale' structure.
@@ -365,8 +364,8 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
 #ifdef USERAJA
-  // Access SUNMemory mirror for Dengo data structure.
-  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  // Access ReactionNetwork for Dengo data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
   // Update current overall solution using 'network_data->scale' structure.
@@ -422,8 +421,8 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
 
   // print solutions at first location
 #ifdef USERAJA
-  // Access SUNMemory mirror for Dengo data structure.
-  SUNMemoryMirror<cvklu_data> *data = static_cast<SUNMemoryMirror<cvklu_data>*>(udata.RxNetData);
+  // Access ReactionNetwork for Dengo data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,

@@ -29,7 +29,6 @@
 #include "string.h"
 #include <RAJA/RAJA.hpp>
 #include <sundials/sundials_types.h>
-#include "sunmemory_mirror.hpp"
 #ifdef USEMAGMA
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
@@ -93,6 +92,7 @@ using XYZ_KERNEL_POL =
 
 
 
+// Main reaction network data structure
 typedef struct cvklu_data {
   /* All of the network bins will be the same width */
   double dbin;
@@ -267,20 +267,115 @@ typedef struct cvklu_data {
 } cvklu_data;
 
 
+// Mirrored host/device reaction network class
+class ReactionNetwork {
+
+public:
+
+  // Constructor: allocates both host and device objects of type "cvklu_data".
+  ReactionNetwork(bool valid) :
+    host_(nullptr), device_(nullptr) {
+    if (valid) {
+      host_ = (cvklu_data*) malloc(sizeof(cvklu_data));
+#if defined(RAJA_CUDA)
+      cudaMalloc((void **)&device_, sizeof(cvklu_data));
+#elif defined(RAJA_HIP)
+      hipMalloc((void **)&device_, sizeof(cvklu_data));
+#else
+      device_ = (cvklu_data*) malloc(sizeof(cvklu_data));
+#endif
+    }
+  }
+
+  // Destructor: frees host and device arrays.
+  ~ReactionNetwork() {
+    if (host_ != nullptr)  free(host_);
+#if defined(RAJA_CUDA)
+    if (device_ != nullptr)  cudaFree(device_);
+#elif defined(RAJA_HIP)
+    if (device_ != nullptr)  hipFree(device_);
+#else
+    if (device_ != nullptr)  free(device_);
+#endif
+    host_ = nullptr;
+    device_ = nullptr;
+  }
+
+  // Utility routines to copy host <-> device data.
+  int HostToDevice() {
+#if defined(RAJA_CUDA)
+    cudaMemcpy(device_, host_, sizeof(cvklu_data), cudaMemcpyHostToDevice);
+    cudaDeviceSynchronize();
+    cudaError_t retval = cudaGetLastError();
+    if (retval != cudaSuccess)
+      return 1;
+    else
+      return 0;
+#elif defined(RAJA_HIP)
+    hipMemcpy(device_, host_, sizeof(cvklu_data), hipMemcpyHostToDevice);
+    hipDeviceSynchronize();
+    hipError_t retval = hipGetLastError();
+    if (retval != hipSuccess)
+      return 1;
+    else
+      return 0;
+#else
+    memcpy(device_, host_, sizeof(cvklu_data));
+    return 0;
+#endif
+  }
+  int DeviceToHost() {
+#if defined(RAJA_CUDA)
+    cudaMemcpy(host_, device_, sizeof(cvklu_data), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaError_t retval = cudaGetLastError();
+    if (retval != cudaSuccess)
+      return 1;
+    else
+      return 0;
+#elif defined(RAJA_HIP)
+    hipMemcpy(host_, device_, sizeof(cvklu_data), hipMemcpyDeviceToHost);
+    hipDeviceSynchronize();
+    hipError_t retval = hipGetLastError();
+    if (retval != hipSuccess)
+      return 1;
+    else
+      return 0;
+#else
+    memcpy(host_, device_, sizeof(cvklu_data));
+    return 0;
+#endif
+  }
+
+  // Accessor functions to return the host and device data pointers.
+  cvklu_data* HPtr() { return host_; }
+  cvklu_data* DPtr() { return device_; }
+
+  // Query routine to check for valid ReactionNetwork object
+  bool IsValid() { return ((host_ != nullptr) && (device_ != nullptr)); }
+
+private:
+
+  cvklu_data* host_;
+  cvklu_data* device_;
+
+};
+
+
 /* Declare ctype RHS and Jacobian */
 typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix ,
                      void *, N_Vector, N_Vector, N_Vector);
 
-SUNMemoryMirror<cvklu_data> cvklu_setup_data(MPI_Comm, const char *, long int,
-                                             SUNMemoryHelper, realtype, void *);
-void cvklu_free_data(SUNMemoryMirror<cvklu_data>);
+ReactionNetwork cvklu_setup_data(MPI_Comm, const char *, long int,
+                                 realtype, void *);
+void cvklu_free_data(ReactionNetwork);
 int cvklu_read_rate_tables(cvklu_data*, const char *, MPI_Comm);
 int cvklu_read_cooling_tables(cvklu_data*, const char *, MPI_Comm);
 int cvklu_read_gamma(cvklu_data*, const char *, MPI_Comm);
 RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
                                             const long int, double &, double &);
-void setting_up_extra_variables(SUNMemoryMirror<cvklu_data>, long int);
+void setting_up_extra_variables(ReactionNetwork, long int);
 
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
 int calculate_jacobian_cvklu( realtype t, N_Vector y, N_Vector fy,

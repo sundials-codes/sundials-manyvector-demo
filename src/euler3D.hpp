@@ -26,7 +26,6 @@
 #include <nvector/nvector_mpimanyvector.h>
 #include <nvector/nvector_manyvector.h>
 #include <nvector/nvector_serial.h>
-#include "sunmemory_mirror.hpp"
 #ifdef USERAJA
 #include <nvector/nvector_raja.h>
 #if defined(RAJA_CUDA)

@@ -42,20 +42,19 @@
 // HDF5 table lookup size
 #define TSIZE 1024
 
-SUNMemoryMirror<cvklu_data> cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
-                                             long int ncells, SUNMemoryHelper memhelper,
-                                             double current_z, void *queue)
+ReactionNetwork cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
+                                 long int ncells, double current_z, void *queue)
 {
 
   //-----------------------------------------------------
   // Function : cvklu_setup_data
-  // Description: Initializes a "mirror" data object that
-  //    stores the reaction/ cooling rate data in both
-  //    host and device memory.
+  // Description: Initializes a "ReactionNetwork" data
+  //    object that stores the reaction/ cooling rate
+  //    data in both host and device memory.
   //-----------------------------------------------------
 
   // Allocate both host and device cvklu_data structures (return on failure)
-  SUNMemoryMirror<cvklu_data> data(memhelper, queue);
+  ReactionNetwork data(true);
   if (!data.IsValid())  return data;
 
   // Access host and device cvklu_data structures
@@ -255,21 +254,21 @@ SUNMemoryMirror<cvklu_data> cvklu_setup_data(MPI_Comm comm, const char *FileLoca
   if (allpass == 0) {
     return data;
   } else {
-    return SUNMemoryMirror<cvklu_data> ();
+    return ReactionNetwork(false);
   }
 }
 
 
-void cvklu_free_data(SUNMemoryMirror<cvklu_data> data)
+void cvklu_free_data(ReactionNetwork data)
 {
 
   //-----------------------------------------------------
   // Function : cvklu_free_data
   // Description: Frees reaction/ cooling rate data
-  //   structures from within the SUNMemoryMirror
+  //   structures from within the ReactionNetwork
   //-----------------------------------------------------
 
-  // Access the host cvklu_data data within the memory mirror.
+  // Access the host cvklu_data data within the ReactionNetwork.
   cvklu_data *hdata = data.HPtr();
 
   // Free device arrays from within the cvklu_data structure
@@ -803,7 +802,7 @@ int cvklu_read_gamma(cvklu_data *hdata, const char *FileLocation, MPI_Comm comm)
 
 
 
-RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double *y_arr,
+RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *ddata, const double *y_arr,
                                             const long int i, double &Ts, double &dTs_ge)
 {
 
@@ -847,28 +846,28 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
     int bin_id;
     double lb, t1, t2, Tdef;
 
-    lb = log(data->bounds[0]);
-    bin_id = (int) (data->idbin * (log(Ts) - lb));
+    lb = log(ddata->bounds[0]);
+    bin_id = (int) (ddata->idbin * (log(Ts) - lb));
     if (bin_id <= 0) {
       bin_id = 0;
-    } else if (bin_id >= data->nbins) {
-      bin_id = data->nbins - 1;
+    } else if (bin_id >= ddata->nbins) {
+      bin_id = ddata->nbins - 1;
     }
-    t1 = (lb + (bin_id    ) * data->dbin);
-    t2 = (lb + (bin_id + 1) * data->dbin);
+    t1 = (lb + (bin_id    ) * ddata->dbin);
+    t2 = (lb + (bin_id + 1) * ddata->dbin);
     Tdef = (log(Ts) - t1)/(t2 - t1);
 
-    double gammaH2_2 = data->g_gammaH2_2[bin_id] +
-      Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
+    double gammaH2_2 = ddata->g_gammaH2_2[bin_id] +
+      Tdef * (ddata->g_gammaH2_2[bin_id+1] - ddata->g_gammaH2_2[bin_id]);
 
-    double dgammaH2_2_dT = data->g_dgammaH2_2_dT[bin_id] +
-      Tdef * (data->g_dgammaH2_2_dT[bin_id+1] - data->g_dgammaH2_2_dT[bin_id]);
+    double dgammaH2_2_dT = ddata->g_dgammaH2_2_dT[bin_id] +
+      Tdef * (ddata->g_dgammaH2_2_dT[bin_id+1] - ddata->g_dgammaH2_2_dT[bin_id]);
 
-    double gammaH2_1 = data->g_gammaH2_1[bin_id] +
-      Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+    double gammaH2_1 = ddata->g_gammaH2_1[bin_id] +
+      Tdef * (ddata->g_gammaH2_1[bin_id+1] - ddata->g_gammaH2_1[bin_id]);
 
-    double dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
-      Tdef * (data->g_dgammaH2_1_dT[bin_id+1] - data->g_dgammaH2_1_dT[bin_id]);
+    double dgammaH2_1_dT = ddata->g_dgammaH2_1_dT[bin_id] +
+      Tdef * (ddata->g_dgammaH2_1_dT[bin_id+1] - ddata->g_dgammaH2_1_dT[bin_id]);
     ////
 
     double _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
@@ -897,10 +896,10 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
 
   Ts = Tnew;
 
-  if (Ts < data->bounds[0]) {
-    Ts = data->bounds[0];
-  } else if (Ts > data->bounds[1]) {
-    Ts = data->bounds[1];
+  if (Ts < ddata->bounds[0]) {
+    Ts = ddata->bounds[0];
+  } else if (Ts > ddata->bounds[1]) {
+    Ts = ddata->bounds[1];
   }
   dTs_ge = 1.0 / dge_dT;
 
@@ -913,7 +912,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
                         long int nstrip, void *user_data)
 {
-  SUNMemoryMirror<cvklu_data> *data = (SUNMemoryMirror<cvklu_data>*) user_data;
+  ReactionNetwork *data = (ReactionNetwork*) user_data;
   cvklu_data *ddata = data->DPtr();
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
@@ -1513,7 +1512,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                              void *user_data, N_Vector tmp1,
                              N_Vector tmp2, N_Vector tmp3)
 {
-  SUNMemoryMirror<cvklu_data> *data = (SUNMemoryMirror<cvklu_data>*) user_data;
+  ReactionNetwork *data = (ReactionNetwork*) user_data;
   cvklu_data *ddata = data->DPtr();
   const double *ydata = N_VGetDeviceArrayPointer(y);
 
@@ -2087,7 +2086,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
 
 
-void setting_up_extra_variables( SUNMemoryMirror<cvklu_data> data, long int nstrip ){
+void setting_up_extra_variables( ReactionNetwork data, long int nstrip ){
 
   cvklu_data *hdata = data.HPtr();
   double *sc = hdata->scale;
