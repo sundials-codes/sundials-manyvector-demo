@@ -533,7 +533,7 @@ int cvklu_read_rate_tables(cvklu_data *hdata, const char *FileLocation, MPI_Comm
   dcopy(hdata->r_k21, k21, TSIZE);
   dcopy(hdata->r_k22, k22, TSIZE);
 
-  // ensure that table data is synchronized between host/device memory
+  // ensure that copies have completed
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
   HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
                cudaError_t cuerr = cudaGetLastError(); )

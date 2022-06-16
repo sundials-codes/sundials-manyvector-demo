@@ -377,8 +377,8 @@ int main(int argc, char* argv[]) {
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNew_Raja(N*udata.nchem, udata.ctx);
-    if (check_flag((void *) wsubvecs[5], "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
+    if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
@@ -1161,10 +1161,6 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // update wdot with forcing terms from slow time scale (if applicable)
   if (!inner_content->disable_forcing) {
-
-    // TEMPORARY FOR DEBUGGING //
-    N_VCopyFromDevice_Raja(wchemdot);
-    /////////////////////////////
 
     int nforcing;
     realtype tshift, tscale;
