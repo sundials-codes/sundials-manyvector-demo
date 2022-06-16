@@ -173,10 +173,10 @@ int main(int argc, char* argv[]) {
 #endif
 #if defined(RAJA_CUDA)
     cout << "Executable built with RAJA+CUDA support\n";
-#elif defined(RAJA_SERIAL)
-    cout << "Executable built with RAJA+SERIAL support\n";
-#else
+#elif defined(RAJA_HIP)
     cout << "Executable built with RAJA+HIP support\n";
+#else
+    cout << "Executable built with RAJA+SERIAL support\n";
 #endif
 #else
     cout << "Executable built without RAJA support\n";

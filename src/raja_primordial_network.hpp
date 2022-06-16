@@ -39,8 +39,6 @@
 #elif RAJA_SERIAL
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
 #endif
 #endif
 
