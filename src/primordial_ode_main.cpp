@@ -867,13 +867,7 @@ int main(int argc, char* argv[]) {
   free(network_data);
 #endif
   udata.RxNetData = NULL;
-#ifdef RAJA_SERIAL
   free(clump_data);
-#elif RAJA_CUDA
-  cudaFree(clump_data);
-#else
-  // RAJA_HIP is not implemented
-#endif
   N_VDestroy(w);                  // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
   SUNLinSolFree(LS);              // Free matrix and linear solver
