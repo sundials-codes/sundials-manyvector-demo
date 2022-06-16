@@ -287,10 +287,10 @@ int main(int argc, char* argv[]) {
 #endif
 #if defined(RAJA_CUDA)
     cout << "Executable built with RAJA+CUDA support\n";
-#elif defined(RAJA_SERIAL)
-    cout << "Executable built with RAJA+SERIAL support\n";
-#else
+#elif defined(RAJA_HIP)
     cout << "Executable built with RAJA+HIP support\n";
+#else
+    cout << "Executable built with RAJA+SERIAL support\n";
 #endif
 #else
     cout << "Executable built without RAJA support\n";
@@ -335,8 +335,8 @@ int main(int argc, char* argv[]) {
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USERAJA
-    wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
-    if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+    wsubvecs[5] = N_VNew_Raja(N*udata.nchem, udata.ctx);
+    if (check_flag((void *) wsubvecs[5], "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
     if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
 #else
@@ -1147,8 +1147,6 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, cidx, fidx;
-
   // start timer
   EulerData *udata = (EulerData*) user_data;
   int retval = udata->profile[PR_RHSSLOW].start();
@@ -1186,14 +1184,13 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // fill dimensionless total fluid energy field (internal energy + kinetic energy)
   realtype EUnitScale = ONE/udata->EnergyUnits;
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        realtype ge = chem[cidx];
-        ge *= EUnitScale;   // convert from physical units to code units
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
+  for (int k=0; k<udata->nzl; k++)
+    for (int j=0; j<udata->nyl; j++)
+      for (int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] =  chem[cidx] * EUnitScale
+          + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
 #ifndef DISABLE_HYDRO
@@ -1213,11 +1210,11 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
 //  realtype TUnitScale = ONE/udata->TimeUnits;
   realtype TUnitScale = ONE;
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+  for (int k=0; k<udata->nzl; k++)
+    for (int j=0; j<udata->nyl; j++)
+      for (int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }

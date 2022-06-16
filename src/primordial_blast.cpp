@@ -311,7 +311,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
       }
 
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
   // ensure that chemistry values are synchronized to device
   if (udata.myid == 0)
     cout << endl << "Copying chemistry data to device memory" << endl;

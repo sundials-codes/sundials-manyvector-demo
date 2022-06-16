@@ -217,10 +217,10 @@ int main(int argc, char* argv[]) {
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
 #ifdef USERAJA
-  w = N_VNewManaged_Raja(N, udata.ctx);
-  if (check_flag((void *) w, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
-  atols = N_VNewManaged_Raja(N, udata.ctx);
-  if (check_flag((void *) atols, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VNew_Raja(N, udata.ctx);
+  if (check_flag((void *) w, "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+  atols = N_VNew_Raja(N, udata.ctx);
+  if (check_flag((void *) atols, "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
   w = N_VNew_Serial(N, udata.ctx);
   if (check_flag((void *) w, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
@@ -230,14 +230,7 @@ int main(int argc, char* argv[]) {
 
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
-  double *clump_data;
-#ifdef RAJA_CUDA
-  cudaMallocManaged((void**)&(clump_data), nclumps * 5 * sizeof(double));
-#elif RAJA_HIP
-#error RAJA HIP chemistry interface is currently unimplemented
-#else
-  clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
-#endif
+  double *clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
   if (udata.myid == 0) {
 
     // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
@@ -269,9 +262,6 @@ int main(int argc, char* argv[]) {
   // root process broadcasts clump information
   retval = MPI_Bcast(clump_data, nclumps*5, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
-
-  // ensure that clump data is synchronized between host/device device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
 
   // output clump information
   if (udata.myid == 0) {
@@ -320,19 +310,10 @@ int main(int argc, char* argv[]) {
   const long int ks = udata.ks;
 
   // set initial conditions -- essentially-neutral primordial gas
-  realtype *wdata = N_VGetDeviceArrayPointer(w);
-
-#ifdef USERAJA
-  RAJA::View<double, RAJA::Layout<4> > wview(wdata, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
-  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
-                                                RAJA::RangeSegment(0, udata.nyl),
-                                                RAJA::RangeSegment(0, udata.nxl)),
-                               [=] RAJA_DEVICE (int k, int j, int i) {
-#else
+  realtype *wdata = N_VGetArrayPointer(w);
   for (int k=0; k<udata.nzl; k++)
     for (int j=0; j<udata.nyl; j++)
       for (int i=0; i<udata.nxl; i++) {
-#endif
 
         // cell-specific local variables
         realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
@@ -418,19 +399,6 @@ int main(int argc, char* argv[]) {
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
         // converting to 'dimensionless' electron number density
-#ifdef USERAJA
-        wview(k,j,i,0) = nH2I;
-        wview(k,j,i,1) = nH2II;
-        wview(k,j,i,2) = nHI;
-        wview(k,j,i,3) = nHII;
-        wview(k,j,i,4) = nHM;
-        wview(k,j,i,5) = nHeI;
-        wview(k,j,i,6) = nHeII;
-        wview(k,j,i,7) = nHeIII;
-        wview(k,j,i,8) = de / m_amu;
-        wview(k,j,i,9) = ge;
-      });
-#else
         long int idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         wdata[idx2+0] = nH2I;
         wdata[idx2+1] = nH2II;
@@ -443,6 +411,10 @@ int main(int argc, char* argv[]) {
         wdata[idx2+8] = de / m_amu;
         wdata[idx2+9] = ge;
       }
+
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+  // ensure that initial condition is synchronized to device
+  N_VCopyToDevice_Raja(w);
 #endif
 
   // set absolute tolerance array
@@ -467,6 +439,8 @@ int main(int argc, char* argv[]) {
 
   // move input solution values into 'scale' components of network_data structure
 #ifdef USERAJA
+  RAJA::View<double, RAJA::Layout<4> > wview(N_VGetDeviceArrayPointer(w),
+                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
   cvklu_data *h_data = network_data->HPtr();
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(h_data->scale, udata.nzl,
@@ -976,7 +950,11 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
                 cvklu_data *network_data, EulerData &udata)
 {
   // access N_Vector data
+#ifdef USERAJA
+  realtype *wdata = N_VGetDeviceArrayPointer(w);
+#else
   realtype *wdata = N_VGetArrayPointer(w);
+#endif
   if (wdata == NULL)  return;
 
   // set some constants

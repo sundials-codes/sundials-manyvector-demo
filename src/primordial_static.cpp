@@ -174,7 +174,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
       }
 
-#ifdef RAJA_CUDA
+#if defined(RAJA_CUDA) || defined(RAJA_HIP)
   // ensure that chemistry values are synchronized to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
