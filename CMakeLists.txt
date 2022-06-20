@@ -123,6 +123,15 @@ if(ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
 endif()
 
 # -----
+# HIP
+# -----
+
+if(ENABLE_RAJA AND (RAJA_BACKEND MATCHES "HIP"))
+    enable_language(HIP)
+    find_package(hip REQUIRED)
+endif()
+
+# -----
 # MAGMA
 # -----
 

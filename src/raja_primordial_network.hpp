@@ -76,7 +76,7 @@ using XYZ_KERNEL_POL =
 #define EXECPOLICY    RAJA::hip_exec<256>
 #define REDUCEPOLICY  RAJA::hip_reduce
 using XYZ_KERNEL_POL =
-    RAJA::KernelPolicy< RAJA::HipKernel<
+    RAJA::KernelPolicy< RAJA::statement::HipKernel<
                           RAJA::statement::For<2, RAJA::hip_thread_x_loop,
                             RAJA::statement::For<1, RAJA::hip_thread_y_loop,
                               RAJA::statement::For<0, RAJA::hip_thread_z_loop,
