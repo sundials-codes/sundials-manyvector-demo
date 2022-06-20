@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
   if (myid == 0)  cout << "Initializing problem\n";
   retval = load_inputs(myid, argc, argv, udata, opts, restart);
   if (check_flag(&retval, "load_inputs (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
-  udata.nx = 25*numranks; udata.ny = udata.nz = 25;
+  udata.nx = 25*numranks; udata.ny = udata.nz = 3;  // kludge to ensure that nothing fails in SetupDecomp
   retval = udata.SetupDecomp();
   if (check_flag(&retval, "SetupDecomp (main)", 1)) MPI_Abort(udata.comm, 1);
   bool outproc = (udata.myid == 0);
@@ -81,6 +81,7 @@ int main(int argc, char* argv[]) {
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   SUNDIALS_MARK_BEGIN(profobj, "SetupDecomp");
+  udata.nx = 25*numranks; udata.ny = udata.nz = 25;
   udata.nxl = udata.nyl = udata.nzl = 25;
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   udata.nchem = 10;
