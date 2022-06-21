@@ -153,7 +153,6 @@ int main(int argc, char* argv[]) {
   SUNLinearSolver LS = NULL;
   SUNLinearSolver BLS = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
-  EulerData udata;               // solver data structures
   ARKODEParameters opts;
 #if defined(RAJA_CUDA) && !defined(USEMAGMA)
   cusparseHandle_t cusp_handle;
@@ -167,6 +166,9 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+  // allocate main solver data structure now that MPI has been initialized
+  EulerData udata;
 
   // start various code profilers
   retval = udata.profile[PR_TOTAL].start();
