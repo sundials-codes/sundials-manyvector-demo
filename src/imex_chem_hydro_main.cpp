@@ -138,12 +138,18 @@ int main(int argc, char* argv[]) {
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
+  // initialize MPI
+  int retval;                    // reusable error-checking flag
+  int myid;                      // MPI process ID
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // general problem variables
   long int N;
   int Nsubvecs;
-  int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   int NoOutput;                  // flag for case when no output is desired
   N_Vector w = NULL;             // empty vectors for storing overall solution
@@ -161,12 +167,6 @@ int main(int argc, char* argv[]) {
 #endif
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // start various code profilers
   retval = udata.profile[PR_TOTAL].start();

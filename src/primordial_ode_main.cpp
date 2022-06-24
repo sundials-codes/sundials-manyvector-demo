@@ -87,13 +87,19 @@ int main(int argc, char* argv[]) {
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
 
+  // initialize MPI
+  int retval;                    // reusable error-checking flag
+  int myid;                      // MPI process ID
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // general problem parameters
   long int N, nstrip;
 
   // general problem variables
-  int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled here)
   int nprocs;                    // total number of MPI processes
   N_Vector w = NULL;             // empty vectors for storing overall solution, absolute tolerance array
@@ -109,12 +115,6 @@ int main(int argc, char* argv[]) {
 #endif
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // ensure that this is run in serial
   retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
