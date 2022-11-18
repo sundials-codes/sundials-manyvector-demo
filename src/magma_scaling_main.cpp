@@ -16,12 +16,7 @@
 // Header files
 #include <euler3D.hpp>
 #include <arkode/arkode_arkstep.h>
-#ifdef USERAJA
-#include <nvector/nvector_raja.h>
-#else
-#error "magma_scaling.exe requires RAJA to be enabled; aborting build."
-#endif
-#ifdef USEMAGMA
+#ifdef USEDEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else

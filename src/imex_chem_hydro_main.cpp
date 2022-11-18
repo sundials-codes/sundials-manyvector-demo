@@ -1,7 +1,8 @@
 /*---------------------------------------------------------------
  Programmer(s): Daniel R. Reynolds @ SMU
+                David J. Gardner @ LLNL
  ----------------------------------------------------------------
- Copyright (c) 2019, Southern Methodist University.
+ Copyright (c) 2022, Southern Methodist University.
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
@@ -41,26 +42,16 @@
 // Header files
 //    Physics
 #include <euler3D.hpp>
-#ifdef USERAJA
 #include <raja_primordial_network.hpp>
-#else
-#include <dengo_primordial_network.hpp>
-#endif
 
 //    SUNDIALS
 #include <arkode/arkode_arkstep.h>
-#include <sunlinsol/sunlinsol_spgmr.h>
-#ifdef USEMAGMA
+#ifdef USEDEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
-#ifdef RAJA_CUDA
-#include <sunmatrix/sunmatrix_cusparse.h>
-#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
-#else
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#endif
 #endif
 
 #ifdef DEBUG
@@ -160,10 +151,6 @@ int main(int argc, char* argv[]) {
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   EulerData udata;               // solver data structures
   ARKODEParameters opts;
-#if defined(RAJA_CUDA) && !defined(USEMAGMA)
-  cusparseHandle_t cusp_handle;
-  cusolverSpHandle_t cusol_handle;
-#endif
 
   //--- General Initialization ---//
 
@@ -270,29 +257,17 @@ int main(int argc, char* argv[]) {
     } else {
       cout << "   local N_Vector reduction operations disabled\n";
     }
-    if (opts.iterative) {
-      cout << "   iterative block linear solver selected\n";
-    } else {
-      cout << "   direct block linear solver selected\n";
-    }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
 #ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
-#ifdef USERAJA
-#ifdef USEMAGMA
-    cout << "Executable built using MAGMA block linear solver\n";
-#endif
 #if defined(RAJA_CUDA)
-    cout << "Executable built with RAJA+CUDA support\n";
+    cout << "Executable built with RAJA+CUDA support and MAGMA linear solver\n";
 #elif defined(RAJA_SERIAL)
-    cout << "Executable built with RAJA+SERIAL support\n";
+    cout << "Executable built with RAJA+SERIAL support and KLU linear solver\n";
 #else
-    cout << "Executable built with RAJA+HIP support\n";
-#endif
-#else
-    cout << "Executable built without RAJA support\n";
+    cout << "Executable built with RAJA+HIP support and MAGMA linear solver\n";
 #endif
   }
 #ifdef DEBUG
@@ -333,7 +308,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USERAJA
+#ifdef USEDEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
@@ -432,70 +407,41 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // create the fast integrator local linear solver
-  if (opts.iterative) {
-    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
-    if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
-  } else {
-#ifdef USEMAGMA
-    // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
-                                  udata.memhelper, NULL, udata.ctx);
-    if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
-
-    retval = udata.profile[PR_SETUP7].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-    retval = udata.profile[PR_SETUP7A].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
-    // Create the SUNLinearSolver object
-    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
-    if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
-
-    retval = udata.profile[PR_SETUP7A].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-    retval = udata.profile[PR_SETUP7B].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
+#ifdef USEDEVICE
+  // Create SUNMatrix for use in linear solves
+  A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
+                                udata.memhelper, NULL, udata.ctx);
+  if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 #else
-#ifdef RAJA_CUDA
-    // Initialize cuSOLVER and cuSPARSE handles
-    cusparseCreate(&cusp_handle);
-    cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem,
-                                       cusp_handle, udata.ctx);
-    if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
-    if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
-    // Set the sparsity pattern to be fixed
-    retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
-    if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
-    // Initialiize the Jacobian with the fixed sparsity pattern
-    retval = initialize_sparse_jacobian_cvklu(A, &udata);
-    if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
-#else
-    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
-    if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
-    if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
+  A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
+  if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
-#endif
-  }
 
-  retval = udata.profile[PR_SETUP7B].stop();
+  retval = udata.profile[PR_SETUP7].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 #ifdef INTRUSIVE_PROFILING
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
 #endif
-  retval = udata.profile[PR_SETUP7C].start();
+  retval = udata.profile[PR_SETUP7A].start();
+  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+
+  // Create the SUNLinearSolver object
+#ifdef USEDEVICE
+  BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
+  if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
+#else
+  BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
+  if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
+#endif
+
+  retval = udata.profile[PR_SETUP7A].stop();
+  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
+#ifdef INTRUSIVE_PROFILING
+  retval = MPI_Barrier(udata.comm);
+  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+#endif
+  retval = udata.profile[PR_SETUP7B].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // create linear solver wrapper and attach the matrix and linear solver to the
@@ -503,7 +449,7 @@ int main(int argc, char* argv[]) {
   LS = SUNLinSol_BDMPIMV(BLS, w, 5, &udata, arkode_mem, opts, udata.ctx);
   if (check_flag((void*) LS, "SUNLinSol_BDMPIMV (main)", 0)) MPI_Abort(udata.comm, 1);
 
-  retval = udata.profile[PR_SETUP7C].stop();
+  retval = udata.profile[PR_SETUP7B].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 #ifdef INTRUSIVE_PROFILING
   retval = MPI_Barrier(udata.comm);
@@ -1011,13 +957,6 @@ int main(int argc, char* argv[]) {
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   cleanup(&arkode_mem, udata, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
-#if defined(RAJA_CUDA) && !defined(USEMAGMA)
-  // Destroy the cuSOLVER and cuSPARSE handles
-  if (!opts.iterative) {
-    cusparseDestroy(cusp_handle);
-    cusolverSpDestroy(cusol_handle);
-  }
-#endif
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }
@@ -1047,12 +986,9 @@ static int fimpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
 
   // call Dengo RHS routine
-#ifdef USERAJA
-  retval = calculate_rhs_cvklu(t, wchem, wchemdot, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_rhs_cvklu(t, wchem, wchemdot,
+                               (udata->nxl)*(udata->nyl)*(udata->nzl),
                                udata->RxNetData);
-#else
-  retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
-#endif
   if (check_flag(&retval, "calculate_rhs_cvklu (fimpl)", 1)) return(retval);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
@@ -1099,13 +1035,9 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // be converted to physical units prior to entry (via udata->DensityUnits, etc.)
 
   // call Jacobian routine
-#ifdef USERAJA
-  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac,
+                                    (udata->nxl)*(udata->nyl)*(udata->nzl),
                                     udata->RxNetData, tmp1chem, tmp2chem, tmp3chem);
-#else
-  retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac, udata->RxNetData,
-                                           tmp1chem, tmp2chem, tmp3chem);
-#endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jimpl)", 1)) return(retval);
 
   // NOTE: if fluid fields were rescaled to physical units above, they
@@ -1114,19 +1046,11 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   realtype TUnit = udata->TimeUnits;
-#ifdef USEMAGMA
+#ifdef USEDEVICE
   Jdata = SUNMatrix_MagmaDense_Data(Jac);
   if (check_flag((void *) Jdata, "SUNMatrix_MagmaDense_Data (Jimpl)", 0)) return(-1);
   long int ldata = SUNMatrix_MagmaDense_LData(Jac);
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ldata), [=] RAJA_DEVICE (long int i) {
-    Jdata[i] *= TUnit;
-  });
-#else
-#ifdef RAJA_CUDA
-  Jdata = SUNMatrix_cuSparse_Data(Jac);
-  if (check_flag((void *) Jdata, "SUNMatrix_cuSparse_Data (Jimpl)", 0)) return(-1);
-  sunindextype nnz = SUNMatrix_cuSparse_NNZ(Jac);
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nnz), [=] RAJA_DEVICE (long int i) {
     Jdata[i] *= TUnit;
   });
 #else
@@ -1135,8 +1059,6 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= TUnit;
 #endif
-#endif
-
 
   // stop timer and return
   retval = udata->profile[PR_JACFAST].stop();
@@ -1178,7 +1100,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (fexpl)", 1)) return(-1);
 
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+#ifdef USEDEVICE
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
@@ -1221,7 +1143,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         etdot[fidx] = ZERO;
       }
 
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+#ifdef USEDEVICE
   // ensure that chemistry rate-of-change data is synchronized back to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(wdot,5));
 #endif
@@ -1261,7 +1183,7 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (PostprocessStep)", 1)) return(-1);
 
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+#ifdef USEDEVICE
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
@@ -1475,12 +1397,9 @@ int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
   N_VLinearSum(sig, v, ONE, y, w);
 
   // Set z = fchem(t, y + sig * v)
-#ifdef USERAJA
-  retval = calculate_rhs_cvklu(tcur, w, z, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_rhs_cvklu(tcur, w, z,
+                               (udata->nxl)*(udata->nyl)*(udata->nzl),
                                udata->RxNetData);
-#else
-  retval = calculate_rhs_cvklu(tcur, w, z, udata->RxNetData);
-#endif
   content->nfeDQ++;
   if (check_flag(&retval, "calculate_rhs_cvklu (Atimes_BDMPIMV)", 1)) return(retval);
 

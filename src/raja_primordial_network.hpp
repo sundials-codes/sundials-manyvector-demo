@@ -29,19 +29,12 @@
 #include "string.h"
 #include <RAJA/RAJA.hpp>
 #include <sundials/sundials_types.h>
-#ifdef USEMAGMA
+#ifdef USEDEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
-#ifdef RAJA_CUDA
-#include <sunmatrix/sunmatrix_cusparse.h>
-#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
-#elif RAJA_SERIAL
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
 #endif
 
 #define NSPECIES 10

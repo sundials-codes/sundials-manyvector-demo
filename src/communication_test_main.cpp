@@ -120,7 +120,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USERAJA
+#ifdef USEDEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
