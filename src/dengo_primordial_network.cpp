@@ -3801,7 +3801,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
     int nstrip = data->nstrip;
 
     /* change N_Vector back to an array */
-    double y_arr[ 10 * nstrip ];
+    double *y_arr = new double[ 10 * nstrip ];
     double H2_1;
 
     double H2_2;
@@ -3859,6 +3859,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
     flag = cvklu_calculate_temperature(data, y_arr , nstrip, nchem );
     if (flag > 0){
         // check if the temperature failed to converged
+        delete[] y_arr;
         return -1;
     }
     cvklu_interpolate_rates(data, nstrip);
@@ -4071,6 +4072,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot, void *user_data)
 
     //fprintf(stderr, "----------------\n");
     }
+    delete[] y_arr;
     return 0;
     }
 
@@ -5577,7 +5579,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
     #endif
 
     /* change N_Vector back to an array */
-    double y_arr[ 10 * nstrip ];
+    double *y_arr = new double[ 10 * nstrip ];
     double *scale     = data->scale[threadID];
     double *inv_scale = data->inv_scale[threadID];
 
@@ -6574,6 +6576,7 @@ int calculate_sparse_jacobian_cvklu( realtype t,
     }
 
     rowptrs[ i * nchem ] = i * NSPARSE ;
+    delete[] y_arr;
     return 0;
 }
 
