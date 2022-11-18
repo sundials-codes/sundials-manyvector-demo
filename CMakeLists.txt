@@ -18,14 +18,17 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "In-source build prohibited.")
 endif()
 
-# Macro to show compiler and flags. Hides build type specific flag options,
-# except for the one corresponding to the current build type.
+# -------
+# Macros
+# -------
+
+# Show/hide compiler and flags based on the current build type
 macro(show_language_flags lang)
   set(_build_types DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+  string(TOUPPER "${CMAKE_BUILD_TYPE}" _cmake_build_type)
   foreach(build_type ${_build_types})
-    string(TOUPPER "${CMAKE_BUILD_TYPE}" _cmake_build_type)
     if(${_cmake_build_type} MATCHES "${build_type}")
-      message("Appending ${lang} ${build_type} flags")
+      message(STATUS "Appending ${lang} ${build_type} flags: ${CMAKE_${lang}_FLAGS_${build_type}}")
       mark_as_advanced(CLEAR CMAKE_${lang}_FLAGS_${build_type})
     else()
       mark_as_advanced(FORCE CMAKE_${lang}_FLAGS_${build_type})
@@ -33,6 +36,8 @@ macro(show_language_flags lang)
   endforeach()
   # show the language compiler and flags
   mark_as_advanced(CLEAR CMAKE_${lang}_COMPILER CMAKE_${lang}_FLAGS)
+  # print implicit includes
+  message(STATUS "Implicit ${lang} includes: ${CMAKE_${lang}_IMPLICIT_INCLUDE_DIRECTORIES}")
 endmacro()
 
 # Show C and C++ flags
