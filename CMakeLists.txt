@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Programmer(s):  David J. Gardner @ LLNL
+# Programmer(s): David J. Gardner @ LLNL
 # ------------------------------------------------------------------------------
 # Copyright (c) 2020, Southern Methodist University and
 # Lawrence Livermore National Security.
@@ -9,7 +9,7 @@
 # Top level CMakeLists.txt for the SUNDIALS demonstration application
 # ------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.18.0)
 
 project(SUNDIALS-DEMO C CXX)
 
@@ -40,12 +40,10 @@ macro(show_language_flags lang)
   message(STATUS "Implicit ${lang} includes: ${CMAKE_${lang}_IMPLICIT_INCLUDE_DIRECTORIES}")
 endmacro()
 
-# Show C and C++ flags
 show_language_flags(C)
-show_language_flags(CXX)
-
-# Set C and C++ standards
 set(CMAKE_C_STANDARD "99" CACHE STRING "C standard to use")
+
+show_language_flags(CXX)
 set(CMAKE_CXX_STANDARD "11" CACHE STRING "C++ standard to use")
 
 # Append to the runtime search path (rpath) of installed binaries any

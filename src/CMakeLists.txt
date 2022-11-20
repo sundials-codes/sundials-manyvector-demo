@@ -91,6 +91,7 @@ foreach(nvar ${_nvar_values})
         SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
       target_compile_definitions(${_shared_obj}
         PUBLIC
+        USE_DEVICE
         RAJA_CUDA)
     elseif(RAJA_BACKEND MATCHES "HIP")
       target_link_libraries(${_shared_obj}
@@ -98,6 +99,7 @@ foreach(nvar ${_nvar_values})
         SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
       target_compile_definitions(${_shared_obj}
         PUBLIC
+        USE_DEVICE
         RAJA_HIP)
     elseif(RAJA_BACKEND MATCHES "SERIAL")
       target_link_libraries(${_shared_obj}
