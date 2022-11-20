@@ -25,7 +25,7 @@
 
 // sparse vs dense
 #define NSPARSE 64
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
 #define SPARSE_OR_DENSE(a,b) b
 #else
 #define SPARSE_OR_DENSE(a,b) a
@@ -1698,7 +1698,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   cvklu_data *data    = (cvklu_data*) user_data;
   const double *ydata = N_VGetDeviceArrayPointer(y);
 
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   // Access dense matrix structures, and zero out data
   realtype *matrix_data = SUNMatrix_MagmaDense_Data(J);
 #else
@@ -2164,7 +2164,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ idx ] *= Tge;
     matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 9 ]);
 
-#ifndef USEDEVICE
+#ifndef USE_DEVICE
     colvals[i * NSPARSE + 0] = i * NSPECIES + 0 ;
     colvals[i * NSPARSE + 1] = i * NSPECIES + 1 ;
     colvals[i * NSPARSE + 2] = i * NSPECIES + 2 ;

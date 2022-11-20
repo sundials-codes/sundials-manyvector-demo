@@ -161,7 +161,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
       }
 
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   // ensure that chemistry values are synchronized to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
@@ -235,7 +235,7 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
                                               udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > iscview(network_data->inv_scale, udata.nzl,
                                                udata.nyl, udata.nxl, udata.nchem);
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
 #else
@@ -270,7 +270,7 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
 #else
@@ -299,7 +299,7 @@ int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
 #else
@@ -341,7 +341,7 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
   // print solutions at first location
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   RAJA::View<double, RAJA::Layout<4> > cview(N_VGetDeviceArrayPointer(N_VGetSubvector_MPIManyVector(w,5)),
                                              udata.nzl, udata.nyl, udata.nxl, udata.nchem);
 #else

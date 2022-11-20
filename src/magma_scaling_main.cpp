@@ -16,7 +16,7 @@
 // Header files
 #include <euler3D.hpp>
 #include <arkode/arkode_arkstep.h>
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else

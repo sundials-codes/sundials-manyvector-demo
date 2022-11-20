@@ -22,7 +22,7 @@
 
 //    SUNDIALS
 #include <arkode/arkode_arkstep.h>
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
 
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   w = N_VNewManaged_Raja(N, udata.ctx);
   if (check_flag((void *) w, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
   atols = N_VNewManaged_Raja(N, udata.ctx);
@@ -219,7 +219,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
 
   // ensure that clump data is synchronized between host/device device memory
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
 #endif
 
@@ -270,7 +270,7 @@ int main(int argc, char* argv[]) {
   const long int ks = udata.ks;
 
   // set initial conditions -- essentially-neutral primordial gas
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   realtype *wdata = N_VGetDeviceArrayPointer(w);
 #else
   realtype *wdata = N_VGetArrayPointer(w);
@@ -422,13 +422,10 @@ int main(int argc, char* argv[]) {
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
   // create matrix and linear solver modules
-#ifdef USEDEVICE
-  // Create SUNMatrix for use in linear solves
+#ifdef USE_DEVICE
   A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
                                 udata.memhelper, NULL, udata.ctx);
   if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
-
-  // Create the SUNLinearSolver object
   LS = SUNLinSol_MagmaDense(w, A, udata.ctx);
   if(check_flag((void *)LS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else

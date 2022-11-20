@@ -46,7 +46,7 @@
 
 //    SUNDIALS
 #include <arkode/arkode_arkstep.h>
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
@@ -308,7 +308,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
@@ -407,7 +407,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // create the fast integrator local linear solver
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   // Create SUNMatrix for use in linear solves
   A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
                                 udata.memhelper, NULL, udata.ctx);
@@ -427,7 +427,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // Create the SUNLinearSolver object
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
   if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
@@ -1046,7 +1046,7 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   realtype TUnit = udata->TimeUnits;
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   Jdata = SUNMatrix_MagmaDense_Data(Jac);
   if (check_flag((void *) Jdata, "SUNMatrix_MagmaDense_Data (Jimpl)", 0)) return(-1);
   long int ldata = SUNMatrix_MagmaDense_LData(Jac);
@@ -1100,7 +1100,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (fexpl)", 1)) return(-1);
 
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
@@ -1143,7 +1143,7 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         etdot[fidx] = ZERO;
       }
 
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   // ensure that chemistry rate-of-change data is synchronized back to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(wdot,5));
 #endif
@@ -1183,7 +1183,7 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (PostprocessStep)", 1)) return(-1);
 
-#ifdef USEDEVICE
+#ifdef USE_DEVICE
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
