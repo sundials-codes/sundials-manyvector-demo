@@ -1675,6 +1675,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 
   });
 
+#ifdef USE_DEVICE
   // synchronize device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
   HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
@@ -1684,6 +1685,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
               << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
     return(-1);
   }
+#endif
 
   return 0;
 }
@@ -2247,6 +2249,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   });
 
+#ifdef USE_DEVICE
   // synchronize device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
   HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
@@ -2256,6 +2259,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
               << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
     return(-1);
   }
+#endif
 
   return 0;
 }

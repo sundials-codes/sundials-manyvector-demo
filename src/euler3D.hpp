@@ -280,9 +280,6 @@ public:
   realtype *Bsend;
   MPI_Request req[12];  // MPI requests for neighbor exchange
 
-  //// vector to save last chemistry RHS eval for use in ATimes
-  N_Vector fchemcur;
-
   ///// class operations /////
 
   // constructor
@@ -306,9 +303,7 @@ public:
     comm(MPI_COMM_WORLD), ctx(NULL), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
     ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1),
     Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
-    Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
-    // saved chemistry RHS eval
-    fchemcur(NULL)
+    Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL)
   {
     nchem = (NVAR) - 5;
     SUNContext_Create((void*) &comm, &ctx);
@@ -334,7 +329,6 @@ public:
     if (yflux != NULL)  delete[] yflux;
     if (zflux != NULL)  delete[] zflux;
     if (RxNetData != NULL)  free(RxNetData);
-    if (fchemcur != NULL)   N_VDestroy(fchemcur);
     if (memhelper != NULL)  SUNMemoryHelper_Destroy(memhelper);
     if (ctx != NULL)        SUNContext_Free(&ctx);
   };

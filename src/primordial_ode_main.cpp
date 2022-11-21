@@ -438,10 +438,8 @@ int main(int argc, char* argv[]) {
   // attach matrix and linear solver to the integrator
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  if (!opts.iterative) {
-    retval = ARKStepSetJacFn(arkode_mem, Jrhs);
-    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
+  retval = ARKStepSetJacFn(arkode_mem, Jrhs);
+  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // setup the ARKStep integrator based on inputs
 
@@ -643,11 +641,7 @@ int main(int argc, char* argv[]) {
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    if (opts.iterative && nli > 0) {
-      cout << "   Total number of lin iters = " << nli << "\n";
-      cout << "   Total number of lin conv fails = " << nlcf << "\n";
-      cout << "   Total number of lin RHS evals = " << nfls << "\n";
-    } else if (nls > 0) {
+    if (nls > 0) {
       cout << "   Total number of lin solv setups = " << nls << "\n";
       cout << "   Total number of Jac evals = " << nje << "\n";
     }

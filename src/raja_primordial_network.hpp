@@ -29,6 +29,7 @@
 #include "string.h"
 #include <RAJA/RAJA.hpp>
 #include <sundials/sundials_types.h>
+#include <sundials/sundials_memory.h>
 #ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>

@@ -97,7 +97,6 @@ typedef struct _BDMPIMVContent {
   sunindextype    lastflag;
   EulerData*      udata;
   void*           arkode_mem;
-  N_Vector        work;
   long int        nfeDQ;
 } *BDMPIMVContent;
 #define BDMPIMV_CONTENT(S)  ( (BDMPIMVContent)(S->content) )
@@ -105,7 +104,6 @@ typedef struct _BDMPIMVContent {
 #define BDMPIMV_SUBVEC(S)   ( BDMPIMV_CONTENT(S)->subvec )
 #define BDMPIMV_LASTFLAG(S) ( BDMPIMV_CONTENT(S)->lastflag )
 #define BDMPIMV_UDATA(S)    ( BDMPIMV_CONTENT(S)->udata )
-#define BDMPIMV_WORK(S)     ( BDMPIMV_CONTENT(S)->work )
 #define BDMPIMV_NFEDQ(S)    ( BDMPIMV_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
@@ -116,8 +114,6 @@ int Initialize_BDMPIMV(SUNLinearSolver S);
 int Setup_BDMPIMV(SUNLinearSolver S, SUNMatrix A);
 int Solve_BDMPIMV(SUNLinearSolver S, SUNMatrix A, N_Vector x,
                   N_Vector b, realtype tol);
-int SetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes);
-int ATimes_BDMPIMV(void* arkode_mem, N_Vector v, N_Vector z);
 sunindextype LastFlag_BDMPIMV(SUNLinearSolver S);
 int Free_BDMPIMV(SUNLinearSolver S);
 
@@ -470,10 +466,8 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_SETUP7E].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  if (!opts.iterative) {
-    retval = ARKStepSetJacFn(arkode_mem, Jimpl);
-    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
+  retval = ARKStepSetJacFn(arkode_mem, Jimpl);
+  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   retval = udata.profile[PR_SETUP7E].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -702,11 +696,7 @@ int main(int argc, char* argv[]) {
       cout << "   Solver steps = " << nst << " (attempted = " << nst_a << ")\n";
       cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
       cout << "   Total number of error test failures = " << netf << "\n";
-      if (opts.iterative && nli > 0) {
-        cout << "   Total number of lin iters = " << nli << "\n";
-        cout << "   Total number of lin conv fails = " << nlcf << "\n";
-        cout << "   Total number of lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
-      } else if (nls > 0) {
+      if (nls > 0) {
         cout << "   Total number of lin solv setups = " << nls << "\n";
         cout << "   Total number of Jac evals = " << nje << "\n";
       }
@@ -741,7 +731,6 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].print_cumulative_times("implicit Jac");
     udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
     udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
-    udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
     udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
     udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
     udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
@@ -759,7 +748,6 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].reset();
     udata.profile[PR_LSETUP].reset();
     udata.profile[PR_LSOLVE].reset();
-    udata.profile[PR_LATIMES].reset();
     udata.profile[PR_LSOLVEMPI].reset();
     udata.profile[PR_POSTFAST].reset();
     udata.profile[PR_DTSTAB].reset();
@@ -900,11 +888,7 @@ int main(int argc, char* argv[]) {
     cout << "   Solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    if (opts.iterative && nli > 0) {
-      cout << "   Total number of lin iters = " << nli << "\n";
-      cout << "   Total number of lin conv fails = " << nlcf << "\n";
-      cout << "   Total number of lin RHS evals = " << BDMPIMV_NFEDQ(LS) << "\n";
-    } else if (nls > 0) {
+    if (nls > 0) {
       cout << "   Total number of lin solv setups = " << nls << "\n";
       cout << "   Total number of Jac evals = " << nje << "\n";
     }
@@ -939,7 +923,6 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_JACFAST].print_cumulative_times("implicit Jac");
   udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
-  udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
   udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
   udata.profile[PR_POSTFAST].print_cumulative_times("poststep");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
@@ -996,9 +979,6 @@ static int fimpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // scale wchemdot by TimeUnits to handle step size nondimensionalization
   N_VScale(udata->TimeUnits, wchemdot, wchemdot);
-
-  // save chem RHS for use in ATimes (iterative linear solvers)
-  if (udata->fchemcur) N_VScale(ONE, wchemdot, udata->fchemcur);
 
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
@@ -1250,8 +1230,6 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   S->ops->setup       = Setup_BDMPIMV;
   S->ops->solve       = Solve_BDMPIMV;
   S->ops->lastflag    = LastFlag_BDMPIMV;
-  if (opts.iterative)
-    S->ops->setatimes = SetATimes_BDMPIMV;
   S->ops->free        = Free_BDMPIMV;
 
   // Create, fill and attach content
@@ -1264,24 +1242,14 @@ SUNLinearSolver SUNLinSol_BDMPIMV(SUNLinearSolver BLS, N_Vector x,
   content->udata      = udata;
   content->arkode_mem = arkode_mem;
   content->nfeDQ      = 0;
-  if (opts.iterative) {
-    content->work   = N_VClone(x);
-    udata->fchemcur = N_VClone(N_VGetSubvector_MPIManyVector(x, subvec));
-  } else {
-    content->work   = NULL;
-    udata->fchemcur = NULL;
-  }
-  S->content = content;
+  S->content          = content;
 
   return(S);
 }
 
 SUNLinearSolver_Type GetType_BDMPIMV(SUNLinearSolver S)
 {
-  if (BDMPIMV_WORK(S))
-    return(SUNLINEARSOLVER_ITERATIVE);
-  else
-    return(SUNLINEARSOLVER_DIRECT);
+  return(SUNLINEARSOLVER_DIRECT);
 }
 
 int Initialize_BDMPIMV(SUNLinearSolver S)
@@ -1348,78 +1316,6 @@ int Solve_BDMPIMV(SUNLinearSolver S, SUNMatrix A,
   return(-globerrs[1]);
 }
 
-int SetATimes_BDMPIMV(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
-{
-  // Ignore the input ARKODE ATimes function and attach a custom ATimes function
-  BDMPIMV_LASTFLAG(S) = SUNLinSolSetATimes(BDMPIMV_BLS(S), BDMPIMV_CONTENT(S),
-                                           ATimes_BDMPIMV);
-  return(BDMPIMV_LASTFLAG(S));
-}
-
-int ATimes_BDMPIMV(void* A_data, N_Vector v, N_Vector z)
-{
-  // Access the linear solver content
-  BDMPIMVContent content = (BDMPIMVContent) A_data;
-
-  // Shortcuts to content
-  EulerData* udata      = content->udata;
-  void*      arkode_mem = content->arkode_mem;
-
-  // Get the current time, gamma, and error weights
-  realtype tcur;
-  int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
-  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes_BDMPIMV)", 1)) return(-1);
-
-  N_Vector ycur;
-  retval = ARKStepGetCurrentState(arkode_mem, &ycur);
-  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes_BDMPIMV)", 1)) return(-1);
-
-  realtype gamma;
-  retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
-  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes_BDMPIMV)", 1)) return(-1);
-
-  N_Vector work = content->work;
-  retval = ARKStepGetErrWeights(arkode_mem, work);
-  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes_BDMPIMV)", 1)) return(-1);
-
-  // Get ycur and weight vector for chem species
-  N_Vector y = N_VGetSubvector_MPIManyVector(ycur, content->subvec);
-  N_Vector w = N_VGetSubvector_MPIManyVector(work, content->subvec);
-
-  // Start timer
-  retval = udata->profile[PR_LATIMES].start();
-  if (check_flag(&retval, "Profile::start (Atimes_BDMPIMV)", 1)) return(-1);
-
-  // Set perturbation to 1/||v||
-  realtype sig = ONE / N_VWrmsNorm(v, w);
-
-  // Set work = y + sig * v
-  N_VLinearSum(sig, v, ONE, y, w);
-
-  // Set z = fchem(t, y + sig * v)
-  retval = calculate_rhs_cvklu(tcur, w, z,
-                               (udata->nxl)*(udata->nyl)*(udata->nzl),
-                               udata->RxNetData);
-  content->nfeDQ++;
-  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes_BDMPIMV)", 1)) return(retval);
-
-  // scale wchemdot by TimeUnits to handle step size nondimensionalization
-  N_VScale(udata->TimeUnits, z, z);
-
-  // Compute Jv approximation: z = (z - fchemcur) / sig
-  realtype siginv = ONE / sig;
-  N_VLinearSum(siginv, z, -siginv, udata->fchemcur, z);
-
-  // Compute Av approximation: z = (I - gamma J) v
-  N_VLinearSum(ONE, v, -gamma, z, z);
-
-  // Stop timer and return
-  retval = udata->profile[PR_LATIMES].stop();
-  if (check_flag(&retval, "Profile::stop (Atimes_BDMPIMV)", 1)) return(-1);
-
-  return(0);
-}
-
 sunindextype LastFlag_BDMPIMV(SUNLinearSolver S)
 {
   return(BDMPIMV_LASTFLAG(S));
@@ -1430,7 +1326,6 @@ int Free_BDMPIMV(SUNLinearSolver S)
 {
   BDMPIMVContent content = BDMPIMV_CONTENT(S);
   if (content == NULL) return(0);
-  if (content->work) N_VDestroy(content->work);
   free(S->ops);
   free(S->content);
   free(S);

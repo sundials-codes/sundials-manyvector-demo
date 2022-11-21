@@ -123,7 +123,6 @@ typedef struct _RankLocalLSContent {
   sunindextype    lastflag;
   EulerData*      udata;
   void*           arkode_mem;
-  N_Vector        work;
   long int        nfeDQ;
 } *RankLocalLSContent;
 #define RankLocalLS_CONTENT(S)  ( (RankLocalLSContent)(S->content) )
@@ -131,7 +130,6 @@ typedef struct _RankLocalLSContent {
 #define RankLocalLS_SUBVEC(S)   ( RankLocalLS_CONTENT(S)->subvec )
 #define RankLocalLS_LASTFLAG(S) ( RankLocalLS_CONTENT(S)->lastflag )
 #define RankLocalLS_UDATA(S)    ( RankLocalLS_CONTENT(S)->udata )
-#define RankLocalLS_WORK(S)     ( RankLocalLS_CONTENT(S)->work )
 #define RankLocalLS_NFEDQ(S)    ( RankLocalLS_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
@@ -142,8 +140,6 @@ int Initialize_RankLocalLS(SUNLinearSolver S);
 int Setup_RankLocalLS(SUNLinearSolver S, SUNMatrix A);
 int Solve_RankLocalLS(SUNLinearSolver S, SUNMatrix A,
                       N_Vector x, N_Vector b, realtype tol);
-int SetATimes_RankLocalLS(SUNLinearSolver S, void* A_data, ATimesFn ATimes);
-int ATimes_RankLocalLS(void* arkode_mem, N_Vector v, N_Vector z);
 sunindextype LastFlag_RankLocalLS(SUNLinearSolver S);
 int Free_RankLocalLS(SUNLinearSolver S);
 
@@ -295,11 +291,6 @@ int main(int argc, char* argv[]) {
       cout << "   local N_Vector reduction operations enabled\n";
     } else {
       cout << "   local N_Vector reduction operations disabled\n";
-    }
-    if (opts.iterative) {
-      cout << "   iterative block linear solver selected\n";
-    } else {
-      cout << "   direct block linear solver selected\n";
     }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
@@ -538,10 +529,8 @@ int main(int argc, char* argv[]) {
   retval = udata.profile[PR_SETUP7E].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  if (!opts.iterative) {
-    retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
-    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
+  retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
+  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   retval = udata.profile[PR_SETUP7E].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -792,14 +781,7 @@ int main(int argc, char* argv[]) {
            << ", " << nffi_max << ")\n";
       cout << "   Total number of fast error test failures = (" << netf_min << ", "
            << netf_max << ")\n";
-      if (opts.iterative && nli_max > 0) {
-        cout << "   Total number of fast lin iters = (" << nli_min << ", "
-             << nli_max << ")\n";
-        cout << "   Total number of fast lin conv fails = (" << nlcf_min << ", "
-             << nlcf_max << ")\n";
-        cout << "   Total number of fast lin RHS evals = (" << nlfs_min << ", "
-             << nlfs_max << ")\n";
-      } else if (nls_max > 0) {
+      if (nls_max > 0) {
         cout << "   Total number of fast lin solv setups = (" << nls_min << ", "
              << nls_max << ")\n";
         cout << "   Total number of fast Jac evals = (" << nje_min << ", "
@@ -840,7 +822,6 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
     udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
     udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
-    udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
     udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
     // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
     udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
@@ -858,7 +839,6 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].reset();
     udata.profile[PR_LSETUP].reset();
     udata.profile[PR_LSOLVE].reset();
-    udata.profile[PR_LATIMES].reset();
     udata.profile[PR_LSOLVEMPI].reset();
     // udata.profile[PR_POSTFAST].reset();
     udata.profile[PR_DTSTAB].reset();
@@ -996,14 +976,7 @@ int main(int argc, char* argv[]) {
          << ", " << nffi_max << ")\n";
     cout << "   Total number of fast error test failures = (" << netf_min << ", "
          << netf_max << ")\n";
-    if (opts.iterative && nli_max > 0) {
-      cout << "   Total number of fast lin iters = (" << nli_min << ", "
-           << nli_max << ")\n";
-      cout << "   Total number of fast lin conv fails = (" << nlcf_min << ", "
-           << nlcf_max << ")\n";
-      cout << "   Total number of fast lin RHS evals = (" << nlfs_min << ", "
-           << nlfs_max << ")\n";
-    } else if (nls_max > 0) {
+    if (nls_max > 0) {
       cout << "   Total number of fast lin solv setups = (" << nls_min << ", "
            << nls_max << ")\n";
       cout << "   Total number of fast Jac evals = (" << nje_min << ", "
@@ -1044,7 +1017,6 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
   udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
-  udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
   udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
   // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
@@ -1119,9 +1091,6 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
       if (check_flag(&retval, "N_VLinearCombination (ffast)", 1)) return(retval);
     }
   }
-
-  // save chem RHS for use in ATimes (iterative linear solvers)
-  if (udata->fchemcur) N_VScale(ONE, wdot, udata->fchemcur);
 
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
@@ -1506,8 +1475,6 @@ SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver BLS, N_Vector x,
   S->ops->setup       = Setup_RankLocalLS;
   S->ops->solve       = Solve_RankLocalLS;
   S->ops->lastflag    = LastFlag_RankLocalLS;
-  if (opts.iterative)
-    S->ops->setatimes = SetATimes_RankLocalLS;
   S->ops->free        = Free_RankLocalLS;
 
   // Create, fill and attach content
@@ -1520,24 +1487,14 @@ SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver BLS, N_Vector x,
   content->udata      = udata;
   content->arkode_mem = arkode_mem;
   content->nfeDQ      = 0;
-  if (opts.iterative) {
-    content->work   = N_VClone(x);
-    udata->fchemcur = N_VClone(N_VGetSubvector_ManyVector(x, subvec));
-  } else {
-    content->work   = NULL;
-    udata->fchemcur = NULL;
-  }
-  S->content = content;
+  S->content          = content;
 
   return(S);
 }
 
 SUNLinearSolver_Type GetType_RankLocalLS(SUNLinearSolver S)
 {
-  if (RankLocalLS_WORK(S))
-    return(SUNLINEARSOLVER_ITERATIVE);
-  else
-    return(SUNLINEARSOLVER_DIRECT);
+  return(SUNLINEARSOLVER_DIRECT);
 }
 
 int Initialize_RankLocalLS(SUNLinearSolver S)
@@ -1578,78 +1535,6 @@ int Solve_RankLocalLS(SUNLinearSolver S, SUNMatrix A,
   return(RankLocalLS_LASTFLAG(S));
 }
 
-int SetATimes_RankLocalLS(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
-{
-  // Ignore the input ARKODE ATimes function and attach a custom ATimes function
-  RankLocalLS_LASTFLAG(S) = SUNLinSolSetATimes(RankLocalLS_BLS(S),
-                                               RankLocalLS_CONTENT(S),
-                                               ATimes_RankLocalLS);
-  return(RankLocalLS_LASTFLAG(S));
-}
-
-int ATimes_RankLocalLS(void* A_data, N_Vector v, N_Vector z)
-{
-  // Access the linear solver content
-  RankLocalLSContent content = (RankLocalLSContent) A_data;
-
-  // Shortcuts to content
-  EulerData* udata      = content->udata;
-  void*      arkode_mem = content->arkode_mem;
-
-  // Get the current time, gamma, and error weights
-  realtype tcur;
-  int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
-  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes_RankLocalLS)", 1)) return(-1);
-
-  N_Vector ycur;
-  retval = ARKStepGetCurrentState(arkode_mem, &ycur);
-  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes_RankLocalLS)", 1)) return(-1);
-
-  realtype gamma;
-  retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
-  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes_RankLocalLS)", 1)) return(-1);
-
-  N_Vector work = content->work;
-  retval = ARKStepGetErrWeights(arkode_mem, work);
-  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes_RankLocalLS)", 1)) return(-1);
-
-  // Get ycur and weight vector for chem species
-  N_Vector y = N_VGetSubvector_ManyVector(ycur, content->subvec);
-  N_Vector w = N_VGetSubvector_ManyVector(work, content->subvec);
-
-  // Start timer
-  retval = udata->profile[PR_LATIMES].start();
-  if (check_flag(&retval, "Profile::start (Atimes)", 1)) return(-1);
-
-  // Set perturbation to 1/||v||
-  realtype sig = ONE / N_VWrmsNorm(v, w);
-
-  // Set work = y + sig * v
-  N_VLinearSum(sig, v, ONE, y, w);
-
-  // Set z = fchem(t, y + sig * v)
-  retval = calculate_rhs_cvklu(tcur, w, z, (udata->nxl)*(udata->nyl)*(udata->nzl),
-                               udata->RxNetData);
-  content->nfeDQ++;
-  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
-
-  // scale wchemdot by TimeUnits to handle step size nondimensionalization
-  N_VScale(udata->TimeUnits, z, z);
-
-  // Compute Jv approximation: z = (z - fchemcur) / sig
-  realtype siginv = ONE / sig;
-  N_VLinearSum(siginv, z, -siginv, udata->fchemcur, z);
-
-  // Compute Av approximation: z = (I - gamma J) v
-  N_VLinearSum(ONE, v, -gamma, z, z);
-
-  // Stop timer and return
-  retval = udata->profile[PR_LATIMES].stop();
-  if (check_flag(&retval, "Profile::stop (Atimes)", 1)) return(-1);
-
-  return(0);
-}
-
 sunindextype LastFlag_RankLocalLS(SUNLinearSolver S)
 {
   return(RankLocalLS_LASTFLAG(S));
@@ -1660,7 +1545,6 @@ int Free_RankLocalLS(SUNLinearSolver S)
 {
   RankLocalLSContent content = RankLocalLS_CONTENT(S);
   if (content == NULL) return(0);
-  if (content->work) N_VDestroy(content->work);
   free(S->ops);
   free(S->content);
   free(S);
