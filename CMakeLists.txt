@@ -52,6 +52,37 @@ set(CMAKE_CXX_STANDARD "11" CACHE STRING "C++ standard to use")
 option(CMAKE_INSTALL_RPATH_USE_LINK_PATH "Set rpath" ON)
 mark_as_advanced(FORCE CMAKE_INSTALL_RPATH_USE_LINK_PATH)
 
+# --------
+# Backend
+# --------
+
+set(USE_BACKEND "SERIAL"
+  CACHE PATH "Backend to use: SERIAL, CUDA")
+set_property(CACHE USE_BACKEND PROPERTY STRINGS "SERIAL;CUDA")
+
+set(RAJA_ROOT "$ENV{RAJA_ROOT}"
+  CACHE PATH "Root directory of RAJA install")
+
+set(camp_DIR "$ENV{CAMP_ROOT}"
+  CACHE PATH "Root directory of camp install")
+
+find_package(RAJA REQUIRED
+  PATHS
+  "${RAJA_ROOT}/share/raja/cmake"
+  "${RAJA_ROOT}"
+  NO_DEFAULT_PATH)
+
+find_package(Threads REQUIRED)
+
+mark_as_advanced(FORCE RAJA_DIR)
+
+if(USE_BACKEND MATCHES "CUDA")
+  enable_language(CUDA)
+  show_language_flags(CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES "70" CACHE STRING "CUDA Architecture")
+  set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
+endif()
+
 # ----
 # MPI
 # ----
@@ -75,6 +106,16 @@ find_package(SUNDIALS REQUIRED
 mark_as_advanced(FORCE SUNDIALS_DIR)
 
 # -----
+# MAGMA
+# -----
+
+if(USE_BACKEND MATCHES "SERIAL")
+  option(ENABLE_MAGMA "Enable MAGMA" OFF)
+else()
+  option(ENABLE_MAGMA "Enable MAGMA" ON)
+endif()
+
+# -----
 # HDF5
 # -----
 
@@ -88,48 +129,6 @@ if(ENABLE_HDF5)
   set(HDF5_FIND_DEBUG TRUE)
   find_package(HDF5 REQUIRED COMPONENTS C HL)
 endif()
-
-# -----
-# RAJA
-# -----
-
-option(ENABLE_RAJA "Enable RAJA" OFF)
-
-set(RAJA_BACKEND "CUDA"
-  CACHE STRING "RAJA backend to use")
-set_property(CACHE RAJA_BACKEND PROPERTY STRINGS "SERIAL;CUDA;HIP")
-
-set(RAJA_ROOT "$ENV{RAJA_ROOT}"
-  CACHE PATH "Root directory of RAJA install")
-
-if(ENABLE_RAJA)
-  find_package(RAJA REQUIRED
-    PATHS
-    "${RAJA_ROOT}/share/raja/cmake"
-    "${RAJA_ROOT}"
-    NO_DEFAULT_PATH)
-  # for some reason RAJA links to the Threads library
-  find_package(Threads REQUIRED)
-endif()
-
-mark_as_advanced(FORCE RAJA_DIR)
-
-# -----
-# CUDA
-# -----
-
-if(ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
-  enable_language(CUDA)
-  show_language_flags(CUDA)
-  set(CMAKE_CUDA_ARCHITECTURES "70" CACHE STRING "CUDA Architecture")
-  set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
-endif()
-
-# -----
-# MAGMA
-# -----
-
-option(ENABLE_MAGMA "Enable MAGMA" OFF)
 
 # ---------------------
 # add source directory

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 # --------------------------------------------------------------------------
 # Programmer(s): David J. Gardner @ LLNL
 # --------------------------------------------------------------------------
@@ -15,107 +15,47 @@
 # Script to build SUNDIALS
 # --------------------------------------------------------------------------
 
-# location of source to build
-if [ "$#" -gt 0 ]; then
-    srcdir=$1
+# clone SUNDIALS if necessary
+if [ ! -d sundials ]; then
+    git clone git@github.com:LLNL/sundials.git
+    cd sundials
+    git checkout v6.2.0
 else
-    wget https://github.com/LLNL/sundials/releases/download/v5.6.1/sundials-5.6.1.tar.gz
-    tar -xzf sundials-5.6.1.tar.gz
-    srcdir=${PWD}/sundials-5.6.1
+    cd sundials
 fi
 
-# build threads
-bldthreads=12
-if [ "$#" -gt 1 ]; then
-    bldthreads=$2
-fi
+# remove old build dir
+rm -rf build
+mkdir build
+cd build
 
-# -------------------------------------------------------------------------------
-# Setup
-# -------------------------------------------------------------------------------
-
-# return on any error
-set -e
-
-# build and install directories
-builddir=${srcdir}/build
-
-# remove old build directory, create new one, and move there
-\rm -rf $builddir
-mkdir -p $builddir
-cd $builddir
-
-# --------------------------------------------------------------------------
-# Configure SUNDIALS
-# --------------------------------------------------------------------------
+# configure, make, and install
 cmake \
+    ../. \
     -D CMAKE_C_COMPILER=${CC} \
-    -D CMAKE_C_FLAGS="${OPTIMIZATION} ${CFLAGS}" \
+    -D CMAKE_C_FLAGS="-O3 -g" \
     -D CMAKE_CXX_COMPILER=${CXX} \
-    -D CMAKE_CXX_FLAGS="${OPTIMIZATION} ${CXXFLAGS}" \
-    \
-    -D BUILD_ARKODE=ON \
-    -D BUILD_CVODE=ON \
-    -D BUILD_CVODES=OFF \
-    -D BUILD_IDA=OFF \
-    -D BUILD_IDAS=OFF \
-    -D BUILD_KINSOL=OFF \
-    \
-    -D SUNDIALS_PRECISION="double" \
-    -D SUNDIALS_INDEX_SIZE="$SUNDIALS_INDEX_SIZE" \
-    \
+    -D CMAKE_CXX_FLAGS="-O3 -g" \
+    -D SUNDIALS_INDEX_SIZE=32 \
+    -D ENABLE_OPENMP=ON \
     -D ENABLE_MPI=ON \
     -D MPI_C_COMPILER=${MPICC} \
     -D MPI_CXX_COMPILER=${MPICXX} \
     -D MPI_Fortran_COMPILER=${MPIFC} \
-    \
     -D ENABLE_KLU=ON \
-    -D KLU_INCLUDE_DIR="${KLU_INC_DIR}" \
-    -D KLU_LIBRARY_DIR="${KLU_LIB_DIR}" \
-    \
-    -D ENABLE_CUDA="${SUNDIALS_CUDA_STATUS}" \
-    -D CMAKE_CUDA_ARCHITECTURES="70" \
-    \
-    -D ENABLE_RAJA="${SUNDIALS_RAJA_STATUS}" \
-    -D RAJA_DIR="${RAJA_ROOT}" \
+    -D KLU_INCLUDE_DIR=${KLU_ROOT}/include \
+    -D KLU_LIBRARY_DIR=${KLU_ROOT}/lib \
+    -D ENABLE_CUDA=ON \
+    -D CMAKE_CUDA_ARCHITECTURES=70 \
+    -D ENABLE_RAJA=ON \
+    -D RAJA_DIR=${RAJA_ROOT} \
     -D SUNDIALS_RAJA_BACKENDS="CUDA" \
-    \
-    -D BUILD_SHARED_LIBS=ON \
-    -D BUILD_STATIC_LIBS=OFF \
-    \
-    -D CMAKE_INSTALL_PREFIX=${SUNDIALS_ROOT} \
-    \
-    -D CMAKE_VERBOSE_MAKEFILE=OFF \
-    \
-    ../. | tee -a configure.log
+    -D camp_DIR=${CAMP_ROOT} \
+    -D ENABLE_MAGMA=ON \
+    -D MAGMA_DIR=${MAGMA_ROOT} \
+    -D SUNDIALS_MAGMA_BACKENDS="CUDA" \
+    -D CMAKE_INSTALL_PREFIX=${SUNDIALS_ROOT}
 
-# check return code
-rc=${PIPESTATUS[0]}
-echo -e "\ncmake returned $rc\n" | tee -a configure.log
-if [ $rc -ne 0 ]; then exit 1; fi
-
-# --------------------------------------------------------------------------
-# Build SUNDIALS
-# --------------------------------------------------------------------------
-make -j $bldthreads 2>&1 | tee make.log
-
-# check return code
-rc=${PIPESTATUS[0]}
-echo -e "\nmake returned $rc\n" | tee -a make.log
-if [ $rc -ne 0 ]; then exit 1; fi
-
-# --------------------------------------------------------------------------
-# Install SUNDIALS
-# --------------------------------------------------------------------------
-make -j $bldthreads install 2>&1 | tee make.log
-
-# check return code
-rc=${PIPESTATUS[0]}
-echo -e "\nmake install returned $rc\n" | tee -a install.log
-if [ $rc -ne 0 ]; then exit 1; fi
-
-# move log files
-cp *.log ${SUNDIALS_ROOT}/.
-
-# done
-exit 0
+# make and install
+make -j
+make install

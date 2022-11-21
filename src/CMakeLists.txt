@@ -85,7 +85,7 @@ foreach(nvar ${_nvar_values})
     target_compile_definitions(${_shared_obj}
       PUBLIC
       USERAJA)
-    if(RAJA_BACKEND MATCHES "CUDA")
+    if(USE_BACKEND MATCHES "CUDA")
       target_link_libraries(${_shared_obj}
         PUBLIC
         SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
@@ -93,7 +93,7 @@ foreach(nvar ${_nvar_values})
         PUBLIC
         USE_DEVICE
         RAJA_CUDA)
-    elseif(RAJA_BACKEND MATCHES "HIP")
+    elseif(USE_BACKEND MATCHES "HIP")
       target_link_libraries(${_shared_obj}
         PUBLIC
         SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
@@ -101,7 +101,7 @@ foreach(nvar ${_nvar_values})
         PUBLIC
         USE_DEVICE
         RAJA_HIP)
-    elseif(RAJA_BACKEND MATCHES "SERIAL")
+    elseif(USE_BACKEND MATCHES "SERIAL")
       target_link_libraries(${_shared_obj}
         PUBLIC
         SUNDIALS::nvecraja) # not supported in sundials yet (will use GPU)
@@ -121,9 +121,9 @@ if(ENABLE_RAJA)
   if(ENABLE_MAGMA)
     set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
   else()
-    if(RAJA_BACKEND MATCHES "CUDA")
+    if(USE_BACKEND MATCHES "CUDA")
       set(_linear_solver SUNDIALS::sunmatrixcusparse SUNDIALS::sunlinsolcusolversp)
-    elseif(RAJA_BACKEND MATCHES "HIP")
+    elseif(USE_BACKEND MATCHES "HIP")
       set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
     endif()
   endif()
@@ -150,7 +150,7 @@ macro(sundemo_add_executable target)
     "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   # set source properties
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  if (ENABLE_RAJA AND (USE_BACKEND MATCHES "CUDA"))
     foreach(file ${sundemo_add_executable_SOURCES})
       set_source_files_properties(${file} PROPERTIES LANGUAGE CUDA)
     endforeach()
@@ -161,7 +161,7 @@ macro(sundemo_add_executable target)
     ${sundemo_add_executable_SOURCES})
 
   # set executable compile options
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  if (ENABLE_RAJA AND (USE_BACKEND MATCHES "CUDA"))
     target_compile_options(${target}
       PRIVATE "--expt-extended-lambda")
   endif()
