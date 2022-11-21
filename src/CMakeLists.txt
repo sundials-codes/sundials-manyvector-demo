@@ -93,7 +93,7 @@ foreach(nvar ${_nvar_values})
   elseif(RAJA_BACKEND MATCHES "SERIAL")
     target_link_libraries(${_shared_obj}
       PUBLIC
-      SUNDIALS::nvecserial) # not supported in sundials yet (will use GPU)
+      SUNDIALS::nvecserial) # raja + serial not supported in sundials yet
     target_compile_definitions(${_shared_obj}
       PUBLIC
       RAJA_SERIAL)
