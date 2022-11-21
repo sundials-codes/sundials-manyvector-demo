@@ -56,9 +56,9 @@ mark_as_advanced(FORCE CMAKE_INSTALL_RPATH_USE_LINK_PATH)
 # Backend
 # --------
 
-set(USE_BACKEND "SERIAL"
-  CACHE PATH "Backend to use: SERIAL, CUDA")
-set_property(CACHE USE_BACKEND PROPERTY STRINGS "SERIAL;CUDA")
+set(RAJA_BACKEND "SERIAL"
+  CACHE PATH "RAJA Backend to use: SERIAL, CUDA")
+set_property(CACHE RAJA_BACKEND PROPERTY STRINGS "SERIAL;CUDA")
 
 set(RAJA_ROOT "$ENV{RAJA_ROOT}"
   CACHE PATH "Root directory of RAJA install")
@@ -76,7 +76,7 @@ find_package(Threads REQUIRED)
 
 mark_as_advanced(FORCE RAJA_DIR)
 
-if(USE_BACKEND MATCHES "CUDA")
+if(RAJA_BACKEND MATCHES "CUDA")
   enable_language(CUDA)
   show_language_flags(CUDA)
   set(CMAKE_CUDA_ARCHITECTURES "70" CACHE STRING "CUDA Architecture")
@@ -109,7 +109,7 @@ mark_as_advanced(FORCE SUNDIALS_DIR)
 # MAGMA
 # -----
 
-if(USE_BACKEND MATCHES "SERIAL")
+if(RAJA_BACKEND MATCHES "SERIAL")
   option(ENABLE_MAGMA "Enable MAGMA" OFF)
 else()
   option(ENABLE_MAGMA "Enable MAGMA" ON)
