@@ -436,5 +436,7 @@ sundemo_add_executable(magma_scaling.exe
     SUNDIALS::sunlinsolmagmadense
   COMPILE_DEFINITIONS
     NTHREADS=1
+    USE_DEVICE
+    RAJA_CUDA
     NVAR=15)
 endif()
