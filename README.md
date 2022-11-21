@@ -129,8 +129,9 @@ block-diagonal. We further leverage this structure by solving each rank-local
 linear system using either the sparse KLU, batched sparse NVIDIA (GPU-enabled),
 or batched dense MAGMA (GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
 
-The multirate approach (2) can leverage the structure of $f_2$ at a higher level.
-Since the MRI method applied to this problem evolves "fast" sub-problems of the form
+The multirate approach (2) can leverage the structure of $f_2$ at a higher
+level. Since the MRI method applied to this problem evolves "fast" sub-problems
+of the form
 
 $$v'(t) = f_2(t,v) + r_i(t), \quad i=2,\ldots,s,$$
 
@@ -148,8 +149,10 @@ above for linear systems that arise within the modified Newton iteration.
 ## Building
 
 Steps showing the process to download this demonstration code, install the
-relevant dependencies, and build the code in a Linux or OS X environment are as
-follows. To obtain the demonstration code simply clone this repository with Git:
+relevant dependencies with [Spack](https://spack.io/), and build the code in a
+Linux or OS X environment are as follows.
+
+To obtain the demonstration code simply clone this repository with Git:
 
 ```bash
   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
@@ -159,31 +162,35 @@ To compile the code you will need:
 
 * modern C and C++ compilers
 
-* [CMake](https://cmake.org) 3.12 or newer
+* [CMake](https://cmake.org) 3.18 or newer
 
 * an MPI library e.g., [OpenMPI](https://www.open-mpi.org/),
   [MPICH](https://www.mpich.org/), etc.
 
-* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
-  integrators and nonlinear solvers
-
 * the [HDF5](https://www.hdfgroup.org/) high-performance data management and
   storage suite
 
-Optionally, when solving problems that involve chemistry on the CPU you will need:
-
-* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
-  of sparse direct linear solvers (specifically KLU).
-
-Optionally, for problems that involve chemistry that will run on GPUs you will
-additionally need:
-
-* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the `nvcc`
-  compiler and optionally the cuSPRASE library)
-
 * the [RAJA](https://github.com/LLNL/RAJA) performance portability library
 
-* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver "multicore+GPU" library
+* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
+  integrators and nonlinear solvers
+
+* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
+  of sparse direct linear solvers (when using a CPU backend)
+
+* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (when
+  using the CUDA backend)
+
+* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver "multicore+GPU"
+  library (when using a GPU backend)
+
+Many of the above my be installed using the Spack package manager.
+```
+spack install sundials@6.2.0 +openmp +klu +magma +raja +cuda cuda_arch=70
+^cuda@11.4.2 ^suite-sparse@5.8.1 ^magma@2.6.1 +cuda cuda_arch==70
+^raja@0.13.0 +cuda cuda_arch==70
+spack install hdf5@1.10.7 +hl
+```
 
 To assist in building the code the [scripts](./scripts) directory contains shell
 scripts to setup the environment on specific systems and install some of the required
@@ -205,63 +212,50 @@ build scripts see the README file in the [scripts](./scripts) directory. As an
 alternative, any of the dependencies for the demonstration code can be installed
 with the [Spack](https://github.com/spack/spack) package manager e.g.,
 
-```bash
-  git clone https://github.com/spack/spack.git
-  spack/bin/spack install mpi
-  spack/bin/spack install hdf5 +mpi +pic +szip
-  spack/bin/spack isntall suitesparse
-  spack/bin/spack isntall magma
-  spack/bin/spack install raja +cuda
-  spack/bin/spack install sundials +klu +mpi +raja +cuda
-```
-
 Once the necessary dependencies are installed, the following CMake variables can
 be used to configure the demonstration code build:
 
 * `CMAKE_INSTALL_PREFIX` - the path where executables and input files should be
-  installed e.g., `path/to/myinstall`. The executables will be installed in the
+  installed e.g., `my/install/path`. The executables will be installed in the
   `bin` directory and input files in the `tests` directory under the given path.
 
-* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`
+* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`.
 
-* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`
+* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`.
 
-* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`
+* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`.
 
-* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`
+* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`.
 
-* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`
+* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`.
 
-* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`
-
-* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
-  the value of the `SUNDIALS_ROOT` environment variable
-
-* `ENABLE_RAJA` - build with RAJA support, defaults to `OFF`
+* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`.
 
 * `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
-  value of the `RAJA_ROOT` environment variable
+  value of the `RAJA_ROOT` environment variable. If not set, CMake will attempt
+  to automaticall locate a RAJA install on the system.
 
-* `RAJA_BACKEND` - set the RAJA backend to use with the demonstration code,
-  defaults to `CUDA`
+* `RAJA_BACKEND` - the RAJA backend to use with the demonstration code, defaults
+   to `SERIAL`. Supported options are `SERIAL` and `CUDA`.
 
-* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`
+* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
+  the value of the `SUNDIALS_ROOT` environment variable. If not set, CMake will
+  attempt to automatically locate a SUNDIALS install on the system.
+
+* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`.
 
 * `HDF5_ROOT` - the root directory of the HDF5 installation, defaults to the
-  value of the `HDF5_ROOT` environment variable
+  value of the `HDF5_ROOT` environment variable. If not set, CMake will attempt
+  to automatically locate a HDF5 install on the system.
 
-When RAJA is enabled with the CUDA backend the following additional variables
+When `RAJA` is installed with CUDA support the following additional variables
 may also be set:
 
-* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`
+* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`.
 
-* `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use
+* `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use.
 
-* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
-
-* `ENABLE_MAGMA` - build with MAGMA linear solver support, defaults to `OFF`.
-  This requires that SUNDIALS was built with MAGMA support; CMake will automatically
-  utilize the same MAGMA library that was used for SUNDIALS
+* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target e.g., `70`.
 
 In-source builds are not permitted and as such the code should be configured and
 built from a separate build directory. For example, continuing with the Summit
@@ -273,12 +267,8 @@ CUDA and HDF5 output enabled:
   mkdir build
   cd build
   cmake ../. \
-    -DCMAKE_INSTALL_PREFIX="${MEMBERWORK}/[projid]/sundials-demo" \
-    -DCMAKE_C_COMPILER=mpicc \
-    -DCMAKE_C_FLAGS="-g -O2" \
-    -DCMAKE_CXX_COMPILER=mpicxx \
-    -DCMAKE_CXX_FLAGS="-g -O2" \
-    -DENABLE_RAJA="ON" \
+    -DCMAKE_INSTALL_PREFIX="my/install/path/sundials-demo" \
+    -DRAJA_BACKEND="SERIAL" \
     -DENABLE_HDF5="ON"
   make
   make install
