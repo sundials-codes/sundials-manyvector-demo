@@ -106,16 +106,6 @@ find_package(SUNDIALS REQUIRED
 mark_as_advanced(FORCE SUNDIALS_DIR)
 
 # -----
-# MAGMA
-# -----
-
-if(RAJA_BACKEND MATCHES "SERIAL")
-  option(ENABLE_MAGMA "Enable MAGMA" OFF)
-else()
-  option(ENABLE_MAGMA "Enable MAGMA" ON)
-endif()
-
-# -----
 # HDF5
 # -----
 

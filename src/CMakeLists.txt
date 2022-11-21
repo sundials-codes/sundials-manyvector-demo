@@ -47,13 +47,11 @@ foreach(nvar ${_nvar_values})
   target_link_libraries(${_shared_obj}
     PUBLIC
     MPI::MPI_CXX
-    SUNDIALS::nvecparallel
     SUNDIALS::nvecserial
     SUNDIALS::nvecmpimanyvector
     SUNDIALS::nvecmanyvector
     SUNDIALS::sunmatrixsparse
-    SUNDIALS::arkode
-    SUNDIALS::cvode)
+    SUNDIALS::arkode)
 
   # add HDF5
   if(ENABLE_HDF5)
@@ -69,48 +67,37 @@ foreach(nvar ${_nvar_values})
       USEHDF5)
   endif()
 
-  # add MAGMA
-  if (ENABLE_MAGMA)
-    target_compile_definitions(${_shared_obj}
-      PUBLIC
-      USEMAGMA)
-  endif()
-
   # add RAJA
-  if(ENABLE_RAJA)
+  target_link_libraries(${_shared_obj}
+    PUBLIC
+    RAJA
+    Threads::Threads) # not sure why but Raja needs to link to Threads
+  if(RAJA_BACKEND MATCHES "CUDA")
     target_link_libraries(${_shared_obj}
       PUBLIC
-      RAJA
-      Threads::Threads) # not sure why but Raja needs to link to Threads
+      SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
     target_compile_definitions(${_shared_obj}
       PUBLIC
-      USERAJA)
-    if(RAJA_BACKEND MATCHES "CUDA")
-      target_link_libraries(${_shared_obj}
-        PUBLIC
-        SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
-      target_compile_definitions(${_shared_obj}
-        PUBLIC
-        USE_DEVICE
-        RAJA_CUDA)
-    elseif(RAJA_BACKEND MATCHES "HIP")
-      target_link_libraries(${_shared_obj}
-        PUBLIC
-        SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
-      target_compile_definitions(${_shared_obj}
-        PUBLIC
-        USE_DEVICE
-        RAJA_HIP)
-    elseif(RAJA_BACKEND MATCHES "SERIAL")
-      target_link_libraries(${_shared_obj}
-        PUBLIC
-        SUNDIALS::nvecraja) # not supported in sundials yet (will use GPU)
-      target_compile_definitions(${_shared_obj}
-        PUBLIC
-        RAJA_SERIAL)
-    endif()
+      USE_DEVICE
+      PUBLIC
+      RAJA_CUDA)
+  elseif(RAJA_BACKEND MATCHES "HIP")
+    target_link_libraries(${_shared_obj}
+      PUBLIC
+      SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      USE_DEVICE
+      PUBLIC
+      RAJA_HIP)
+  elseif(RAJA_BACKEND MATCHES "SERIAL")
+    target_link_libraries(${_shared_obj}
+      PUBLIC
+      SUNDIALS::nvecraja) # not supported in sundials yet (will use GPU)
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      RAJA_SERIAL)
   endif()
-
 
 endforeach()
 
@@ -140,7 +127,7 @@ macro(sundemo_add_executable target)
     "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   # set source properties
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  if (RAJA_BACKEND MATCHES "CUDA")
     foreach(file ${sundemo_add_executable_SOURCES})
       set_source_files_properties(${file} PROPERTIES LANGUAGE CUDA)
     endforeach()
@@ -151,7 +138,7 @@ macro(sundemo_add_executable target)
     ${sundemo_add_executable_SOURCES})
 
   # set executable compile options
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  if (RAJA_BACKEND MATCHES "CUDA")
     target_compile_options(${target}
       PRIVATE "--expt-extended-lambda")
   endif()
@@ -344,19 +331,6 @@ sundemo_add_executable(primordial_ode.exe
     MAX_NCELLS=1000000
     NTHREADS=1)
 
-sundemo_add_executable(primordial_ode_CVODE.exe
-  SOURCES
-    primordial_ode_main.cpp
-    ${_chem_solver}
-  LINK_LIBRARIES
-    shared_obj_nvar_5
-    ${_linear_solver}
-  COMPILE_DEFINITIONS
-    CVKLU
-    MAX_NCELLS=1000000
-    NTHREADS=1
-    USE_CVODE)
-
 # primordial static tests
 sundemo_add_executable(primordial_static_imex.exe
   SOURCES
@@ -426,7 +400,7 @@ sundemo_add_executable(fluid_blast.exe
     NVAR=5)
 
 # magma scaling test
-if (ENABLE_MAGMA)
+if(RAJA_BACKEND MATCHES "CUDA|HIP")
 sundemo_add_executable(magma_scaling.exe
   SOURCES
     magma_scaling_main.cpp
@@ -436,7 +410,5 @@ sundemo_add_executable(magma_scaling.exe
     SUNDIALS::sunlinsolmagmadense
   COMPILE_DEFINITIONS
     NTHREADS=1
-    USE_DEVICE
-    RAJA_CUDA
     NVAR=15)
 endif()

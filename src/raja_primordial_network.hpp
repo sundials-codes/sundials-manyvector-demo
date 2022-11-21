@@ -67,7 +67,7 @@ using XYZ_KERNEL_POL =
                           >
                         >
                       >;
-#else // RAJA_HIP
+#elif RAJA_HIP
 #define EXECPOLICY    RAJA::hip_exec<256>
 #define REDUCEPOLICY  RAJA::hip_reduce
 using XYZ_KERNEL_POL =
@@ -81,6 +81,8 @@ using XYZ_KERNEL_POL =
                           >
                         >
                       >;
+#else
+#error "Unsupported RAJA backend"
 #endif
 
 
