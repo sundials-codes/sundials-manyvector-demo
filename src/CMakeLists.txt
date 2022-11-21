@@ -114,22 +114,12 @@ foreach(nvar ${_nvar_values})
 
 endforeach()
 
-# set the filename for chemistry routines and linear solvers depending on the
-# RAJA backend selected (and optional use of MAGMA)
-if(ENABLE_RAJA)
-  set(_chem_solver raja_primordial_network.cpp)
-  if(ENABLE_MAGMA)
-    set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
-  else()
-    if(RAJA_BACKEND MATCHES "CUDA")
-      set(_linear_solver SUNDIALS::sunmatrixcusparse SUNDIALS::sunlinsolcusolversp)
-    elseif(RAJA_BACKEND MATCHES "HIP")
-      set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
-    endif()
-  endif()
+# set the linear solvers depending on the RAJA backend selected
+set(_chem_solver raja_primordial_network.cpp)
+if(RAJA_BACKEND MATCHES "SERIAL")
+  set(_linear_solver SUNDIALS::sunmatrixsparse SUNDIALS::sunlinsolklu)
 else()
-  set(_chem_solver dengo_primordial_network.cpp)
-  set(_linear_solver SUNDIALS::sunlinsolklu)
+  set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
 endif()
 
 
