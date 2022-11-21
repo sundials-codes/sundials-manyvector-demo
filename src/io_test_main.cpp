@@ -138,7 +138,7 @@ int main(int argc, char* argv[]) {
           xloc_value = RCONST(0.0001)*(i+udata.is);
           yloc_value = RCONST(0.0000001)*(j+udata.js);
           zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-          idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+          idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           wdata[idx] = species_value + xloc_value + yloc_value + zloc_value;
         }
   }
@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
             xloc_value = RCONST(0.0001)*(i+udata.is);
             yloc_value = RCONST(0.0000001)*(j+udata.js);
             zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
             wdata[idx] = species_value + xloc_value + yloc_value + zloc_value;
           }
         }
@@ -202,7 +202,7 @@ int main(int argc, char* argv[]) {
             xloc_value = RCONST(0.0001)*(i+udata.is);
             yloc_value = RCONST(0.0000001)*(j+udata.js);
             zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-            idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+            idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
             realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
             realtype recv_value = wdata[idx];
             if (abs(recv_value-true_value) > test_tol) {
@@ -225,7 +225,7 @@ int main(int argc, char* argv[]) {
               yloc_value = RCONST(0.0000001)*(j+udata.js);
               zloc_value = RCONST(0.0000000001)*(k+udata.ks);
               species_value = RCONST(0.001)*(5+v);
-              idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+              idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
               realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
               realtype recv_value = wdata[idx];
               if (abs(recv_value-true_value) > test_tol) {

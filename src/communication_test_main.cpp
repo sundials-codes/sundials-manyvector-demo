@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
           xloc_value = RCONST(0.000001)*(i+udata.is);
           yloc_value = RCONST(0.000000001)*(j+udata.js);
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
-          idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+          idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           wdata[idx] = myid_value + species_value + xloc_value + yloc_value + zloc_value;
         }
   }
@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
             xloc_value = RCONST(0.000001)*(i+udata.is);
             yloc_value = RCONST(0.000000001)*(j+udata.js);
             zloc_value = RCONST(0.000000000001)*(k+udata.ks);
-            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
             wdata[idx] = myid_value + species_value + xloc_value + yloc_value + zloc_value;
           }
   }
@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
+          idx = BUFINDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
           recv_value = udata.Wrecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Wrecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -229,7 +229,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
+          idx = BUFINDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
           recv_value = udata.Erecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Erecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -252,7 +252,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
+          idx = BUFINDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
           recv_value = udata.Srecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Srecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -275,7 +275,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
+          idx = BUFINDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
           recv_value = udata.Nrecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Nrecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -298,7 +298,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+keB-2);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
+          idx = BUFINDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
           recv_value = udata.Brecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Brecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -321,7 +321,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+ksF);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
+          idx = BUFINDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
           recv_value = udata.Frecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Frecv error: myid = " << udata.myid << ", (v,i,j,k) = ("

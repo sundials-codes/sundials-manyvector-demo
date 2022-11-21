@@ -384,7 +384,7 @@ int main(int argc, char* argv[]) {
   // for (k=0; k<udata.nzl; k++)
   //   for (j=0; j<udata.nyl; j++)
   //     for (i=0; i<udata.nxl; i++) {
-  //       idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+  //       idx = BUFINDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
   //       atdata[idx+0] = opts.atol; // H2I
   //       atdata[idx+1] = opts.atol; // H2II
   //       atdata[idx+2] = opts.atol; // HI

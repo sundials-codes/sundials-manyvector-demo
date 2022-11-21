@@ -275,7 +275,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // insert chemical fields into initial condition vector,
         // converting to 'dimensionless' electron number density
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+        idx = BUFINDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
         chem[idx+0] = nH2I;
         chem[idx+1] = nH2II;
         chem[idx+2] = nHI;
@@ -289,7 +289,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
         // hydrodynamic fields share density and energy with chemical network;
         // however, we must convert to dimensionless units
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         rho[idx] = density/udata.DensityUnits;
         mx[idx]  = vx0*density/udata.MomentumUnits;
         my[idx]  = vy0*density/udata.MomentumUnits;

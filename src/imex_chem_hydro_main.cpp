@@ -1110,10 +1110,10 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
         realtype ge = chem[cidx];
         ge *= EUnitScale;   // convert from physical units to code units
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
@@ -1137,8 +1137,8 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<udata->nzl; k++)
     for (j=0; j<udata->nyl; j++)
       for (i=0; i<udata->nxl; i++) {
-        cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }
@@ -1193,8 +1193,8 @@ static int PostprocessStep(realtype t, N_Vector w, void* user_data)
   for (int k=0; k<udata->nzl; k++)
     for (int j=0; j<udata->nyl; j++)
       for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[fidx] = chem[cidx] * EUnitScale
           + 0.5/rho[fidx]*(pow(mx[fidx],2) + pow(my[fidx],2) + pow(mz[fidx],2));
       }

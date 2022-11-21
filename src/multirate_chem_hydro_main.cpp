@@ -1213,8 +1213,8 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (int k=0; k<udata->nzl; k++)
     for (int j=0; j<udata->nyl; j++)
       for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[fidx] = chem[cidx] * EUnitScale
           + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
@@ -1239,8 +1239,8 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (int k=0; k<udata->nzl; k++)
     for (int j=0; j<udata->nyl; j++)
       for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }

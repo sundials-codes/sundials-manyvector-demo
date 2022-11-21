@@ -254,7 +254,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         ge = (kboltz * T * ndens) / (density * (udata.gamma - ONE));
 
         // set hydrodynamic initial conditions in dimensionless units
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         rho[idx] = density/udata.DensityUnits;
         mx[idx]  = vx0*density/udata.MomentumUnits;
         my[idx]  = vy0*density/udata.MomentumUnits;
