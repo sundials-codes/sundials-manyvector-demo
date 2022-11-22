@@ -127,6 +127,8 @@ int main(int argc, char* argv[]) {
   SUNLinSolFree(LS);
   SUNMatDestroy(A);
   N_VDestroy(w);
+  udata.FreeData();
+  MPI_Finalize();
   return 0;
 }
 

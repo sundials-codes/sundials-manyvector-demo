@@ -1035,6 +1035,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   cleanup(&outer_arkode_mem, &inner_arkode_mem, stepper, inner_content,
           udata, BLS, LS, A, w, wloc, atols, wsubvecs, Nsubvecs);
+  udata.FreeData();
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }

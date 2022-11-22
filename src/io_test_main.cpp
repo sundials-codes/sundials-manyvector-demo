@@ -252,6 +252,7 @@ int main(int argc, char* argv[]) {
   for (i=0; i<Nsubvecs; i++)
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
+  udata.FreeData();
   MPI_Finalize();              // Finalize MPI
   return 0;
 }

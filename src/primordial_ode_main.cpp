@@ -668,6 +668,7 @@ int main(int argc, char* argv[]) {
   SUNLinSolFree(LS);              // Free matrix and linear solver
   SUNMatDestroy(A);
   ARKStepFree(&arkode_mem);       // Free integrator memory
+  udata.FreeData();
   MPI_Finalize();                 // Finalize MPI
   return 0;
 }

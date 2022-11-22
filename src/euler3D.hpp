@@ -303,7 +303,8 @@ public:
     comm(MPI_COMM_WORLD), ctx(NULL), myid(-1), nprocs(-1), npx(-1), npy(-1), npz(-1),
     ipW(-1), ipE(-1), ipS(-1), ipN(-1), ipB(-1), ipF(-1),
     Erecv(NULL), Wrecv(NULL), Nrecv(NULL), Srecv(NULL), Frecv(NULL), Brecv(NULL),
-    Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL)
+    Esend(NULL), Wsend(NULL), Nsend(NULL), Ssend(NULL), Fsend(NULL), Bsend(NULL),
+    memhelper(NULL)
   {
     nchem = (NVAR) - 5;
     SUNContext_Create((void*) &comm, &ctx);
@@ -311,26 +312,85 @@ public:
                  memhelper = SUNMemoryHelper_Cuda(ctx); )
   };
 
+  // manual destructor
+  void FreeData() {
+    if (Wrecv != NULL) {
+      delete[] Wrecv;
+      Wrecv = NULL;
+    }
+    if (Wsend != NULL) {
+      delete[] Wsend;
+      Wsend = NULL;
+    }
+    if (Erecv != NULL) {
+      delete[] Erecv;
+      Erecv = NULL;
+    }
+    if (Esend != NULL) {
+      delete[] Esend;
+      Esend = NULL;
+    }
+    if (Srecv != NULL) {
+      delete[] Srecv;
+      Srecv = NULL;
+    }
+    if (Ssend != NULL) {
+      delete[] Ssend;
+      Ssend = NULL;
+    }
+    if (Nrecv != NULL) {
+      delete[] Nrecv;
+      Nrecv = NULL;
+    }
+    if (Nsend != NULL) {
+      delete[] Nsend;
+      Nsend = NULL;
+    }
+    if (Brecv != NULL) {
+      delete[] Brecv;
+      Brecv = NULL;
+    }
+    if (Bsend != NULL) {
+      delete[] Bsend;
+      Bsend = NULL;
+    }
+    if (Frecv != NULL) {
+      delete[] Frecv;
+      Frecv = NULL;
+    }
+    if (Fsend != NULL) {
+      delete[] Fsend;
+      Fsend = NULL;
+    }
+    if (xflux != NULL) {
+      delete[] xflux;
+      xflux = NULL;
+    }
+    if (yflux != NULL) {
+      delete[] yflux;
+      yflux = NULL;
+    }
+    if (zflux != NULL) {
+      delete[] zflux;
+      zflux = NULL;
+    }
+    if (RxNetData != NULL) {
+      free(RxNetData);
+      RxNetData = NULL;
+    }
+    if (memhelper != NULL) {
+      SUNMemoryHelper_Destroy(memhelper);
+      memhelper = NULL;
+    }
+    if (ctx != NULL) {
+      SUNContext_Free(&ctx);
+      ctx = NULL;
+    }
+  };
+
   // destructor
   ~EulerData() {
-    if (Wrecv != NULL)  delete[] Wrecv;
-    if (Wsend != NULL)  delete[] Wsend;
-    if (Erecv != NULL)  delete[] Erecv;
-    if (Esend != NULL)  delete[] Esend;
-    if (Srecv != NULL)  delete[] Srecv;
-    if (Ssend != NULL)  delete[] Ssend;
-    if (Nrecv != NULL)  delete[] Nrecv;
-    if (Nsend != NULL)  delete[] Nsend;
-    if (Brecv != NULL)  delete[] Brecv;
-    if (Bsend != NULL)  delete[] Bsend;
-    if (Frecv != NULL)  delete[] Frecv;
-    if (Fsend != NULL)  delete[] Fsend;
-    if (xflux != NULL)  delete[] xflux;
-    if (yflux != NULL)  delete[] yflux;
-    if (zflux != NULL)  delete[] zflux;
-    if (RxNetData != NULL)  free(RxNetData);
-    if (memhelper != NULL)  SUNMemoryHelper_Destroy(memhelper);
-    if (ctx != NULL)        SUNContext_Free(&ctx);
+    this->FreeData();
   };
 
   // Update derived unit scaling factors from base factors

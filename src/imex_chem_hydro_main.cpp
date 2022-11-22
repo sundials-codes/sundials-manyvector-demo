@@ -940,6 +940,7 @@ int main(int argc, char* argv[]) {
   retval = MPI_Barrier(udata.comm);
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   cleanup(&arkode_mem, udata, BLS, LS, A, w, atols, wsubvecs, Nsubvecs);
+  udata.FreeData();
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }

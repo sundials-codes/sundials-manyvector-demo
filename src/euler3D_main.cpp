@@ -474,8 +474,7 @@ int main(int argc, char* argv[]) {
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
   ARKStepFree(&arkode_mem);    // Free integrator memory
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  udata.FreeData();
   MPI_Finalize();              // Finalize MPI
   return 0;
 }
