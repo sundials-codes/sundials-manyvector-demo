@@ -7,7 +7,7 @@ application to assess and demonstrate the large-scale parallel performance of
 new capabilities that have been added to SUNDIALS in recent years. Namely:
 
 1. The new SUNDIALS [MPIManyVector](https://sundials.readthedocs.io/en/latest/nvectors/NVector_links.html#the-nvector-mpimanyvector-module)
-   implementation, that enables flexibility in how a solution "vector" is
+   implementation, that enables flexibility in how a solution data is
    partitioned across computational resources e.g., CPUs and GPUs.
 
 2. The new [ARKODE](https://sundials.readthedocs.io/en/latest/arkode/index.html)
@@ -151,7 +151,7 @@ local ARKStep instance. The collection of independent local IVPs also leads to a
 block diagonal Jacobian, and we again utilize the `SUNLinearSolver` modules listed
 above for linear systems that arise within the modified Newton iteration.
 
-## Building
+## Installation
 
 The following layout how to build the demonstation code in a Linux or OS X
 environment.
@@ -168,12 +168,12 @@ To obtain the code, clone this repository with Git:
 
 To compile the code you will need:
 
+* [CMake](https://cmake.org) 3.18 or newer
+
 * modern C and C++ compilers
 
 * the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (when
   using the CUDA backend)
-
-* [CMake](https://cmake.org) 3.18 or newer
 
 * an MPI library e.g., [OpenMPI](https://www.open-mpi.org/),
   [MPICH](https://www.mpich.org/), etc.
@@ -195,20 +195,28 @@ To compile the code you will need:
 ### Installing Dependencies
 
 Many of the above dependencies can be installed using the
-[Spack](https://spack.io/) package manager.
+[Spack](https://spack.io/) package manager. For information on using Spack see
+the getting started [guide](https://spack.readthedocs.io/en/latest/getting_started.html#getting-started).
 
-```
-spack install sundials +openmp +klu +magma +raja +cuda cuda_arch=70 ^magma +cuda cuda_arch==70 ^raja +cuda cuda_arch==70
-spack install hdf5 +hl
+Once Spack is setup, we recommend creating a Spack [environment](https://spack.readthedocs.io/en/latest/environments.html#)
+with the required dependencies e.g., on a system with Pascal GPUs:
+
+```bash
+spack env create sundials-demo
+spack env activate sundials-demo
+spack add sundials +openmp +klu +magma +raja +cuda cuda_arch=60 ^magma +cuda cuda_arch=60 ^raja +cuda cuda_arch=60
+spack add hdf5 +hl
+spack install
 ```
 
-To assist in building the code on select systems the [spack](./spack) directory
-contains environment files leveraging software already avaialble on the system.
-For example, on the OLCF Summit system:
+To assist in building the dependencies on select systems the [spack](./spack)
+directory contains environment files leveraging software already available on
+the system. For example, on the OLCF Summit system:
 
 ```bash
 module load gcc/10.2.0
 module load cuda/11.4.2
+module load cmake/3.21.3
 cd spack
 spack env create sundials-demo spack-summit.yaml
 spack env activate sundials-demo
@@ -255,8 +263,8 @@ be used to configure the demonstration code build:
   value of the `HDF5_ROOT` environment variable. If not set, CMake will attempt
   to automatically locate a HDF5 install on the system.
 
-When `RAJA` is installed with CUDA support the following additional variables
-may also be set:
+When RAJA is installed with CUDA support enabled, the following additional
+variables may also be set:
 
 * `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`. If not set,
   CMake will attempt to automatically detect the CUDA compiler.
@@ -267,10 +275,8 @@ may also be set:
 
 ### Building
 
-In-source builds are not permitted and as such the code should be configured and
-built from a separate build directory. For example, continuing with the Summit
-case from above, the following commands can be used to build with RAJA targeting
-CUDA and HDF5 output enabled:
+In-source builds are not permitted, as such the code should be configured and
+built from a separate build directory e.g.,
 
 ```bash
   cd sundials-manyvector-demo
@@ -283,9 +289,6 @@ CUDA and HDF5 output enabled:
   make
   make install
 ```
-
-The test executables and input files are installed under the `sundials-demo`
-directory in the member work space for the Summit project ID `[projid]`.
 
 ## Running
 
