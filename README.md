@@ -198,10 +198,8 @@ Many of the above dependencies can be installed using the
 [Spack](https://spack.io/) package manager.
 
 ```
-spack install sundials@6.2.0 +openmp +klu +magma +raja +cuda cuda_arch=70
-^cuda@11.4.2 ^suite-sparse@5.8.1 ^magma@2.6.1 +cuda cuda_arch==70
-^raja@0.13.0 +cuda cuda_arch==70
-spack install hdf5@1.10.7 +hl
+spack install sundials +openmp +klu +magma +raja +cuda cuda_arch=70 ^magma +cuda cuda_arch==70 ^raja +cuda cuda_arch==70
+spack install hdf5 +hl
 ```
 
 To assist in building the code on select systems the [spack](./spack) directory
