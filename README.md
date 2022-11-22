@@ -35,8 +35,10 @@ homogeneous Neumann (1), homogeneous Dirichlet (2), or reflecting (3) under the
 restriction that if any boundary is set to "periodic" then the opposite face
 must also indicate a periodic condition.
 
-Here, the "solution" is given by
-$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c} \end{bmatrix}^T$
+The system state vector $w$ is
+
+$$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c} \end{bmatrix}^T$$
+
 corresponding to the density, momentum in the x, y, and z directions, total
 energy per unit volume, and any number of chemical densities
 $\mathbf{c}\in\mathbb{R}^{nchem}$ that are advected along with the fluid. The
@@ -92,7 +94,7 @@ to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
 `ny = nz = 200`.  When run in parallel, only "active" spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
-Each fluid field ($\rho$, $m_x$, $m_y$, $m_z$, $e_t$) is stored in its own serial
+Each fluid field ( $\rho$, $m_x$, $m_y$, $m_z$, and $e_t$ ) is stored in its own serial
 `N_Vector` object on each MPI rank. Chemical species at all spatial locations over
 each MPI rank are collocated into a single serial or RAJA `N_Vector` object when
 running on the CPU or GPU respectively. The five fluid vectors and the chemical
