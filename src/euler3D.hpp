@@ -27,7 +27,9 @@
 #include <nvector/nvector_manyvector.h>
 #include <nvector/nvector_serial.h>
 #include <sundials/sundials_memory.h>
+#ifdef USE_DEVICE
 #include <nvector/nvector_raja.h>
+#endif
 #if defined(RAJA_CUDA)
 #include <sunmemory/sunmemory_cuda.h>
 #elif defined(RAJA_HIP)
