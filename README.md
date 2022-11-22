@@ -16,7 +16,7 @@ new capabilities that have been added to SUNDIALS in recent years. Namely:
 
 3. The new flexible SUNDIALS [SUNLinearSolver](https://sundials.readthedocs.io/en/latest/sunlinsol/index.html)
    interfaces, to enable streamlined use of problem specific and scalable
-   linear solver libraries e.g., *hypre*, MAGMA, and NVIDIA cuSPARSE.
+   linear solver libraries e.g., SuiteSparse and MAGMA.
 
 ## Model Equations
 
@@ -153,8 +153,9 @@ above for linear systems that arise within the modified Newton iteration.
 
 ## Installation
 
-The following layout how to build the demonstation code in a Linux or OS X
+The following steps describe how to build the demonstation code in a Linux or OS X
 environment.
+
 
 ### Gettting the Code
 
