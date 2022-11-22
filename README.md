@@ -205,8 +205,8 @@ with the required dependencies e.g., on a system with Pascal GPUs:
 ```bash
 spack env create sundials-demo
 spack env activate sundials-demo
-spack add sundials +openmp +klu +magma +raja +cuda cuda_arch=60 ^magma +cuda cuda_arch=60 ^raja +cuda cuda_arch=60
-spack add hdf5 +hl
+spack add sundials +openmp +mpi +klu +magma +raja +cuda cuda_arch=60 ^magma +cuda cuda_arch=60 ^raja +cuda cuda_arch=60
+spack add hdf5 +hl +mpi
 spack install
 ```
 
