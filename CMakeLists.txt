@@ -72,11 +72,11 @@ set(camp_DIR "$ENV{CAMP_ROOT}"
 find_package(RAJA REQUIRED
   PATHS
   "${RAJA_ROOT}/share/raja/cmake"
-  "${RAJA_ROOT}"
-  NO_DEFAULT_PATH)
+  "${RAJA_ROOT}")
 
 find_package(Threads REQUIRED)
 
+message(STATUS "Found RAJA: ${RAJA_DIR}")
 mark_as_advanced(FORCE RAJA_DIR)
 
 if(RAJA_BACKEND MATCHES "CUDA")
@@ -103,9 +103,9 @@ find_package(SUNDIALS REQUIRED
   PATHS
   "${SUNDIALS_ROOT}/lib64/cmake/sundials"
   "${SUNDIALS_ROOT}/lib/cmake/sundials"
-  "${SUNDIALS_ROOT}"
-  NO_DEFAULT_PATH)
+  "${SUNDIALS_ROOT}")
 
+message(STATUS "Found SUNDIALS: ${SUNDIALS_DIR}")
 mark_as_advanced(FORCE SUNDIALS_DIR)
 
 # -----
