@@ -90,6 +90,13 @@ foreach(nvar ${_nvar_values})
       USE_DEVICE
       PUBLIC
       RAJA_HIP)
+  elseif(RAJA_BACKEND MATCHES "OPENMP")
+    target_link_libraries(${_shared_obj}
+      PUBLIC
+      SUNDIALS::nvecserial) # raja + OpenMP not supported in sundials yet
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      RAJA_OPENMP)
   elseif(RAJA_BACKEND MATCHES "SERIAL")
     target_link_libraries(${_shared_obj}
       PUBLIC
@@ -97,13 +104,15 @@ foreach(nvar ${_nvar_values})
     target_compile_definitions(${_shared_obj}
       PUBLIC
       RAJA_SERIAL)
+  else()
+    message(FATAL_ERROR "Unsupported RAJA backend: ${RAJA_BACKEND}")
   endif()
 
 endforeach()
 
 # set the linear solvers depending on the RAJA backend selected
 set(_chem_solver raja_primordial_network.cpp)
-if(RAJA_BACKEND MATCHES "SERIAL")
+if(RAJA_BACKEND MATCHES "SERIAL|OPENMP")
   set(_linear_solver SUNDIALS::sunmatrixsparse SUNDIALS::sunlinsolklu)
 else()
   set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
