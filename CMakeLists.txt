@@ -11,12 +11,15 @@
 
 cmake_minimum_required(VERSION 3.18.0)
 
-project(SUNDIALS-DEMO C CXX)
-
 # prohibit in-source build
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
   message(FATAL_ERROR "In-source build prohibited.")
 endif()
+
+# default build type
+set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type")
+
+project(SUNDIALS-DEMO C CXX)
 
 # -------
 # Macros
