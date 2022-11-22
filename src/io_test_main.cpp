@@ -17,6 +17,13 @@
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -26,19 +33,11 @@ int main(int argc, char* argv[]) {
   int Nsubvecs;
 
   // general problem variables
-  int retval;                    // reusable error-checking flag
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use
   N_Vector w, wtest, werr;       // empty vectors for storing overall solution
   N_Vector *wsubvecs;
   realtype tout;
   w = wtest = werr = NULL;
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // ensure that realtype is at least double precision
   if (sizeof(realtype) < sizeof(double)) {

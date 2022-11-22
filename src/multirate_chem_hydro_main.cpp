@@ -155,16 +155,16 @@ void cleanup(void **outer_arkode_mem, void **inner_arkode_mem,
 // Main Program
 int main(int argc, char* argv[]) {
 
-#ifdef DEBUG
-  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
-#endif
-
   // initialize MPI
   int myid, retval;
   retval = MPI_Init(&argc, &argv);
   if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
   retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
   if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
+#ifdef DEBUG
+  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+#endif
 
   // general problem variables
   long int N;

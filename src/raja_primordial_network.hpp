@@ -27,6 +27,7 @@
 #include "stdio.h"
 #include <iostream>
 #include "string.h"
+#define THRUST_IGNORE_CUB_VERSION_CHECK
 #include <RAJA/RAJA.hpp>
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_memory.h>

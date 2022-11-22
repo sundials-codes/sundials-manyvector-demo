@@ -65,6 +65,13 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -73,9 +80,7 @@ int main(int argc, char* argv[]) {
   long int N, nstrip;
 
   // general problem variables
-  int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled here)
   int nprocs;                    // total number of MPI processes
   N_Vector w = NULL;             // empty vectors for storing overall solution, absolute tolerance array
@@ -87,12 +92,6 @@ int main(int argc, char* argv[]) {
   ARKODEParameters opts;
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // ensure that this is run in serial
   retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
