@@ -153,8 +153,8 @@ above for linear systems that arise within the modified Newton iteration.
 
 ## Installation
 
-The following steps describe how to build the demonstation code in a Linux or OS X
-environment.
+The following steps describe how to build the demonstration code in a Linux or
+OS X environment.
 
 
 ### Gettting the Code
@@ -190,8 +190,8 @@ To compile the code you will need:
 * the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
   of sparse direct linear solvers (when using a CPU backend)
 
-* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver "multicore+GPU"
-  library (when using a GPU backend)
+* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver library (when
+  using a GPU backend)
 
 ### Installing Dependencies
 
@@ -249,7 +249,7 @@ be used to configure the demonstration code build:
 
 * `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
   value of the `RAJA_ROOT` environment variable. If not set, CMake will attempt
-  to automaticall locate a RAJA install on the system.
+  to automatically locate a RAJA install on the system.
 
 * `RAJA_BACKEND` - the RAJA backend to use with the demonstration code, defaults
    to `SERIAL`. Supported options are `SERIAL` and `CUDA`.
@@ -313,7 +313,7 @@ The input files contain parameters to set up the physical problem:
 
 Parameters to control the execution of the code:
 
-* desired cfl fraction -- `cfl` (if set to zero, then the time step is chosen purely using temporal adaptivity).
+* desired CFL fraction -- `cfl` (if set to zero, then the time step is chosen purely using temporal adaptivity).
 
 * number of desired solution outputs -- `nout`
 
