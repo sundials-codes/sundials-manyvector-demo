@@ -41,9 +41,12 @@ corresponding to the density, momentum in the x, y, and z directions, total
 energy per unit volume, and any number of chemical densities
 $\mathbf{c}\in\mathbb{R}^{nchem}$ that are advected along with the fluid. The
 fluxes are given by
-$$ F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p) & \mathbf{c} v_x \end{bmatrix}^T,$$
-$$ F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p) & \mathbf{c} v_y \end{bmatrix}^T,$$
-$$ F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.$$
+
+$$F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p) & \mathbf{c} v_x \end{bmatrix}^T,$$
+
+$$F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p) & \mathbf{c} v_y \end{bmatrix}^T,$$
+
+$$F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.$$
 
 The external force $G(X,t,w)$ is test-problem-dependent, and the ideal gas
 equation of state gives $p = \frac{R}{c_v}(e_t - \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2))$
