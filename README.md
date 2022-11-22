@@ -129,8 +129,8 @@ Newton linear systems are block-diagonal. As such, we provide a custom
 `SUNLinearSolver` implementation that solves each MPI rank-local linear system
 independently. The portion of the Jacobian matrix on each rank is itself
 block-diagonal. We further leverage this structure by solving each rank-local
-linear system using either the sparse KLU, batched sparse NVIDIA (GPU-enabled),
-or batched dense MAGMA (GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
+linear system using either the sparse KLU (CPU-only) or batched dense MAGMA
+(GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
 
 The multirate approach (2) can leverage the structure of $f_2$ at a higher
 level. Since the MRI method applied to this problem evolves "fast" sub-problems
@@ -151,19 +151,25 @@ above for linear systems that arise within the modified Newton iteration.
 
 ## Building
 
-Steps showing the process to download this demonstration code, install the
-relevant dependencies with [Spack](https://spack.io/), and build the code in a
-Linux or OS X environment are as follows.
+The following layout how to build the demonstation code in a Linux or OS X
+environment.
 
-To obtain the demonstration code simply clone this repository with Git:
+### Gettting the Code
+
+To obtain the code, clone this repository with Git:
 
 ```bash
   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
 ```
 
+### Requirements
+
 To compile the code you will need:
 
 * modern C and C++ compilers
+
+* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (when
+  using the CUDA backend)
 
 * [CMake](https://cmake.org) 3.18 or newer
 
@@ -181,13 +187,14 @@ To compile the code you will need:
 * the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
   of sparse direct linear solvers (when using a CPU backend)
 
-* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (when
-  using the CUDA backend)
-
 * the [MAGMA](https://icl.utk.edu/magma/) dense linear solver "multicore+GPU"
   library (when using a GPU backend)
 
-Many of the above my be installed using the Spack package manager.
+### Installing Dependencies
+
+Many of the above dependencies can be installed using the
+[Spack](https://spack.io/) package manager.
+
 ```
 spack install sundials@6.2.0 +openmp +klu +magma +raja +cuda cuda_arch=70
 ^cuda@11.4.2 ^suite-sparse@5.8.1 ^magma@2.6.1 +cuda cuda_arch==70
@@ -195,25 +202,20 @@ spack install sundials@6.2.0 +openmp +klu +magma +raja +cuda cuda_arch=70
 spack install hdf5@1.10.7 +hl
 ```
 
-To assist in building the code the [scripts](./scripts) directory contains shell
-scripts to setup the environment on specific systems and install some of the required
-dependencies. For example, if working on Summit the following commands may be
-used to setup the environment and install the necessary dependencies:
+To assist in building the code on select systems the [spack](./spack) directory
+contains environment files leveraging software already avaialble on the system.
+For example, on the OLCF Summit system:
 
 ```bash
-  cd sundials-manyvector-demo/scripts
-  export PROJHOME=/css/proj/[projid]
-  source setup_summit.sh
-  ./build-klu.sh
-  ./build-raja.sh
-  ./build-magma.sh
-  ./build-sundials.sh
+module load gcc/10.2.0
+module load cuda/11.4.2
+cd spack
+spack env create sundials-demo spack-summit.yaml
+spack env activate sundials-demo
+spack install
 ```
 
-Where `[projid]` is a Summit project ID. For more information on the setup and
-build scripts see the README file in the [scripts](./scripts) directory. As an
-alternative, any of the dependencies for the demonstration code can be installed
-with the [Spack](https://github.com/spack/spack) package manager e.g.,
+### Configuration Options
 
 Once the necessary dependencies are installed, the following CMake variables can
 be used to configure the demonstration code build:
@@ -222,13 +224,15 @@ be used to configure the demonstration code build:
   installed e.g., `my/install/path`. The executables will be installed in the
   `bin` directory and input files in the `tests` directory under the given path.
 
-* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`.
+* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`. If not set, CMake
+  will attempt to automatically detect the C compiler.
 
 * `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`.
 
 * `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`.
 
-* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`.
+* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`. If not set,
+  CMake will attempt to automatically detect the C++ compiler.
 
 * `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`.
 
@@ -254,11 +258,14 @@ be used to configure the demonstration code build:
 When `RAJA` is installed with CUDA support the following additional variables
 may also be set:
 
-* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`.
+* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`. If not set,
+  CMake will attempt to automatically detect the CUDA compiler.
 
 * `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use.
 
 * `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target e.g., `70`.
+
+### Building
 
 In-source builds are not permitted and as such the code should be configured and
 built from a separate build directory. For example, continuing with the Summit
@@ -279,11 +286,6 @@ CUDA and HDF5 output enabled:
 
 The test executables and input files are installed under the `sundials-demo`
 directory in the member work space for the Summit project ID `[projid]`.
-
-**Note:** In this example, since the environment was configured using the Summit
-setup script, the values for `SUNDIALS_ROOT`, `RAJA_ROOT`, and `HDF5_ROOT` can
-be omitted from the `cmake` command as these values are automatically set from
-the corresponding environment variables defined by the setup script.
 
 ## Running
 

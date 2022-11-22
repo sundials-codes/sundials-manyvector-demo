@@ -6,7 +6,7 @@ different systems.
 
 ## Using an Existing Environment File
 
-```
+```bash
 spack env create sundials-demo spack-summit.yaml
 spack env activate sundials-demo
 spack install
