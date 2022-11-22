@@ -1322,9 +1322,13 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
                         long int nstrip, void *user_data)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
+#ifdef USE_DEVICE
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
-
+#else
+  const double *ydata = N_VGetArrayPointer(y);
+  double *ydotdata    = N_VGetArrayPointer(ydot);
+#endif
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     double y_arr[NSPECIES];
@@ -1698,17 +1702,19 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                              N_Vector tmp2, N_Vector tmp3)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
-  const double *ydata = N_VGetDeviceArrayPointer(y);
 
 #ifdef USE_DEVICE
-  // Access dense matrix structures, and zero out data
+  // Access vector data and dense matrix structures
+  const double *ydata = N_VGetDeviceArrayPointer(y);
   realtype *matrix_data = SUNMatrix_MagmaDense_Data(J);
 #else
-  // Access CSR sparse matrix structures, and zero out data
+  // Access vector data and CSR sparse matrix structures
+  const double *ydata = N_VGetArrayPointer(y);
   realtype *matrix_data = SUNSparseMatrix_Data(J);
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
   sunindextype *colvals = SUNSparseMatrix_IndexValues(J);
 #endif
+  // Zero out matrix values
   SUNMatZero(J);
 
   // Loop over data, filling in Jacobian
