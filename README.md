@@ -94,8 +94,8 @@ to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
 `ny = nz = 200`.  When run in parallel, only "active" spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
-Each fluid field ( $\rho$, $m_x$, $m_y$, $m_z$, and $e_t$ ) is stored in its own serial
-`N_Vector` object on each MPI rank. Chemical species at all spatial locations over
+The fluid fields $\rho$, $m_x$, $m_y$, $m_z$, and $e_t$ are stored in separate serial
+`N_Vector` objects on each MPI rank. The chemical species at all spatial locations over
 each MPI rank are collocated into a single serial or RAJA `N_Vector` object when
 running on the CPU or GPU respectively. The five fluid vectors and the chemical
 species vector are combined together to form the full "solution" vector $w$ using
