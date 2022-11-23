@@ -45,8 +45,8 @@ def load_data():
         raise ValueError("load_data: HDF5 file output-0000000.hdf5 and metadata disagree on data shape")
 
     # set number of chemical species and current time
-    nchem = f[('nchem')].value
-    tgrid[0] = f[('time')].value
+    nchem = f[('nchem')][()]
+    tgrid[0] = f[('time')][()]
 
     # create empty arrays for all solution data
     rho  = np.zeros((nx,ny,nz,nt), order='F')
@@ -70,14 +70,14 @@ def load_data():
     for iout in range(1,nt):
         fname = 'output-' + repr(iout).zfill(7) + '.hdf5'
         f = h5py.File(fname, 'r')
-        tgrid[iout] = f[('time')].value
+        tgrid[iout] = f[('time')][()]
 
         # check that this file's dimensions match the first one
         if ( (nx != np.size(f['Density'][:], 2)) or
              (ny != np.size(f['Density'][:], 1)) or
              (nz != np.size(f['Density'][:], 0)) ):
             raise ValueError("load_data: HDF5 file " + fname + " and metadata disagree on data shape")
-        if (nchem != f[('nchem')].value):
+        if (nchem != f[('nchem')][()]):
             raise ValueError("load_data: HDF5 file " + fname + " and metadata disagree on nchem")
 
         # insert into output arrays
@@ -96,7 +96,7 @@ def load_data():
     my  *= (MassUnits/LengthUnits/LengthUnits/TimeUnits)
     mz  *= (MassUnits/LengthUnits/LengthUnits/TimeUnits)
     et  *= (MassUnits/LengthUnits/TimeUnits/TimeUnits)
-            
+
     return [nx, ny, nz, nchem, nt, xgrid, ygrid, zgrid, tgrid, rho, mx, my, mz, et, chem]
 
 
