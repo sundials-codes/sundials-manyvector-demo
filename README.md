@@ -252,7 +252,9 @@ be used to configure the demonstration code build:
   to automatically locate a RAJA install on the system.
 
 * `RAJA_BACKEND` - the RAJA backend to use with the demonstration code, defaults
-   to `SERIAL`. Supported options are `SERIAL` and `CUDA`.
+   to `SERIAL`. Supported options are `SERIAL`, `OPENMP` and `CUDA`.  Note that this
+   only applies to on-node parallelism that is used when evaluating chemistry-based
+   components associated with $f_2(w)$.
 
 * `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
   the value of the `SUNDIALS_ROOT` environment variable. If not set, CMake will

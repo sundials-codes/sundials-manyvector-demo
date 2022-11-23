@@ -137,10 +137,12 @@ int main(int argc, char* argv[]) {
          << udata.nz << "\n";
 #if defined(RAJA_CUDA)
     cout << "Executable built with RAJA+CUDA support and MAGMA linear solver\n";
-#elif defined(RAJA_SERIAL)
-    cout << "Executable built with RAJA+SERIAL support and KLU linear solver\n";
-#else
+#elif defined(RAJA_HIP)
     cout << "Executable built with RAJA+HIP support and MAGMA linear solver\n";
+#elif defined(RAJA_OPENMP)
+    cout << "Executable built with RAJA+OpenMP support and KLU linear solver\n";
+#else
+    cout << "Executable built with RAJA+SERIAL support and KLU linear solver\n";
 #endif
   }
 
@@ -656,12 +658,12 @@ int main(int argc, char* argv[]) {
   // Clean up and return with successful completion
   cvklu_free_data(network_data, udata.memhelper);  // Free Dengo data structure
   udata.RxNetData = NULL;
-#ifdef RAJA_SERIAL
-  free(clump_data);
-#elif RAJA_CUDA
+#ifdef RAJA_CUDA
   cudaFree(clump_data);
-#else
+#elif RAJA_HIP
   hipFree(clump_data);
+#else
+  free(clump_data);
 #endif
   N_VDestroy(w);                  // Free solution and absolute tolerance vectors
   N_VDestroy(atols);

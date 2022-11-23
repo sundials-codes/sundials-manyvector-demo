@@ -64,7 +64,7 @@ using namespace std;
 // accessor macro between (v,i,j,k) location and 1D data array location
 #define BUFINDX(v,i,j,k,nv,nx,ny,nz) ( (v) + (nv)*((i) + (nx)*((j) + (ny)*(k))) )
 
-// HIP vs RAJA vs serial macro
+// HIP vs RAJA vs serial/OpenMP macro
 #if defined(RAJA_CUDA)
 #define HIP_OR_CUDA(a,b) b
 #elif defined(RAJA_HIP)
@@ -113,23 +113,9 @@ using namespace std;
 #define  PR_LSOLVE     14
 #define  PR_LATIMES    15
 #define  PR_TOTAL      16
-#define  PR_LSOLVEMPI  17
+#define  PR_MPISYNC  17
 #define  PR_CHEMSETUP  18
 #define  PR_MRISETUP   19
-#define  PR_SETUP1     20
-#define  PR_SETUP2     21
-#define  PR_SETUP3     22
-#define  PR_SETUP4     23
-#define  PR_SETUP5     24
-#define  PR_SETUP6     25
-#define  PR_SETUP7     26
-#define  PR_SETUP8     27
-#define  PR_SETUP9     28
-#define  PR_SETUP7A    29
-#define  PR_SETUP7B    30
-#define  PR_SETUP7C    31
-#define  PR_SETUP7D    32
-#define  PR_SETUP7E    33
 
 
 // Utility routine to check function return values:

@@ -55,6 +55,18 @@ using XYZ_KERNEL_POL =
                         >
                       >
                     >;
+#elif RAJA_OPENMP
+using EXECPOLICY = RAJA::omp_parallel_for_exec;
+using REDUCEPOLICY = RAJA::omp_reduce;
+using XYZ_KERNEL_POL =
+  RAJA::KernelPolicy< RAJA::statement::For<2, EXECPOLICY,
+                        RAJA::statement::For<1, EXECPOLICY,
+                          RAJA::statement::For<0, EXECPOLICY,
+                            RAJA::statement::Lambda<0>
+                          >
+                        >
+                      >
+                    >;
 #elif RAJA_CUDA
 using EXECPOLICY = RAJA::cuda_exec<256>;
 using REDUCEPOLICY = RAJA::cuda_reduce;
