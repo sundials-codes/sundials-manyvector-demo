@@ -1,0 +1,78 @@
+# Input parameter file for 3D compressible Euler demo code.
+#
+# This file should be provided to the executable with the "-f" flag,
+# e.g.
+#     <executable> -f <input_file>
+#
+# Any of these parameters may also be specified on the command line,
+# e.g.
+#     <executable> --nx=100 --ny=100 --nz=400
+#
+# If an option is specified multiple times (e.g., in input file and on
+# command line), then the command-line option takes precedence.
+#
+#
+#### Problem Specification ####
+xl = 0.0           # spatial domain: [xl,xr] x [yl,yr] x [zl,zr]
+xr = 1.0
+yl = 0.0
+yr = 1.0
+zl = 0.0
+zr = 1.0
+t0 = 0.0            # temporal domain: (t0, tf]
+tf = 0.16666666666666666
+gamma = 1.6666666666666666666666667    # ratio of gas specific heats
+nx = 750 # global spatial grid: nx * ny * nz
+ny = 600
+nz = 600
+xlbc = 3            # Boundary cond: [xlbc, xrbc] x [ylbc, yrbc] x [zlbc, zrbc]
+xrbc = 3            #    0 = periodic  (opposite periodic faces must match)
+ylbc = 3            #    1 = homogeneous Neumann
+yrbc = 3            #    2 = homogeneous Dirichlet
+zlbc = 3            #    3 = reflecting
+zrbc = 3
+MassUnits = 3.0e70       # mass unit scaling factor (code -> g)
+LengthUnits = 3.0857e30  # length unit scaling factor (code -> cm) -- 1e6 Mpc
+#TimeUnits = 3.15576e14   # time unit scaling factor (code -> s) -- 10 Myr
+TimeUnits = 1.0e11
+#
+#
+#### Run Options ####
+nout = 0 # number of solution outputs
+showstats = 0 # enable (1) / disable (0) diagnostic solution output
+#
+#
+#### ARKStep Options ####
+order = 0           # temporal order of accuracy (0 => use specified table)
+etable = -1         # specific built-in ERK Butcher table to use (<0 => default)
+itable = 112        # specific built-in DIRK Butcher table to use (<0 => default)
+mtable = -1         # specific built-in MRI coupling table to use (<0 => default)
+adapt_method = 2    # temporal adaptivity algorithm to use
+maxnef = 0          # max num temporal error failures (0 => default)
+mxhnil = 0          # max num tn+h=tn warnings (0 => default)
+mxsteps = 5000      # max internal steps per 'evolve' call (0 => default)
+safety = 0.99       # temporal step size safety factor (0 => default)
+cfl  = 0.0          # max CFL fraction: cfl (disabled if set to zero)
+bias = 2.0          # temporal error bias factor (0 => default)
+growth = 2.0        # max temporal growth/step (0 => default)
+pq = 0              # use of method/embedding order for adaptivity (0 => default)
+k1 = 0              # temporal adaptivity parameters (0 => default)
+k2 = 0
+k3 = 0
+etamx1 = 0          # max change after first internal step (0 => default)
+etamxf = 0          # max change on a general internal step (0 => default)
+h0 = 0.016666666666666666 # slow time step size (0 => default)
+hmin = 1e-15        # minimum fast time step size (0 => default)
+hmax = 1.6666666666666667e-05 # maximum/fixed fast time step size (0 => infinite)
+fixedstep = 0       # use adaptive/fixed timestepping (0 => adaptive)
+htrans = 0.016666666666666666 # time interval for initial transient evolution (0 => none)
+predictor = 0       # algorithm for implicit predictor (0 => default)
+maxniters = 10      # max number nonlinear iterations (0 => default)
+nlconvcoef = 0.01   # nonlinear tolerance safety factor (0 => default)
+rtol = 1e-5         # relative solution tolerance (0 => default)
+atol = 1e-9         # absolute solution tolerance (0 => default)
+#
+#
+#### N_Vector Options ####
+fusedkernels = 1 # fused N_Vector operations (0 disabled, 1 enabled)
+localreduce = 1 # N_Vector local reduction operations (0 disabled, 1 enabled)
