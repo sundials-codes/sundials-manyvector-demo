@@ -198,6 +198,7 @@ To compile the code you will need:
 Many of the above dependencies can be installed using the
 [Spack](https://spack.io/) package manager. For information on using Spack see
 the getting started [guide](https://spack.readthedocs.io/en/latest/getting_started.html#getting-started).
+The instructions below were formulated from Spack v0.19.0, although newer versions should also work.
 
 Once Spack is setup, we recommend creating a Spack [environment](https://spack.readthedocs.io/en/latest/environments.html#)
 with the required dependencies e.g., on a system with Pascal GPUs:
@@ -205,8 +206,8 @@ with the required dependencies e.g., on a system with Pascal GPUs:
 ```bash
 spack env create sundials-demo
 spack env activate sundials-demo
-spack add sundials +openmp +mpi +klu +magma +raja +cuda cuda_arch=60 ^magma +cuda cuda_arch=60 ^raja +cuda cuda_arch=60
-spack add hdf5 +hl +mpi
+spack add sundials@6.2.0 +openmp +mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
+spack add hdf5@1.10.7 +hl +mpi
 spack install
 ```
 
