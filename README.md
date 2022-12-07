@@ -201,7 +201,8 @@ the getting started [guide](https://spack.readthedocs.io/en/latest/getting_start
 The instructions below were formulated from Spack v0.19.0, although newer versions should also work.
 
 Once Spack is setup, we recommend creating a Spack [environment](https://spack.readthedocs.io/en/latest/environments.html#)
-with the required dependencies e.g., on a system with Pascal GPUs:
+with the required dependencies e.g., on a system with Pascal GPUs and CUDA
+11.4.2 installed:
 
 ```bash
 spack env create sundials-demo
