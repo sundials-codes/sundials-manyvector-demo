@@ -113,7 +113,7 @@ using namespace std;
 #define  PR_LSOLVE     14
 #define  PR_LATIMES    15
 #define  PR_TOTAL      16
-#define  PR_MPISYNC  17
+#define  PR_MPISYNC    17
 #define  PR_CHEMSETUP  18
 #define  PR_MRISETUP   19
 
