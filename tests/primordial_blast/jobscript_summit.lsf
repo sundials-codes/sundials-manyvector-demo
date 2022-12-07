@@ -16,12 +16,8 @@ echo "  "
 date
 
 # ensure that appropriate modules are loaded
-module load essl
-module load metis
-module load hdf5
-#module load cuda
-module load hpctoolkit
-module unload xalt
+module load gcc/10.2.0 cuda/11.4.2 cmake/3.21.3
+spack env activate sundials-demo
 
 # write loaded modules (sent to stderr)
 module list
@@ -30,17 +26,17 @@ module list
 #    number of resource sets  [all available physical cores]
 JSRUN_N=RESOURCESETS
 #    number of MPI tasks per resource set  [no default]
-JSRUN_A=20
+JSRUN_A=3
 #    number of CPUs per resource set  [1]
-JSRUN_C=20
+JSRUN_C=3
 #    number of GPUs per resource set  [0]
-JSRUN_G=0
+JSRUN_G=3
 #    binding of tasks within a resource set (none / rs / packed:#)  [packed:1]
 JSRUN_B=packed:1
 #    number of resource sets per host  [no default]
 JSRUN_R=2
 #    latency priority (CPU-CPU / GPU-CPU)  [GPU-CPU,CPU-MEM,CPU-CPU]
-JSRUN_L=CPU-CPU
+JSRUN_L=GPU-CPU
 #    how tasks are started on resource sets  [packed]
 JSRUN_D=packed
 

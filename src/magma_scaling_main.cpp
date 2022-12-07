@@ -16,12 +16,7 @@
 // Header files
 #include <euler3D.hpp>
 #include <arkode/arkode_arkstep.h>
-#ifdef USERAJA
-#include <nvector/nvector_raja.h>
-#else
-#error "magma_scaling.exe requires RAJA to be enabled; aborting build."
-#endif
-#ifdef USEMAGMA
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
@@ -38,11 +33,17 @@ int check_flag(const void *flagvalue, const string funcname, const int opt);
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, numranks, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+  retval = MPI_Comm_size(MPI_COMM_WORLD, &numranks);
+  if (check_flag(&retval, "MPI_Comm_size (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
   // general problem variables
   long int N;
-  int retval;                    // reusable error-checking flag
-  int numranks;                  // number of MPI ranks
-  int myid;                      // MPI rank ID
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vector for storing overall solution
   SUNMatrix A = NULL;            // empty matrix and linear solver structures
@@ -51,14 +52,6 @@ int main(int argc, char* argv[]) {
   SUNProfiler profobj = NULL;    // empty profiler object
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-  retval = MPI_Comm_size(MPI_COMM_WORLD, &numranks);
-  if (check_flag(&retval, "MPI_Comm_size (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // declare user data structure once MPI has been initialized
   EulerData udata;
@@ -134,6 +127,8 @@ int main(int argc, char* argv[]) {
   SUNLinSolFree(LS);
   SUNMatDestroy(A);
   N_VDestroy(w);
+  udata.FreeData();
+  MPI_Finalize();
   return 0;
 }
 

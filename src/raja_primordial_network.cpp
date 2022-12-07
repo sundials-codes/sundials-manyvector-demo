@@ -11,27 +11,36 @@
 
 #include <raja_primordial_network.hpp>
 
-// HIP vs RAJA vs serial
+// HIP vs RAJA vs serial/OpenMP
 #if defined(RAJA_CUDA)
 #define HIP_OR_CUDA(a,b) b
+#define dmalloc(ptr, len) cudaMallocManaged((void**)&ptr, len*sizeof(double))
 #define dcopy(dst, src, len) cudaMemcpy(dst, src, (len)*sizeof(double), cudaMemcpyHostToDevice)
+#define dfree(ptr)   cudaFree(ptr)
 #elif defined(RAJA_HIP)
 #define HIP_OR_CUDA(a,b) a
+#define dmalloc(ptr, len) hipMallocManaged((void**)&ptr, len*sizeof(double))
 #define dcopy(dst, src, len) hipMemcpy(dst, src, (len)*sizeof(double), hipMemcpyHostToDevice)
+#define dfree(ptr)   hipFree(ptr)
 #else
 #define HIP_OR_CUDA(a,b) ((void)0);
+#define dmalloc(ptr, len) ptr = (double *) malloc(len*sizeof(double))
 #define dcopy(dst, src, len) memcpy(dst, src, (len)*sizeof(double))
+#define dfree(ptr)   free(ptr)
 #endif
 
 // sparse vs dense
 #define NSPARSE 64
-#if defined(USEMAGMA)
+#ifdef USE_DEVICE
 #define SPARSE_OR_DENSE(a,b) b
 #else
 #define SPARSE_OR_DENSE(a,b) a
 #endif
 #define SPARSEIDX(blk,off) (blk*NSPARSE + off)
 #define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
+
+// HDF5 table lookup size
+#define TSIZE 1024
 
 cvklu_data *cvklu_setup_data(MPI_Comm comm, const char *FileLocation, long int ncells,
                              SUNMemoryHelper memhelper, double current_z)
@@ -53,12 +62,12 @@ cvklu_data *cvklu_setup_data(MPI_Comm comm, const char *FileLocation, long int n
   //-----------------------------------------------------
 
   cvklu_data *data = NULL;
-#ifdef RAJA_SERIAL
-   data = (cvklu_data *) malloc(sizeof(cvklu_data));
-#elif RAJA_CUDA
+#ifdef RAJA_CUDA
   cudaMallocManaged((void**)&(data), sizeof(cvklu_data));
+#elif RAJA_HIP
+  hipMallocManaged((void**)&(data), sizeof(cvklu_data));
 #else
-  hipMalloc((void**)&(data), sizeof(cvklu_data));
+  data = (cvklu_data *) malloc(sizeof(cvklu_data));
 #endif
 
   // point the module to look for cvklu_tables.h5
@@ -68,218 +77,108 @@ cvklu_data *cvklu_setup_data(MPI_Comm comm, const char *FileLocation, long int n
   data->nstrip = ncells;
 
   // allocate reaction rate arrays
-#ifdef RAJA_SERIAL
-  data->Ts = (double *) malloc(ncells*sizeof(double));
-  data->dTs_ge = (double *) malloc(ncells*sizeof(double));
-  data->mdensity = (double *) malloc(ncells*sizeof(double));
-  data->inv_mdensity = (double *) malloc(ncells*sizeof(double));
-  data->rs_k01 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k01 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k02 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k02 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k03 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k03 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k04 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k04 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k05 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k05 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k06 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k06 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k07 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k07 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k08 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k08 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k09 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k09 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k10 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k10 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k11 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k11 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k12 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k12 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k13 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k13 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k14 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k14 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k15 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k15 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k16 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k16 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k17 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k17 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k18 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k18 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k19 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k19 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k21 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k21 = (double *) malloc(ncells*sizeof(double));
-  data->rs_k22 = (double *) malloc(ncells*sizeof(double));
-  data->drs_k22 = (double *) malloc(ncells*sizeof(double));
-  data->cs_brem_brem = (double *) malloc(ncells*sizeof(double));
-  data->dcs_brem_brem = (double *) malloc(ncells*sizeof(double));
-  data->cs_ceHeI_ceHeI = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ceHeI_ceHeI = (double *) malloc(ncells*sizeof(double));
-  data->cs_ceHeII_ceHeII = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ceHeII_ceHeII = (double *) malloc(ncells*sizeof(double));
-  data->cs_ceHI_ceHI = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ceHI_ceHI = (double *) malloc(ncells*sizeof(double));
-  data->cs_cie_cooling_cieco = (double *) malloc(ncells*sizeof(double));
-  data->dcs_cie_cooling_cieco = (double *) malloc(ncells*sizeof(double));
-  data->cs_ciHeI_ciHeI = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ciHeI_ciHeI = (double *) malloc(ncells*sizeof(double));
-  data->cs_ciHeII_ciHeII = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ciHeII_ciHeII = (double *) malloc(ncells*sizeof(double));
-  data->cs_ciHeIS_ciHeIS = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ciHeIS_ciHeIS = (double *) malloc(ncells*sizeof(double));
-  data->cs_ciHI_ciHI = (double *) malloc(ncells*sizeof(double));
-  data->dcs_ciHI_ciHI = (double *) malloc(ncells*sizeof(double));
-  data->cs_compton_comp_ = (double *) malloc(ncells*sizeof(double));
-  data->dcs_compton_comp_ = (double *) malloc(ncells*sizeof(double));
-  data->cs_gloverabel08_gael = (double *) malloc(ncells*sizeof(double));
-  data->dcs_gloverabel08_gael = (double *) malloc(ncells*sizeof(double));
-  data->cs_gloverabel08_gaH2 = (double *) malloc(ncells*sizeof(double));
-  data->dcs_gloverabel08_gaH2 = (double *) malloc(ncells*sizeof(double));
-  data->cs_gloverabel08_gaHe = (double *) malloc(ncells*sizeof(double));
-  data->dcs_gloverabel08_gaHe = (double *) malloc(ncells*sizeof(double));
-  data->cs_gloverabel08_gaHI = (double *) malloc(ncells*sizeof(double));
-  data->dcs_gloverabel08_gaHI = (double *) malloc(ncells*sizeof(double));
-  data->cs_gloverabel08_gaHp = (double *) malloc(ncells*sizeof(double));
-  data->dcs_gloverabel08_gaHp = (double *) malloc(ncells*sizeof(double));
-  data->cs_gloverabel08_h2lte = (double *) malloc(ncells*sizeof(double));
-  data->dcs_gloverabel08_h2lte = (double *) malloc(ncells*sizeof(double));
-  data->cs_h2formation_h2mcool = (double *) malloc(ncells*sizeof(double));
-  data->dcs_h2formation_h2mcool = (double *) malloc(ncells*sizeof(double));
-  data->cs_h2formation_h2mheat = (double *) malloc(ncells*sizeof(double));
-  data->dcs_h2formation_h2mheat = (double *) malloc(ncells*sizeof(double));
-  data->cs_h2formation_ncrd1 = (double *) malloc(ncells*sizeof(double));
-  data->dcs_h2formation_ncrd1 = (double *) malloc(ncells*sizeof(double));
-  data->cs_h2formation_ncrd2 = (double *) malloc(ncells*sizeof(double));
-  data->dcs_h2formation_ncrd2 = (double *) malloc(ncells*sizeof(double));
-  data->cs_h2formation_ncrn = (double *) malloc(ncells*sizeof(double));
-  data->dcs_h2formation_ncrn = (double *) malloc(ncells*sizeof(double));
-  data->cs_reHeII1_reHeII1 = (double *) malloc(ncells*sizeof(double));
-  data->dcs_reHeII1_reHeII1 = (double *) malloc(ncells*sizeof(double));
-  data->cs_reHeII2_reHeII2 = (double *) malloc(ncells*sizeof(double));
-  data->dcs_reHeII2_reHeII2 = (double *) malloc(ncells*sizeof(double));
-  data->cs_reHeIII_reHeIII = (double *) malloc(ncells*sizeof(double));
-  data->dcs_reHeIII_reHeIII = (double *) malloc(ncells*sizeof(double));
-  data->cs_reHII_reHII = (double *) malloc(ncells*sizeof(double));
-  data->dcs_reHII_reHII = (double *) malloc(ncells*sizeof(double));
-  data->cie_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
-  data->h2_optical_depth_approx = (double *) malloc(ncells*sizeof(double));
-#elif RAJA_CUDA
-  cudaMallocManaged((void**)&(data->Ts), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dTs_ge), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->mdensity), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->inv_mdensity), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k01), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k01), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k02), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k02), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k03), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k03), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k04), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k04), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k05), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k05), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k06), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k06), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k07), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k07), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k08), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k08), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k09), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k09), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k10), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k10), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k11), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k11), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k12), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k12), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k13), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k13), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k14), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k14), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k15), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k15), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k16), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k16), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k17), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k17), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k18), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k18), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k19), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k19), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k21), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k21), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->rs_k22), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->drs_k22), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_brem_brem), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_brem_brem), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ceHeI_ceHeI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ceHeI_ceHeI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ceHeII_ceHeII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ceHeII_ceHeII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ceHI_ceHI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ceHI_ceHI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_cie_cooling_cieco), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_cie_cooling_cieco), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ciHeI_ciHeI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ciHeI_ciHeI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ciHeII_ciHeII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ciHeII_ciHeII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ciHeIS_ciHeIS), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ciHeIS_ciHeIS), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_ciHI_ciHI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_ciHI_ciHI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_compton_comp_), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_compton_comp_), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_gloverabel08_gael), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_gloverabel08_gael), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_gloverabel08_gaH2), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_gloverabel08_gaH2), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_gloverabel08_gaHe), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_gloverabel08_gaHe), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_gloverabel08_gaHI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_gloverabel08_gaHI), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_gloverabel08_gaHp), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_gloverabel08_gaHp), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_gloverabel08_h2lte), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_gloverabel08_h2lte), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_h2formation_h2mcool), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_h2formation_h2mcool), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_h2formation_h2mheat), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_h2formation_h2mheat), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_h2formation_ncrd1), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_h2formation_ncrd1), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_h2formation_ncrd2), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_h2formation_ncrd2), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_h2formation_ncrn), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_h2formation_ncrn), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_reHeII1_reHeII1), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_reHeII1_reHeII1), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_reHeII2_reHeII2), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_reHeII2_reHeII2), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_reHeIII_reHeIII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_reHeIII_reHeIII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cs_reHII_reHII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->dcs_reHII_reHII), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->cie_optical_depth_approx), ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->h2_optical_depth_approx), ncells*sizeof(double));
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
+  dmalloc(data->Ts, ncells);
+  dmalloc(data->dTs_ge, ncells);
+  dmalloc(data->mdensity, ncells);
+  dmalloc(data->inv_mdensity, ncells);
+  dmalloc(data->rs_k01, ncells);
+  dmalloc(data->drs_k01, ncells);
+  dmalloc(data->rs_k02, ncells);
+  dmalloc(data->drs_k02, ncells);
+  dmalloc(data->rs_k03, ncells);
+  dmalloc(data->drs_k03, ncells);
+  dmalloc(data->rs_k04, ncells);
+  dmalloc(data->drs_k04, ncells);
+  dmalloc(data->rs_k05, ncells);
+  dmalloc(data->drs_k05, ncells);
+  dmalloc(data->rs_k06, ncells);
+  dmalloc(data->drs_k06, ncells);
+  dmalloc(data->rs_k07, ncells);
+  dmalloc(data->drs_k07, ncells);
+  dmalloc(data->rs_k08, ncells);
+  dmalloc(data->drs_k08, ncells);
+  dmalloc(data->rs_k09, ncells);
+  dmalloc(data->drs_k09, ncells);
+  dmalloc(data->rs_k10, ncells);
+  dmalloc(data->drs_k10, ncells);
+  dmalloc(data->rs_k11, ncells);
+  dmalloc(data->drs_k11, ncells);
+  dmalloc(data->rs_k12, ncells);
+  dmalloc(data->drs_k12, ncells);
+  dmalloc(data->rs_k13, ncells);
+  dmalloc(data->drs_k13, ncells);
+  dmalloc(data->rs_k14, ncells);
+  dmalloc(data->drs_k14, ncells);
+  dmalloc(data->rs_k15, ncells);
+  dmalloc(data->drs_k15, ncells);
+  dmalloc(data->rs_k16, ncells);
+  dmalloc(data->drs_k16, ncells);
+  dmalloc(data->rs_k17, ncells);
+  dmalloc(data->drs_k17, ncells);
+  dmalloc(data->rs_k18, ncells);
+  dmalloc(data->drs_k18, ncells);
+  dmalloc(data->rs_k19, ncells);
+  dmalloc(data->drs_k19, ncells);
+  dmalloc(data->rs_k21, ncells);
+  dmalloc(data->drs_k21, ncells);
+  dmalloc(data->rs_k22, ncells);
+  dmalloc(data->drs_k22, ncells);
+  dmalloc(data->cs_brem_brem, ncells);
+  dmalloc(data->dcs_brem_brem, ncells);
+  dmalloc(data->cs_ceHeI_ceHeI, ncells);
+  dmalloc(data->dcs_ceHeI_ceHeI, ncells);
+  dmalloc(data->cs_ceHeII_ceHeII, ncells);
+  dmalloc(data->dcs_ceHeII_ceHeII, ncells);
+  dmalloc(data->cs_ceHI_ceHI, ncells);
+  dmalloc(data->dcs_ceHI_ceHI, ncells);
+  dmalloc(data->cs_cie_cooling_cieco, ncells);
+  dmalloc(data->dcs_cie_cooling_cieco, ncells);
+  dmalloc(data->cs_ciHeI_ciHeI, ncells);
+  dmalloc(data->dcs_ciHeI_ciHeI, ncells);
+  dmalloc(data->cs_ciHeII_ciHeII, ncells);
+  dmalloc(data->dcs_ciHeII_ciHeII, ncells);
+  dmalloc(data->cs_ciHeIS_ciHeIS, ncells);
+  dmalloc(data->dcs_ciHeIS_ciHeIS, ncells);
+  dmalloc(data->cs_ciHI_ciHI, ncells);
+  dmalloc(data->dcs_ciHI_ciHI, ncells);
+  dmalloc(data->cs_compton_comp_, ncells);
+  dmalloc(data->dcs_compton_comp_, ncells);
+  dmalloc(data->cs_gloverabel08_gael, ncells);
+  dmalloc(data->dcs_gloverabel08_gael, ncells);
+  dmalloc(data->cs_gloverabel08_gaH2, ncells);
+  dmalloc(data->dcs_gloverabel08_gaH2, ncells);
+  dmalloc(data->cs_gloverabel08_gaHe, ncells);
+  dmalloc(data->dcs_gloverabel08_gaHe, ncells);
+  dmalloc(data->cs_gloverabel08_gaHI, ncells);
+  dmalloc(data->dcs_gloverabel08_gaHI, ncells);
+  dmalloc(data->cs_gloverabel08_gaHp, ncells);
+  dmalloc(data->dcs_gloverabel08_gaHp, ncells);
+  dmalloc(data->cs_gloverabel08_h2lte, ncells);
+  dmalloc(data->dcs_gloverabel08_h2lte, ncells);
+  dmalloc(data->cs_h2formation_h2mcool, ncells);
+  dmalloc(data->dcs_h2formation_h2mcool, ncells);
+  dmalloc(data->cs_h2formation_h2mheat, ncells);
+  dmalloc(data->dcs_h2formation_h2mheat, ncells);
+  dmalloc(data->cs_h2formation_ncrd1, ncells);
+  dmalloc(data->dcs_h2formation_ncrd1, ncells);
+  dmalloc(data->cs_h2formation_ncrd2, ncells);
+  dmalloc(data->dcs_h2formation_ncrd2, ncells);
+  dmalloc(data->cs_h2formation_ncrn, ncells);
+  dmalloc(data->dcs_h2formation_ncrn, ncells);
+  dmalloc(data->cs_reHeII1_reHeII1, ncells);
+  dmalloc(data->dcs_reHeII1_reHeII1, ncells);
+  dmalloc(data->cs_reHeII2_reHeII2, ncells);
+  dmalloc(data->dcs_reHeII2_reHeII2, ncells);
+  dmalloc(data->cs_reHeIII_reHeIII, ncells);
+  dmalloc(data->dcs_reHeIII_reHeIII, ncells);
+  dmalloc(data->cs_reHII_reHII, ncells);
+  dmalloc(data->dcs_reHII_reHII, ncells);
+  dmalloc(data->cie_optical_depth_approx, ncells);
+  dmalloc(data->h2_optical_depth_approx, ncells);
 
   // allocate scaling arrays
-#ifdef RAJA_SERIAL
-  data->scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
-  data->inv_scale = (double *) malloc(NSPECIES*ncells*sizeof(double));
-#elif RAJA_CUDA
-  cudaMallocManaged((void**)&(data->scale), NSPECIES*ncells*sizeof(double));
-  cudaMallocManaged((void**)&(data->inv_scale), NSPECIES*ncells*sizeof(double));
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
+  dmalloc(data->scale, NSPECIES*ncells);
+  dmalloc(data->inv_scale, NSPECIES*ncells);
   data->current_z = current_z;
 
   // initialize temperature so it wont crash
@@ -291,115 +190,63 @@ cvklu_data *cvklu_setup_data(MPI_Comm comm, const char *FileLocation, long int n
   // Temperature-related pieces
   data->bounds[0] = 1.0;
   data->bounds[1] = 100000.0;
-  data->nbins = 1024 - 1;
+  data->nbins = TSIZE - 1;
   data->dbin = (log(data->bounds[1]) - log(data->bounds[0])) / data->nbins;
   data->idbin = 1.0L / data->dbin;
 
-#ifdef RAJA_SERIAL
-  data->r_k01 = (double *) malloc(1024*sizeof(double));
-  data->r_k02 = (double *) malloc(1024*sizeof(double));
-  data->r_k03 = (double *) malloc(1024*sizeof(double));
-  data->r_k04 = (double *) malloc(1024*sizeof(double));
-  data->r_k05 = (double *) malloc(1024*sizeof(double));
-  data->r_k06 = (double *) malloc(1024*sizeof(double));
-  data->r_k07 = (double *) malloc(1024*sizeof(double));
-  data->r_k08 = (double *) malloc(1024*sizeof(double));
-  data->r_k09 = (double *) malloc(1024*sizeof(double));
-  data->r_k10 = (double *) malloc(1024*sizeof(double));
-  data->r_k11 = (double *) malloc(1024*sizeof(double));
-  data->r_k12 = (double *) malloc(1024*sizeof(double));
-  data->r_k13 = (double *) malloc(1024*sizeof(double));
-  data->r_k14 = (double *) malloc(1024*sizeof(double));
-  data->r_k15 = (double *) malloc(1024*sizeof(double));
-  data->r_k16 = (double *) malloc(1024*sizeof(double));
-  data->r_k17 = (double *) malloc(1024*sizeof(double));
-  data->r_k18 = (double *) malloc(1024*sizeof(double));
-  data->r_k19 = (double *) malloc(1024*sizeof(double));
-  data->r_k21 = (double *) malloc(1024*sizeof(double));
-  data->r_k22 = (double *) malloc(1024*sizeof(double));
-  data->c_brem_brem = (double *) malloc(1024*sizeof(double));
-  data->c_ceHeI_ceHeI = (double *) malloc(1024*sizeof(double));
-  data->c_ceHeII_ceHeII = (double *) malloc(1024*sizeof(double));
-  data->c_ceHI_ceHI = (double *) malloc(1024*sizeof(double));
-  data->c_cie_cooling_cieco = (double *) malloc(1024*sizeof(double));
-  data->c_ciHeI_ciHeI = (double *) malloc(1024*sizeof(double));
-  data->c_ciHeII_ciHeII = (double *) malloc(1024*sizeof(double));
-  data->c_ciHeIS_ciHeIS = (double *) malloc(1024*sizeof(double));
-  data->c_ciHI_ciHI = (double *) malloc(1024*sizeof(double));
-  data->c_compton_comp_ = (double *) malloc(1024*sizeof(double));
-  data->c_gloverabel08_gael = (double *) malloc(1024*sizeof(double));
-  data->c_gloverabel08_gaH2 = (double *) malloc(1024*sizeof(double));
-  data->c_gloverabel08_gaHe = (double *) malloc(1024*sizeof(double));
-  data->c_gloverabel08_gaHI = (double *) malloc(1024*sizeof(double));
-  data->c_gloverabel08_gaHp = (double *) malloc(1024*sizeof(double));
-  data->c_gloverabel08_h2lte = (double *) malloc(1024*sizeof(double));
-  data->c_h2formation_h2mcool = (double *) malloc(1024*sizeof(double));
-  data->c_h2formation_h2mheat = (double *) malloc(1024*sizeof(double));
-  data->c_h2formation_ncrd1 = (double *) malloc(1024*sizeof(double));
-  data->c_h2formation_ncrd2 = (double *) malloc(1024*sizeof(double));
-  data->c_h2formation_ncrn = (double *) malloc(1024*sizeof(double));
-  data->c_reHeII1_reHeII1 = (double *) malloc(1024*sizeof(double));
-  data->c_reHeII2_reHeII2 = (double *) malloc(1024*sizeof(double));
-  data->c_reHeIII_reHeIII = (double *) malloc(1024*sizeof(double));
-  data->c_reHII_reHII = (double *) malloc(1024*sizeof(double));
-  data->g_gammaH2_1 = (double *) malloc(1024*sizeof(double));
-  data->g_dgammaH2_1_dT = (double *) malloc(1024*sizeof(double));
-  data->g_gammaH2_2 = (double *) malloc(1024*sizeof(double));
-  data->g_dgammaH2_2_dT = (double *) malloc(1024*sizeof(double));
-#elif RAJA_CUDA
-  cudaMallocManaged((void**)&(data->r_k01), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k02), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k03), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k04), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k05), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k06), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k07), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k08), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k09), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k10), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k11), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k12), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k13), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k14), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k15), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k16), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k17), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k18), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k19), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k21), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->r_k22), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_brem_brem), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ceHeI_ceHeI), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ceHeII_ceHeII), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ceHI_ceHI), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_cie_cooling_cieco), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ciHeI_ciHeI), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ciHeII_ciHeII), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ciHeIS_ciHeIS), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_ciHI_ciHI), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_compton_comp_), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_gloverabel08_gael), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_gloverabel08_gaH2), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_gloverabel08_gaHe), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_gloverabel08_gaHI), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_gloverabel08_gaHp), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_gloverabel08_h2lte), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_h2formation_h2mcool), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_h2formation_h2mheat), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_h2formation_ncrd1), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_h2formation_ncrd2), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_h2formation_ncrn), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_reHeII1_reHeII1), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_reHeII2_reHeII2), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_reHeIII_reHeIII), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->c_reHII_reHII), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->g_gammaH2_1), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->g_dgammaH2_1_dT), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->g_gammaH2_2), 1024*sizeof(double));
-  cudaMallocManaged((void**)&(data->g_dgammaH2_2_dT), 1024*sizeof(double));
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
+  // allocate Temperature-dependent rate tables
+  dmalloc(data->r_k01, TSIZE);
+  dmalloc(data->r_k02, TSIZE);
+  dmalloc(data->r_k03, TSIZE);
+  dmalloc(data->r_k04, TSIZE);
+  dmalloc(data->r_k05, TSIZE);
+  dmalloc(data->r_k06, TSIZE);
+  dmalloc(data->r_k07, TSIZE);
+  dmalloc(data->r_k08, TSIZE);
+  dmalloc(data->r_k09, TSIZE);
+  dmalloc(data->r_k10, TSIZE);
+  dmalloc(data->r_k11, TSIZE);
+  dmalloc(data->r_k12, TSIZE);
+  dmalloc(data->r_k13, TSIZE);
+  dmalloc(data->r_k14, TSIZE);
+  dmalloc(data->r_k15, TSIZE);
+  dmalloc(data->r_k16, TSIZE);
+  dmalloc(data->r_k17, TSIZE);
+  dmalloc(data->r_k18, TSIZE);
+  dmalloc(data->r_k19, TSIZE);
+  dmalloc(data->r_k21, TSIZE);
+  dmalloc(data->r_k22, TSIZE);
+  dmalloc(data->c_brem_brem, TSIZE);
+  dmalloc(data->c_ceHeI_ceHeI, TSIZE);
+  dmalloc(data->c_ceHeII_ceHeII, TSIZE);
+  dmalloc(data->c_ceHI_ceHI, TSIZE);
+  dmalloc(data->c_cie_cooling_cieco, TSIZE);
+  dmalloc(data->c_ciHeI_ciHeI, TSIZE);
+  dmalloc(data->c_ciHeII_ciHeII, TSIZE);
+  dmalloc(data->c_ciHeIS_ciHeIS, TSIZE);
+  dmalloc(data->c_ciHI_ciHI, TSIZE);
+  dmalloc(data->c_compton_comp_, TSIZE);
+  dmalloc(data->c_gloverabel08_gael, TSIZE);
+  dmalloc(data->c_gloverabel08_gaH2, TSIZE);
+  dmalloc(data->c_gloverabel08_gaHe, TSIZE);
+  dmalloc(data->c_gloverabel08_gaHI, TSIZE);
+  dmalloc(data->c_gloverabel08_gaHp, TSIZE);
+  dmalloc(data->c_gloverabel08_h2lte, TSIZE);
+  dmalloc(data->c_h2formation_h2mcool, TSIZE);
+  dmalloc(data->c_h2formation_h2mheat, TSIZE);
+  dmalloc(data->c_h2formation_ncrd1, TSIZE);
+  dmalloc(data->c_h2formation_ncrd2, TSIZE);
+  dmalloc(data->c_h2formation_ncrn, TSIZE);
+  dmalloc(data->c_reHeII1_reHeII1, TSIZE);
+  dmalloc(data->c_reHeII2_reHeII2, TSIZE);
+  dmalloc(data->c_reHeIII_reHeIII, TSIZE);
+  dmalloc(data->c_reHII_reHII, TSIZE);
+  dmalloc(data->g_gammaH2_1, TSIZE);
+  dmalloc(data->g_dgammaH2_1_dT, TSIZE);
+  dmalloc(data->g_gammaH2_2, TSIZE);
+  dmalloc(data->g_dgammaH2_2_dT, TSIZE);
+
+  // Input rate tables from HDF5
   cvklu_read_rate_tables(data, FileLocation, data->nbins+1, comm);
   cvklu_read_cooling_tables(data, FileLocation, data->nbins+1, comm);
   cvklu_read_gamma(data, FileLocation, data->nbins+1, comm);
@@ -424,313 +271,160 @@ void cvklu_free_data(void *data, SUNMemoryHelper memhelper)
   //-----------------------------------------------------
   cvklu_data *rxdata = (cvklu_data *) data;
 
-#ifdef RAJA_SERIAL
-  free(rxdata->scale);
-  free(rxdata->inv_scale);
-  free(rxdata->Ts);
-  free(rxdata->dTs_ge);
-  free(rxdata->mdensity);
-  free(rxdata->inv_mdensity);
-  free(rxdata->rs_k01);
-  free(rxdata->drs_k01);
-  free(rxdata->rs_k02);
-  free(rxdata->drs_k02);
-  free(rxdata->rs_k03);
-  free(rxdata->drs_k03);
-  free(rxdata->rs_k04);
-  free(rxdata->drs_k04);
-  free(rxdata->rs_k05);
-  free(rxdata->drs_k05);
-  free(rxdata->rs_k06);
-  free(rxdata->drs_k06);
-  free(rxdata->rs_k07);
-  free(rxdata->drs_k07);
-  free(rxdata->rs_k08);
-  free(rxdata->drs_k08);
-  free(rxdata->rs_k09);
-  free(rxdata->drs_k09);
-  free(rxdata->rs_k10);
-  free(rxdata->drs_k10);
-  free(rxdata->rs_k11);
-  free(rxdata->drs_k11);
-  free(rxdata->rs_k12);
-  free(rxdata->drs_k12);
-  free(rxdata->rs_k13);
-  free(rxdata->drs_k13);
-  free(rxdata->rs_k14);
-  free(rxdata->drs_k14);
-  free(rxdata->rs_k15);
-  free(rxdata->drs_k15);
-  free(rxdata->rs_k16);
-  free(rxdata->drs_k16);
-  free(rxdata->rs_k17);
-  free(rxdata->drs_k17);
-  free(rxdata->rs_k18);
-  free(rxdata->drs_k18);
-  free(rxdata->rs_k19);
-  free(rxdata->drs_k19);
-  free(rxdata->rs_k21);
-  free(rxdata->drs_k21);
-  free(rxdata->rs_k22);
-  free(rxdata->drs_k22);
-  free(rxdata->cs_brem_brem);
-  free(rxdata->dcs_brem_brem);
-  free(rxdata->cs_ceHeI_ceHeI);
-  free(rxdata->dcs_ceHeI_ceHeI);
-  free(rxdata->cs_ceHeII_ceHeII);
-  free(rxdata->dcs_ceHeII_ceHeII);
-  free(rxdata->cs_ceHI_ceHI);
-  free(rxdata->dcs_ceHI_ceHI);
-  free(rxdata->cs_cie_cooling_cieco);
-  free(rxdata->dcs_cie_cooling_cieco);
-  free(rxdata->cs_ciHeI_ciHeI);
-  free(rxdata->dcs_ciHeI_ciHeI);
-  free(rxdata->cs_ciHeII_ciHeII);
-  free(rxdata->dcs_ciHeII_ciHeII);
-  free(rxdata->cs_ciHeIS_ciHeIS);
-  free(rxdata->dcs_ciHeIS_ciHeIS);
-  free(rxdata->cs_ciHI_ciHI);
-  free(rxdata->dcs_ciHI_ciHI);
-  free(rxdata->cs_compton_comp_);
-  free(rxdata->dcs_compton_comp_);
-  free(rxdata->cs_gloverabel08_gael);
-  free(rxdata->dcs_gloverabel08_gael);
-  free(rxdata->cs_gloverabel08_gaH2);
-  free(rxdata->dcs_gloverabel08_gaH2);
-  free(rxdata->cs_gloverabel08_gaHe);
-  free(rxdata->dcs_gloverabel08_gaHe);
-  free(rxdata->cs_gloverabel08_gaHI);
-  free(rxdata->dcs_gloverabel08_gaHI);
-  free(rxdata->cs_gloverabel08_gaHp);
-  free(rxdata->dcs_gloverabel08_gaHp);
-  free(rxdata->cs_gloverabel08_h2lte);
-  free(rxdata->dcs_gloverabel08_h2lte);
-  free(rxdata->cs_h2formation_h2mcool);
-  free(rxdata->dcs_h2formation_h2mcool);
-  free(rxdata->cs_h2formation_h2mheat);
-  free(rxdata->dcs_h2formation_h2mheat);
-  free(rxdata->cs_h2formation_ncrd1);
-  free(rxdata->dcs_h2formation_ncrd1);
-  free(rxdata->cs_h2formation_ncrd2);
-  free(rxdata->dcs_h2formation_ncrd2);
-  free(rxdata->cs_h2formation_ncrn);
-  free(rxdata->dcs_h2formation_ncrn);
-  free(rxdata->cs_reHeII1_reHeII1);
-  free(rxdata->dcs_reHeII1_reHeII1);
-  free(rxdata->cs_reHeII2_reHeII2);
-  free(rxdata->dcs_reHeII2_reHeII2);
-  free(rxdata->cs_reHeIII_reHeIII);
-  free(rxdata->dcs_reHeIII_reHeIII);
-  free(rxdata->cs_reHII_reHII);
-  free(rxdata->dcs_reHII_reHII);
-  free(rxdata->cie_optical_depth_approx);
-  free(rxdata->h2_optical_depth_approx);
-  free(rxdata->r_k01);
-  free(rxdata->r_k02);
-  free(rxdata->r_k03);
-  free(rxdata->r_k04);
-  free(rxdata->r_k05);
-  free(rxdata->r_k06);
-  free(rxdata->r_k07);
-  free(rxdata->r_k08);
-  free(rxdata->r_k09);
-  free(rxdata->r_k10);
-  free(rxdata->r_k11);
-  free(rxdata->r_k12);
-  free(rxdata->r_k13);
-  free(rxdata->r_k14);
-  free(rxdata->r_k15);
-  free(rxdata->r_k16);
-  free(rxdata->r_k17);
-  free(rxdata->r_k18);
-  free(rxdata->r_k19);
-  free(rxdata->r_k21);
-  free(rxdata->r_k22);
-  free(rxdata->c_brem_brem);
-  free(rxdata->c_ceHeI_ceHeI);
-  free(rxdata->c_ceHeII_ceHeII);
-  free(rxdata->c_ceHI_ceHI);
-  free(rxdata->c_cie_cooling_cieco);
-  free(rxdata->c_ciHeI_ciHeI);
-  free(rxdata->c_ciHeII_ciHeII);
-  free(rxdata->c_ciHeIS_ciHeIS);
-  free(rxdata->c_ciHI_ciHI);
-  free(rxdata->c_compton_comp_);
-  free(rxdata->c_gloverabel08_gael);
-  free(rxdata->c_gloverabel08_gaH2);
-  free(rxdata->c_gloverabel08_gaHe);
-  free(rxdata->c_gloverabel08_gaHI);
-  free(rxdata->c_gloverabel08_gaHp);
-  free(rxdata->c_gloverabel08_h2lte);
-  free(rxdata->c_h2formation_h2mcool);
-  free(rxdata->c_h2formation_h2mheat);
-  free(rxdata->c_h2formation_ncrd1);
-  free(rxdata->c_h2formation_ncrd2);
-  free(rxdata->c_h2formation_ncrn);
-  free(rxdata->c_reHeII1_reHeII1);
-  free(rxdata->c_reHeII2_reHeII2);
-  free(rxdata->c_reHeIII_reHeIII);
-  free(rxdata->c_reHII_reHII);
-  free(rxdata->g_gammaH2_1);
-  free(rxdata->g_dgammaH2_1_dT);
-  free(rxdata->g_gammaH2_2);
-  free(rxdata->g_dgammaH2_2_dT);
-  free(rxdata);
-#elif RAJA_CUDA
-  cudaFree(rxdata->scale);
-  cudaFree(rxdata->inv_scale);
-  cudaFree(rxdata->Ts);
-  cudaFree(rxdata->dTs_ge);
-  cudaFree(rxdata->mdensity);
-  cudaFree(rxdata->inv_mdensity);
-  cudaFree(rxdata->rs_k01);
-  cudaFree(rxdata->drs_k01);
-  cudaFree(rxdata->rs_k02);
-  cudaFree(rxdata->drs_k02);
-  cudaFree(rxdata->rs_k03);
-  cudaFree(rxdata->drs_k03);
-  cudaFree(rxdata->rs_k04);
-  cudaFree(rxdata->drs_k04);
-  cudaFree(rxdata->rs_k05);
-  cudaFree(rxdata->drs_k05);
-  cudaFree(rxdata->rs_k06);
-  cudaFree(rxdata->drs_k06);
-  cudaFree(rxdata->rs_k07);
-  cudaFree(rxdata->drs_k07);
-  cudaFree(rxdata->rs_k08);
-  cudaFree(rxdata->drs_k08);
-  cudaFree(rxdata->rs_k09);
-  cudaFree(rxdata->drs_k09);
-  cudaFree(rxdata->rs_k10);
-  cudaFree(rxdata->drs_k10);
-  cudaFree(rxdata->rs_k11);
-  cudaFree(rxdata->drs_k11);
-  cudaFree(rxdata->rs_k12);
-  cudaFree(rxdata->drs_k12);
-  cudaFree(rxdata->rs_k13);
-  cudaFree(rxdata->drs_k13);
-  cudaFree(rxdata->rs_k14);
-  cudaFree(rxdata->drs_k14);
-  cudaFree(rxdata->rs_k15);
-  cudaFree(rxdata->drs_k15);
-  cudaFree(rxdata->rs_k16);
-  cudaFree(rxdata->drs_k16);
-  cudaFree(rxdata->rs_k17);
-  cudaFree(rxdata->drs_k17);
-  cudaFree(rxdata->rs_k18);
-  cudaFree(rxdata->drs_k18);
-  cudaFree(rxdata->rs_k19);
-  cudaFree(rxdata->drs_k19);
-  cudaFree(rxdata->rs_k21);
-  cudaFree(rxdata->drs_k21);
-  cudaFree(rxdata->rs_k22);
-  cudaFree(rxdata->drs_k22);
-  cudaFree(rxdata->cs_brem_brem);
-  cudaFree(rxdata->dcs_brem_brem);
-  cudaFree(rxdata->cs_ceHeI_ceHeI);
-  cudaFree(rxdata->dcs_ceHeI_ceHeI);
-  cudaFree(rxdata->cs_ceHeII_ceHeII);
-  cudaFree(rxdata->dcs_ceHeII_ceHeII);
-  cudaFree(rxdata->cs_ceHI_ceHI);
-  cudaFree(rxdata->dcs_ceHI_ceHI);
-  cudaFree(rxdata->cs_cie_cooling_cieco);
-  cudaFree(rxdata->dcs_cie_cooling_cieco);
-  cudaFree(rxdata->cs_ciHeI_ciHeI);
-  cudaFree(rxdata->dcs_ciHeI_ciHeI);
-  cudaFree(rxdata->cs_ciHeII_ciHeII);
-  cudaFree(rxdata->dcs_ciHeII_ciHeII);
-  cudaFree(rxdata->cs_ciHeIS_ciHeIS);
-  cudaFree(rxdata->dcs_ciHeIS_ciHeIS);
-  cudaFree(rxdata->cs_ciHI_ciHI);
-  cudaFree(rxdata->dcs_ciHI_ciHI);
-  cudaFree(rxdata->cs_compton_comp_);
-  cudaFree(rxdata->dcs_compton_comp_);
-  cudaFree(rxdata->cs_gloverabel08_gael);
-  cudaFree(rxdata->dcs_gloverabel08_gael);
-  cudaFree(rxdata->cs_gloverabel08_gaH2);
-  cudaFree(rxdata->dcs_gloverabel08_gaH2);
-  cudaFree(rxdata->cs_gloverabel08_gaHe);
-  cudaFree(rxdata->dcs_gloverabel08_gaHe);
-  cudaFree(rxdata->cs_gloverabel08_gaHI);
-  cudaFree(rxdata->dcs_gloverabel08_gaHI);
-  cudaFree(rxdata->cs_gloverabel08_gaHp);
-  cudaFree(rxdata->dcs_gloverabel08_gaHp);
-  cudaFree(rxdata->cs_gloverabel08_h2lte);
-  cudaFree(rxdata->dcs_gloverabel08_h2lte);
-  cudaFree(rxdata->cs_h2formation_h2mcool);
-  cudaFree(rxdata->dcs_h2formation_h2mcool);
-  cudaFree(rxdata->cs_h2formation_h2mheat);
-  cudaFree(rxdata->dcs_h2formation_h2mheat);
-  cudaFree(rxdata->cs_h2formation_ncrd1);
-  cudaFree(rxdata->dcs_h2formation_ncrd1);
-  cudaFree(rxdata->cs_h2formation_ncrd2);
-  cudaFree(rxdata->dcs_h2formation_ncrd2);
-  cudaFree(rxdata->cs_h2formation_ncrn);
-  cudaFree(rxdata->dcs_h2formation_ncrn);
-  cudaFree(rxdata->cs_reHeII1_reHeII1);
-  cudaFree(rxdata->dcs_reHeII1_reHeII1);
-  cudaFree(rxdata->cs_reHeII2_reHeII2);
-  cudaFree(rxdata->dcs_reHeII2_reHeII2);
-  cudaFree(rxdata->cs_reHeIII_reHeIII);
-  cudaFree(rxdata->dcs_reHeIII_reHeIII);
-  cudaFree(rxdata->cs_reHII_reHII);
-  cudaFree(rxdata->dcs_reHII_reHII);
-  cudaFree(rxdata->cie_optical_depth_approx);
-  cudaFree(rxdata->h2_optical_depth_approx);
-  cudaFree(rxdata->r_k01);
-  cudaFree(rxdata->r_k02);
-  cudaFree(rxdata->r_k03);
-  cudaFree(rxdata->r_k04);
-  cudaFree(rxdata->r_k05);
-  cudaFree(rxdata->r_k06);
-  cudaFree(rxdata->r_k07);
-  cudaFree(rxdata->r_k08);
-  cudaFree(rxdata->r_k09);
-  cudaFree(rxdata->r_k10);
-  cudaFree(rxdata->r_k11);
-  cudaFree(rxdata->r_k12);
-  cudaFree(rxdata->r_k13);
-  cudaFree(rxdata->r_k14);
-  cudaFree(rxdata->r_k15);
-  cudaFree(rxdata->r_k16);
-  cudaFree(rxdata->r_k17);
-  cudaFree(rxdata->r_k18);
-  cudaFree(rxdata->r_k19);
-  cudaFree(rxdata->r_k21);
-  cudaFree(rxdata->r_k22);
-  cudaFree(rxdata->c_brem_brem);
-  cudaFree(rxdata->c_ceHeI_ceHeI);
-  cudaFree(rxdata->c_ceHeII_ceHeII);
-  cudaFree(rxdata->c_ceHI_ceHI);
-  cudaFree(rxdata->c_cie_cooling_cieco);
-  cudaFree(rxdata->c_ciHeI_ciHeI);
-  cudaFree(rxdata->c_ciHeII_ciHeII);
-  cudaFree(rxdata->c_ciHeIS_ciHeIS);
-  cudaFree(rxdata->c_ciHI_ciHI);
-  cudaFree(rxdata->c_compton_comp_);
-  cudaFree(rxdata->c_gloverabel08_gael);
-  cudaFree(rxdata->c_gloverabel08_gaH2);
-  cudaFree(rxdata->c_gloverabel08_gaHe);
-  cudaFree(rxdata->c_gloverabel08_gaHI);
-  cudaFree(rxdata->c_gloverabel08_gaHp);
-  cudaFree(rxdata->c_gloverabel08_h2lte);
-  cudaFree(rxdata->c_h2formation_h2mcool);
-  cudaFree(rxdata->c_h2formation_h2mheat);
-  cudaFree(rxdata->c_h2formation_ncrd1);
-  cudaFree(rxdata->c_h2formation_ncrd2);
-  cudaFree(rxdata->c_h2formation_ncrn);
-  cudaFree(rxdata->c_reHeII1_reHeII1);
-  cudaFree(rxdata->c_reHeII2_reHeII2);
-  cudaFree(rxdata->c_reHeIII_reHeIII);
-  cudaFree(rxdata->c_reHII_reHII);
-  cudaFree(rxdata->g_gammaH2_1);
-  cudaFree(rxdata->g_dgammaH2_1_dT);
-  cudaFree(rxdata->g_gammaH2_2);
-  cudaFree(rxdata->g_dgammaH2_2_dT);
-  cudaFree(rxdata);
-#else
-#error RAJA HIP chemistry interface is currently unimplemented
-#endif
+  // Free data from within the cvklu_data structure
+  if (rxdata->scale != NULL) { dfree(rxdata->scale); rxdata->scale=NULL; }
+  if (rxdata->inv_scale != NULL) { dfree(rxdata->inv_scale); rxdata->inv_scale=NULL; }
+  if (rxdata->Ts != NULL) { dfree(rxdata->Ts); rxdata->Ts=NULL; }
+  if (rxdata->dTs_ge != NULL) { dfree(rxdata->dTs_ge); rxdata->dTs_ge=NULL; }
+  if (rxdata->mdensity != NULL) { dfree(rxdata->mdensity); rxdata->mdensity=NULL; }
+  if (rxdata->inv_mdensity != NULL) { dfree(rxdata->inv_mdensity); rxdata->inv_mdensity=NULL; }
+  if (rxdata->rs_k01 != NULL) { dfree(rxdata->rs_k01); rxdata->rs_k01=NULL; }
+  if (rxdata->drs_k01 != NULL) { dfree(rxdata->drs_k01); rxdata->drs_k01=NULL; }
+  if (rxdata->rs_k02 != NULL) { dfree(rxdata->rs_k02); rxdata->rs_k02=NULL; }
+  if (rxdata->drs_k02 != NULL) { dfree(rxdata->drs_k02); rxdata->drs_k02=NULL; }
+  if (rxdata->rs_k03 != NULL) { dfree(rxdata->rs_k03); rxdata->rs_k03=NULL; }
+  if (rxdata->drs_k03 != NULL) { dfree(rxdata->drs_k03); rxdata->drs_k03=NULL; }
+  if (rxdata->rs_k04 != NULL) { dfree(rxdata->rs_k04); rxdata->rs_k04=NULL; }
+  if (rxdata->drs_k04 != NULL) { dfree(rxdata->drs_k04); rxdata->drs_k04=NULL; }
+  if (rxdata->rs_k05 != NULL) { dfree(rxdata->rs_k05); rxdata->rs_k05=NULL; }
+  if (rxdata->drs_k05 != NULL) { dfree(rxdata->drs_k05); rxdata->drs_k05=NULL; }
+  if (rxdata->rs_k06 != NULL) { dfree(rxdata->rs_k06); rxdata->rs_k06=NULL; }
+  if (rxdata->drs_k06 != NULL) { dfree(rxdata->drs_k06); rxdata->drs_k06=NULL; }
+  if (rxdata->rs_k07 != NULL) { dfree(rxdata->rs_k07); rxdata->rs_k07=NULL; }
+  if (rxdata->drs_k07 != NULL) { dfree(rxdata->drs_k07); rxdata->drs_k07=NULL; }
+  if (rxdata->rs_k08 != NULL) { dfree(rxdata->rs_k08); rxdata->rs_k08=NULL; }
+  if (rxdata->drs_k08 != NULL) { dfree(rxdata->drs_k08); rxdata->drs_k08=NULL; }
+  if (rxdata->rs_k09 != NULL) { dfree(rxdata->rs_k09); rxdata->rs_k09=NULL; }
+  if (rxdata->drs_k09 != NULL) { dfree(rxdata->drs_k09); rxdata->drs_k09=NULL; }
+  if (rxdata->rs_k10 != NULL) { dfree(rxdata->rs_k10); rxdata->rs_k10=NULL; }
+  if (rxdata->drs_k10 != NULL) { dfree(rxdata->drs_k10); rxdata->drs_k10=NULL; }
+  if (rxdata->rs_k11 != NULL) { dfree(rxdata->rs_k11); rxdata->rs_k11=NULL; }
+  if (rxdata->drs_k11 != NULL) { dfree(rxdata->drs_k11); rxdata->drs_k11=NULL; }
+  if (rxdata->rs_k12 != NULL) { dfree(rxdata->rs_k12); rxdata->rs_k12=NULL; }
+  if (rxdata->drs_k12 != NULL) { dfree(rxdata->drs_k12); rxdata->drs_k12=NULL; }
+  if (rxdata->rs_k13 != NULL) { dfree(rxdata->rs_k13); rxdata->rs_k13=NULL; }
+  if (rxdata->drs_k13 != NULL) { dfree(rxdata->drs_k13); rxdata->drs_k13=NULL; }
+  if (rxdata->rs_k14 != NULL) { dfree(rxdata->rs_k14); rxdata->rs_k14=NULL; }
+  if (rxdata->drs_k14 != NULL) { dfree(rxdata->drs_k14); rxdata->drs_k14=NULL; }
+  if (rxdata->rs_k15 != NULL) { dfree(rxdata->rs_k15); rxdata->rs_k15=NULL; }
+  if (rxdata->drs_k15 != NULL) { dfree(rxdata->drs_k15); rxdata->drs_k15=NULL; }
+  if (rxdata->rs_k16 != NULL) { dfree(rxdata->rs_k16); rxdata->rs_k16=NULL; }
+  if (rxdata->drs_k16 != NULL) { dfree(rxdata->drs_k16); rxdata->drs_k16=NULL; }
+  if (rxdata->rs_k17 != NULL) { dfree(rxdata->rs_k17); rxdata->rs_k17=NULL; }
+  if (rxdata->drs_k17 != NULL) { dfree(rxdata->drs_k17); rxdata->drs_k17=NULL; }
+  if (rxdata->rs_k18 != NULL) { dfree(rxdata->rs_k18); rxdata->rs_k18=NULL; }
+  if (rxdata->drs_k18 != NULL) { dfree(rxdata->drs_k18); rxdata->drs_k18=NULL; }
+  if (rxdata->rs_k19 != NULL) { dfree(rxdata->rs_k19); rxdata->rs_k19=NULL; }
+  if (rxdata->drs_k19 != NULL) { dfree(rxdata->drs_k19); rxdata->drs_k19=NULL; }
+  if (rxdata->rs_k21 != NULL) { dfree(rxdata->rs_k21); rxdata->rs_k21=NULL; }
+  if (rxdata->drs_k21 != NULL) { dfree(rxdata->drs_k21); rxdata->drs_k21=NULL; }
+  if (rxdata->rs_k22 != NULL) { dfree(rxdata->rs_k22); rxdata->rs_k22=NULL; }
+  if (rxdata->drs_k22 != NULL) { dfree(rxdata->drs_k22); rxdata->drs_k22=NULL; }
+  if (rxdata->cs_brem_brem != NULL) { dfree(rxdata->cs_brem_brem); rxdata->cs_brem_brem=NULL; }
+  if (rxdata->dcs_brem_brem != NULL) { dfree(rxdata->dcs_brem_brem); rxdata->dcs_brem_brem=NULL; }
+  if (rxdata->cs_ceHeI_ceHeI != NULL) { dfree(rxdata->cs_ceHeI_ceHeI); rxdata->cs_ceHeI_ceHeI=NULL; }
+  if (rxdata->dcs_ceHeI_ceHeI != NULL) { dfree(rxdata->dcs_ceHeI_ceHeI); rxdata->dcs_ceHeI_ceHeI=NULL; }
+  if (rxdata->cs_ceHeII_ceHeII != NULL) { dfree(rxdata->cs_ceHeII_ceHeII); rxdata->cs_ceHeII_ceHeII=NULL; }
+  if (rxdata->dcs_ceHeII_ceHeII != NULL) { dfree(rxdata->dcs_ceHeII_ceHeII); rxdata->dcs_ceHeII_ceHeII=NULL; }
+  if (rxdata->cs_ceHI_ceHI != NULL) { dfree(rxdata->cs_ceHI_ceHI); rxdata->cs_ceHI_ceHI=NULL; }
+  if (rxdata->dcs_ceHI_ceHI != NULL) { dfree(rxdata->dcs_ceHI_ceHI); rxdata->dcs_ceHI_ceHI=NULL; }
+  if (rxdata->cs_cie_cooling_cieco != NULL) { dfree(rxdata->cs_cie_cooling_cieco); rxdata->cs_cie_cooling_cieco=NULL; }
+  if (rxdata->dcs_cie_cooling_cieco != NULL) { dfree(rxdata->dcs_cie_cooling_cieco); rxdata->dcs_cie_cooling_cieco=NULL; }
+  if (rxdata->cs_ciHeI_ciHeI != NULL) { dfree(rxdata->cs_ciHeI_ciHeI); rxdata->cs_ciHeI_ciHeI=NULL; }
+  if (rxdata->dcs_ciHeI_ciHeI != NULL) { dfree(rxdata->dcs_ciHeI_ciHeI); rxdata->dcs_ciHeI_ciHeI=NULL; }
+  if (rxdata->cs_ciHeII_ciHeII != NULL) { dfree(rxdata->cs_ciHeII_ciHeII); rxdata->cs_ciHeII_ciHeII=NULL; }
+  if (rxdata->dcs_ciHeII_ciHeII != NULL) { dfree(rxdata->dcs_ciHeII_ciHeII); rxdata->dcs_ciHeII_ciHeII=NULL; }
+  if (rxdata->cs_ciHeIS_ciHeIS != NULL) { dfree(rxdata->cs_ciHeIS_ciHeIS); rxdata->cs_ciHeIS_ciHeIS=NULL; }
+  if (rxdata->dcs_ciHeIS_ciHeIS != NULL) { dfree(rxdata->dcs_ciHeIS_ciHeIS); rxdata->dcs_ciHeIS_ciHeIS=NULL; }
+  if (rxdata->cs_ciHI_ciHI != NULL) { dfree(rxdata->cs_ciHI_ciHI); rxdata->cs_ciHI_ciHI=NULL; }
+  if (rxdata->dcs_ciHI_ciHI != NULL) { dfree(rxdata->dcs_ciHI_ciHI); rxdata->dcs_ciHI_ciHI=NULL; }
+  if (rxdata->cs_compton_comp_ != NULL) { dfree(rxdata->cs_compton_comp_); rxdata->cs_compton_comp_=NULL; }
+  if (rxdata->dcs_compton_comp_ != NULL) { dfree(rxdata->dcs_compton_comp_); rxdata->dcs_compton_comp_=NULL; }
+  if (rxdata->cs_gloverabel08_gael != NULL) { dfree(rxdata->cs_gloverabel08_gael); rxdata->cs_gloverabel08_gael=NULL; }
+  if (rxdata->dcs_gloverabel08_gael != NULL) { dfree(rxdata->dcs_gloverabel08_gael); rxdata->dcs_gloverabel08_gael=NULL; }
+  if (rxdata->cs_gloverabel08_gaH2 != NULL) { dfree(rxdata->cs_gloverabel08_gaH2); rxdata->cs_gloverabel08_gaH2=NULL; }
+  if (rxdata->dcs_gloverabel08_gaH2 != NULL) { dfree(rxdata->dcs_gloverabel08_gaH2); rxdata->dcs_gloverabel08_gaH2=NULL; }
+  if (rxdata->cs_gloverabel08_gaHe != NULL) { dfree(rxdata->cs_gloverabel08_gaHe); rxdata->cs_gloverabel08_gaHe=NULL; }
+  if (rxdata->dcs_gloverabel08_gaHe != NULL) { dfree(rxdata->dcs_gloverabel08_gaHe); rxdata->dcs_gloverabel08_gaHe=NULL; }
+  if (rxdata->cs_gloverabel08_gaHI != NULL) { dfree(rxdata->cs_gloverabel08_gaHI); rxdata->cs_gloverabel08_gaHI=NULL; }
+  if (rxdata->dcs_gloverabel08_gaHI != NULL) { dfree(rxdata->dcs_gloverabel08_gaHI); rxdata->dcs_gloverabel08_gaHI=NULL; }
+  if (rxdata->cs_gloverabel08_gaHp != NULL) { dfree(rxdata->cs_gloverabel08_gaHp); rxdata->cs_gloverabel08_gaHp=NULL; }
+  if (rxdata->dcs_gloverabel08_gaHp != NULL) { dfree(rxdata->dcs_gloverabel08_gaHp); rxdata->dcs_gloverabel08_gaHp=NULL; }
+  if (rxdata->cs_gloverabel08_h2lte != NULL) { dfree(rxdata->cs_gloverabel08_h2lte); rxdata->cs_gloverabel08_h2lte=NULL; }
+  if (rxdata->dcs_gloverabel08_h2lte != NULL) { dfree(rxdata->dcs_gloverabel08_h2lte); rxdata->dcs_gloverabel08_h2lte=NULL; }
+  if (rxdata->cs_h2formation_h2mcool != NULL) { dfree(rxdata->cs_h2formation_h2mcool); rxdata->cs_h2formation_h2mcool=NULL; }
+  if (rxdata->dcs_h2formation_h2mcool != NULL) { dfree(rxdata->dcs_h2formation_h2mcool); rxdata->dcs_h2formation_h2mcool=NULL; }
+  if (rxdata->cs_h2formation_h2mheat != NULL) { dfree(rxdata->cs_h2formation_h2mheat); rxdata->cs_h2formation_h2mheat=NULL; }
+  if (rxdata->dcs_h2formation_h2mheat != NULL) { dfree(rxdata->dcs_h2formation_h2mheat); rxdata->dcs_h2formation_h2mheat=NULL; }
+  if (rxdata->cs_h2formation_ncrd1 != NULL) { dfree(rxdata->cs_h2formation_ncrd1); rxdata->cs_h2formation_ncrd1=NULL; }
+  if (rxdata->dcs_h2formation_ncrd1 != NULL) { dfree(rxdata->dcs_h2formation_ncrd1); rxdata->dcs_h2formation_ncrd1=NULL; }
+  if (rxdata->cs_h2formation_ncrd2 != NULL) { dfree(rxdata->cs_h2formation_ncrd2); rxdata->cs_h2formation_ncrd2=NULL; }
+  if (rxdata->dcs_h2formation_ncrd2 != NULL) { dfree(rxdata->dcs_h2formation_ncrd2); rxdata->dcs_h2formation_ncrd2=NULL; }
+  if (rxdata->cs_h2formation_ncrn != NULL) { dfree(rxdata->cs_h2formation_ncrn); rxdata->cs_h2formation_ncrn=NULL; }
+  if (rxdata->dcs_h2formation_ncrn != NULL) { dfree(rxdata->dcs_h2formation_ncrn); rxdata->dcs_h2formation_ncrn=NULL; }
+  if (rxdata->cs_reHeII1_reHeII1 != NULL) { dfree(rxdata->cs_reHeII1_reHeII1); rxdata->cs_reHeII1_reHeII1=NULL; }
+  if (rxdata->dcs_reHeII1_reHeII1 != NULL) { dfree(rxdata->dcs_reHeII1_reHeII1); rxdata->dcs_reHeII1_reHeII1=NULL; }
+  if (rxdata->cs_reHeII2_reHeII2 != NULL) { dfree(rxdata->cs_reHeII2_reHeII2); rxdata->cs_reHeII2_reHeII2=NULL; }
+  if (rxdata->dcs_reHeII2_reHeII2 != NULL) { dfree(rxdata->dcs_reHeII2_reHeII2); rxdata->dcs_reHeII2_reHeII2=NULL; }
+  if (rxdata->cs_reHeIII_reHeIII != NULL) { dfree(rxdata->cs_reHeIII_reHeIII); rxdata->cs_reHeIII_reHeIII=NULL; }
+  if (rxdata->dcs_reHeIII_reHeIII != NULL) { dfree(rxdata->dcs_reHeIII_reHeIII); rxdata->dcs_reHeIII_reHeIII=NULL; }
+  if (rxdata->cs_reHII_reHII != NULL) { dfree(rxdata->cs_reHII_reHII); rxdata->cs_reHII_reHII=NULL; }
+  if (rxdata->dcs_reHII_reHII != NULL) { dfree(rxdata->dcs_reHII_reHII); rxdata->dcs_reHII_reHII=NULL; }
+  if (rxdata->cie_optical_depth_approx != NULL) { dfree(rxdata->cie_optical_depth_approx); rxdata->cie_optical_depth_approx=NULL; }
+  if (rxdata->h2_optical_depth_approx != NULL) { dfree(rxdata->h2_optical_depth_approx); rxdata->h2_optical_depth_approx=NULL; }
+  if (rxdata->r_k01 != NULL) { dfree(rxdata->r_k01); rxdata->r_k01=NULL; }
+  if (rxdata->r_k02 != NULL) { dfree(rxdata->r_k02); rxdata->r_k02=NULL; }
+  if (rxdata->r_k03 != NULL) { dfree(rxdata->r_k03); rxdata->r_k03=NULL; }
+  if (rxdata->r_k04 != NULL) { dfree(rxdata->r_k04); rxdata->r_k04=NULL; }
+  if (rxdata->r_k05 != NULL) { dfree(rxdata->r_k05); rxdata->r_k05=NULL; }
+  if (rxdata->r_k06 != NULL) { dfree(rxdata->r_k06); rxdata->r_k06=NULL; }
+  if (rxdata->r_k07 != NULL) { dfree(rxdata->r_k07); rxdata->r_k07=NULL; }
+  if (rxdata->r_k08 != NULL) { dfree(rxdata->r_k08); rxdata->r_k08=NULL; }
+  if (rxdata->r_k09 != NULL) { dfree(rxdata->r_k09); rxdata->r_k09=NULL; }
+  if (rxdata->r_k10 != NULL) { dfree(rxdata->r_k10); rxdata->r_k10=NULL; }
+  if (rxdata->r_k11 != NULL) { dfree(rxdata->r_k11); rxdata->r_k11=NULL; }
+  if (rxdata->r_k12 != NULL) { dfree(rxdata->r_k12); rxdata->r_k12=NULL; }
+  if (rxdata->r_k13 != NULL) { dfree(rxdata->r_k13); rxdata->r_k13=NULL; }
+  if (rxdata->r_k14 != NULL) { dfree(rxdata->r_k14); rxdata->r_k14=NULL; }
+  if (rxdata->r_k15 != NULL) { dfree(rxdata->r_k15); rxdata->r_k15=NULL; }
+  if (rxdata->r_k16 != NULL) { dfree(rxdata->r_k16); rxdata->r_k16=NULL; }
+  if (rxdata->r_k17 != NULL) { dfree(rxdata->r_k17); rxdata->r_k17=NULL; }
+  if (rxdata->r_k18 != NULL) { dfree(rxdata->r_k18); rxdata->r_k18=NULL; }
+  if (rxdata->r_k19 != NULL) { dfree(rxdata->r_k19); rxdata->r_k19=NULL; }
+  if (rxdata->r_k21 != NULL) { dfree(rxdata->r_k21); rxdata->r_k21=NULL; }
+  if (rxdata->r_k22 != NULL) { dfree(rxdata->r_k22); rxdata->r_k22=NULL; }
+  if (rxdata->c_brem_brem != NULL) { dfree(rxdata->c_brem_brem); rxdata->c_brem_brem=NULL; }
+  if (rxdata->c_ceHeI_ceHeI != NULL) { dfree(rxdata->c_ceHeI_ceHeI); rxdata->c_ceHeI_ceHeI=NULL; }
+  if (rxdata->c_ceHeII_ceHeII != NULL) { dfree(rxdata->c_ceHeII_ceHeII); rxdata->c_ceHeII_ceHeII=NULL; }
+  if (rxdata->c_ceHI_ceHI != NULL) { dfree(rxdata->c_ceHI_ceHI); rxdata->c_ceHI_ceHI=NULL; }
+  if (rxdata->c_cie_cooling_cieco != NULL) { dfree(rxdata->c_cie_cooling_cieco); rxdata->c_cie_cooling_cieco=NULL; }
+  if (rxdata->c_ciHeI_ciHeI != NULL) { dfree(rxdata->c_ciHeI_ciHeI); rxdata->c_ciHeI_ciHeI=NULL; }
+  if (rxdata->c_ciHeII_ciHeII != NULL) { dfree(rxdata->c_ciHeII_ciHeII); rxdata->c_ciHeII_ciHeII=NULL; }
+  if (rxdata->c_ciHeIS_ciHeIS != NULL) { dfree(rxdata->c_ciHeIS_ciHeIS); rxdata->c_ciHeIS_ciHeIS=NULL; }
+  if (rxdata->c_ciHI_ciHI != NULL) { dfree(rxdata->c_ciHI_ciHI); rxdata->c_ciHI_ciHI=NULL; }
+  if (rxdata->c_compton_comp_ != NULL) { dfree(rxdata->c_compton_comp_); rxdata->c_compton_comp_=NULL; }
+  if (rxdata->c_gloverabel08_gael != NULL) { dfree(rxdata->c_gloverabel08_gael); rxdata->c_gloverabel08_gael=NULL; }
+  if (rxdata->c_gloverabel08_gaH2 != NULL) { dfree(rxdata->c_gloverabel08_gaH2); rxdata->c_gloverabel08_gaH2=NULL; }
+  if (rxdata->c_gloverabel08_gaHe != NULL) { dfree(rxdata->c_gloverabel08_gaHe); rxdata->c_gloverabel08_gaHe=NULL; }
+  if (rxdata->c_gloverabel08_gaHI != NULL) { dfree(rxdata->c_gloverabel08_gaHI); rxdata->c_gloverabel08_gaHI=NULL; }
+  if (rxdata->c_gloverabel08_gaHp != NULL) { dfree(rxdata->c_gloverabel08_gaHp); rxdata->c_gloverabel08_gaHp=NULL; }
+  if (rxdata->c_gloverabel08_h2lte != NULL) { dfree(rxdata->c_gloverabel08_h2lte); rxdata->c_gloverabel08_h2lte=NULL; }
+  if (rxdata->c_h2formation_h2mcool != NULL) { dfree(rxdata->c_h2formation_h2mcool); rxdata->c_h2formation_h2mcool=NULL; }
+  if (rxdata->c_h2formation_h2mheat != NULL) { dfree(rxdata->c_h2formation_h2mheat); rxdata->c_h2formation_h2mheat=NULL; }
+  if (rxdata->c_h2formation_ncrd1 != NULL) { dfree(rxdata->c_h2formation_ncrd1); rxdata->c_h2formation_ncrd1=NULL; }
+  if (rxdata->c_h2formation_ncrd2 != NULL) { dfree(rxdata->c_h2formation_ncrd2); rxdata->c_h2formation_ncrd2=NULL; }
+  if (rxdata->c_h2formation_ncrn != NULL) { dfree(rxdata->c_h2formation_ncrn); rxdata->c_h2formation_ncrn=NULL; }
+  if (rxdata->c_reHeII1_reHeII1 != NULL) { dfree(rxdata->c_reHeII1_reHeII1); rxdata->c_reHeII1_reHeII1=NULL; }
+  if (rxdata->c_reHeII2_reHeII2 != NULL) { dfree(rxdata->c_reHeII2_reHeII2); rxdata->c_reHeII2_reHeII2=NULL; }
+  if (rxdata->c_reHeIII_reHeIII != NULL) { dfree(rxdata->c_reHeIII_reHeIII); rxdata->c_reHeIII_reHeIII=NULL; }
+  if (rxdata->c_reHII_reHII != NULL) { dfree(rxdata->c_reHII_reHII); rxdata->c_reHII_reHII=NULL; }
+  if (rxdata->g_gammaH2_1 != NULL) { dfree(rxdata->g_gammaH2_1); rxdata->g_gammaH2_1=NULL; }
+  if (rxdata->g_dgammaH2_1_dT != NULL) { dfree(rxdata->g_dgammaH2_1_dT); rxdata->g_dgammaH2_1_dT=NULL; }
+  if (rxdata->g_gammaH2_2 != NULL) { dfree(rxdata->g_gammaH2_2); rxdata->g_gammaH2_2=NULL; }
+  if (rxdata->g_dgammaH2_2_dT != NULL) { dfree(rxdata->g_dgammaH2_2_dT); rxdata->g_dgammaH2_2_dT=NULL; }
+
+  // free cvklu_data structure itself
+  if (rxdata != NULL) { dfree(rxdata); rxdata=NULL; }
 
 }
 
@@ -1322,9 +1016,13 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
                         long int nstrip, void *user_data)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
+#ifdef USE_DEVICE
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
-
+#else
+  const double *ydata = N_VGetArrayPointer(y);
+  double *ydotdata    = N_VGetArrayPointer(ydot);
+#endif
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     double y_arr[NSPECIES];
@@ -1675,6 +1373,7 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 
   });
 
+#ifdef USE_DEVICE
   // synchronize device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
   HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
@@ -1684,234 +1383,10 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
               << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
     return(-1);
   }
-
-  return 0;
-}
-
-
-
-#ifndef USEMAGMA
-int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
-{
-#ifdef RAJA_CUDA
-
-  // Access CSR sparse matrix structures, and zero out data
-  sunindextype rowptrs[11];
-  sunindextype colvals[NSPARSE];
-
-  // H2_1 by H2_1
-  colvals[0] = 0 ;
-
-  // H2_1 by H2_2
-  colvals[1] = 1 ;
-
-  // H2_1 by H_1
-  colvals[2] = 2 ;
-
-  // H2_1 by H_2
-  colvals[3] = 3 ;
-
-  // H2_1 by H_m0
-  colvals[4] = 4 ;
-
-  // H2_1 by de
-  colvals[5] = 8 ;
-
-  // H2_1 by ge
-  colvals[6] = 9 ;
-
-  // H2_2 by H2_1
-  colvals[7] = 0 ;
-
-  // H2_2 by H2_2
-  colvals[8] = 1 ;
-
-  // H2_2 by H_1
-  colvals[9] = 2 ;
-
-  // H2_2 by H_2
-  colvals[10] = 3 ;
-
-  // H2_2 by H_m0
-  colvals[11] = 4 ;
-
-  // H2_2 by de
-  colvals[12] = 8 ;
-
-  // H2_2 by ge
-  colvals[13] = 9 ;
-
-  // H_1 by H2_1
-  colvals[14] = 0 ;
-
-  // H_1 by H2_2
-  colvals[15] = 1 ;
-
-  // H_1 by H_1
-  colvals[16] = 2 ;
-
-  // H_1 by H_2
-  colvals[17] = 3 ;
-
-  // H_1 by H_m0
-  colvals[18] = 4 ;
-
-  // H_1 by de
-  colvals[19] = 8 ;
-
-  // H_1 by ge
-  colvals[20] = 9 ;
-
-  // H_2 by H2_1
-  colvals[21] = 0 ;
-
-  // H_2 by H2_2
-  colvals[22] = 1 ;
-
-  // H_2 by H_1
-  colvals[23] = 2 ;
-
-  // H_2 by H_2
-  colvals[24] = 3 ;
-
-  // H_2 by H_m0
-  colvals[25] = 4 ;
-
-  // H_2 by de
-  colvals[26] = 8 ;
-
-  // H_2 by ge
-  colvals[27] = 9 ;
-
-  // H_m0 by H2_2
-  colvals[28] = 1 ;
-
-  // H_m0 by H_1
-  colvals[29] = 2 ;
-
-  // H_m0 by H_2
-  colvals[30] = 3 ;
-
-  // H_m0 by H_m0
-  colvals[31] = 4 ;
-
-  // H_m0 by de
-  colvals[32] = 8 ;
-
-  // H_m0 by ge
-  colvals[33] = 9 ;
-
-  // He_1 by He_1
-  colvals[34] = 5 ;
-
-  // He_1 by He_2
-  colvals[35] = 6 ;
-
-  // He_1 by de
-  colvals[36] = 8 ;
-
-  // He_1 by ge
-  colvals[37] = 9 ;
-
-  // He_2 by He_1
-  colvals[38] = 5 ;
-
-  // He_2 by He_2
-  colvals[39] = 6 ;
-
-  // He_2 by He_3
-  colvals[40] = 7 ;
-
-  // He_2 by de
-  colvals[41] = 8 ;
-
-  // He_2 by ge
-  colvals[42] = 9 ;
-
-  // He_3 by He_2
-  colvals[43] = 6 ;
-
-  // He_3 by He_3
-  colvals[44] = 7 ;
-
-  // He_3 by de
-  colvals[45] = 8 ;
-
-  // He_3 by ge
-  colvals[46] = 9 ;
-
-  // de by H2_2
-  colvals[47] = 1 ;
-
-  // de by H_1
-  colvals[48] = 2 ;
-
-  // de by H_2
-  colvals[49] = 3 ;
-
-  // de by H_m0
-  colvals[50] = 4 ;
-
-  // de by He_1
-  colvals[51] = 5 ;
-
-  // de by He_2
-  colvals[52] = 6 ;
-
-  // de by He_3
-  colvals[53] = 7 ;
-
-  // de by de
-  colvals[54] = 8 ;
-
-  // de by ge
-  colvals[55] = 9 ;
-
-  // ge by H2_1
-  colvals[56] = 0 ;
-
-  // ge by H_1
-  colvals[57] = 2 ;
-
-  // ge by H_2
-  colvals[58] = 3 ;
-
-  // ge by He_1
-  colvals[59] = 5 ;
-
-  // ge by He_2
-  colvals[60] = 6 ;
-
-  // ge by He_3
-  colvals[61] = 7 ;
-
-  // ge by de
-  colvals[62] = 8 ;
-
-  // ge by ge
-  colvals[63] = 9 ;
-
-  // set row pointers for CSR structure
-  rowptrs[0] = 0;
-  rowptrs[1] = 7;
-  rowptrs[2] = 14;
-  rowptrs[3] = 21;
-  rowptrs[4] = 28;
-  rowptrs[5] = 34;
-  rowptrs[6] = 38;
-  rowptrs[7] = 43;
-  rowptrs[8] = 47;
-  rowptrs[9] = 56;
-  rowptrs[10] = NSPARSE;
-
-  // copy rowptrs, colvals to the device
-  SUNMatrix_cuSparse_CopyToDevice(J, NULL, rowptrs, colvals);
-  cudaDeviceSynchronize();
 #endif
 
   return 0;
 }
-#endif
 
 
 
@@ -1921,23 +1396,19 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                              N_Vector tmp2, N_Vector tmp3)
 {
   cvklu_data *data    = (cvklu_data*) user_data;
-  const double *ydata = N_VGetDeviceArrayPointer(y);
 
-  // Access dense matrix structures, and zero out data
-#ifdef USEMAGMA
+#ifdef USE_DEVICE
+  // Access vector data and dense matrix structures
+  const double *ydata = N_VGetDeviceArrayPointer(y);
   realtype *matrix_data = SUNMatrix_MagmaDense_Data(J);
 #else
-  // Access CSR sparse matrix structures, and zero out data
-#ifdef RAJA_CUDA
-  realtype *matrix_data = SUNMatrix_cuSparse_Data(J);
-  sunindextype *rowptrs = SUNMatrix_cuSparse_IndexPointers(J);
-  sunindextype *colvals = SUNMatrix_cuSparse_IndexValues(J);
-#elif RAJA_SERIAL
+  // Access vector data and CSR sparse matrix structures
+  const double *ydata = N_VGetArrayPointer(y);
   realtype *matrix_data = SUNSparseMatrix_Data(J);
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
   sunindextype *colvals = SUNSparseMatrix_IndexValues(J);
 #endif
-#endif
+  // Zero out matrix values
   SUNMatZero(J);
 
   // Loop over data, filling in Jacobian
@@ -2395,7 +1866,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ idx ] *= Tge;
     matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 9 ]);
 
-#if defined(RAJA_SERIAL) && !defined(USEMAGMA)
+#ifndef USE_DEVICE
     colvals[i * NSPARSE + 0] = i * NSPECIES + 0 ;
     colvals[i * NSPARSE + 1] = i * NSPECIES + 1 ;
     colvals[i * NSPARSE + 2] = i * NSPECIES + 2 ;
@@ -2478,6 +1949,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   });
 
+#ifdef USE_DEVICE
   // synchronize device memory
   HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
   HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
@@ -2487,6 +1959,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
               << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
     return(-1);
   }
+#endif
 
   return 0;
 }

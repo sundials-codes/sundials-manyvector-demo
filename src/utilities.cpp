@@ -79,7 +79,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
         // return with failure on non-positive density, energy or pressure
         // (only check this first time)
-        idx = IDX(i,j,k,nxl,nyl,nzl);
+        idx = INDX(i,j,k,nxl,nyl,nzl);
         retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
         if (check_flag(&retval, "legal_state (fEuler)", 4)) return -1;
 
@@ -88,7 +88,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->pack1D_x(w1d, rho, mx, my, mz, et, chem, i, j, k);
         udata->profile[PR_PACKDATA].stop();
         // compute flux at lower x-directional face
-        idx = BUFIDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
+        idx = BUFINDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
         udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
         udata->profile[PR_FACEFLUX].stop();
@@ -98,7 +98,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->pack1D_y(w1d, rho, mx, my, mz, et, chem, i, j, k);
         udata->profile[PR_PACKDATA].stop();
         // compute flux at lower y-directional face
-        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        idx = BUFINDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
         udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
         udata->profile[PR_FACEFLUX].stop();
@@ -108,7 +108,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->pack1D_z(w1d, rho, mx, my, mz, et, chem, i, j, k);
         udata->profile[PR_PACKDATA].stop();
         // compute flux at lower z-directional face
-        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        idx = BUFINDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
         udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
         udata->profile[PR_FACEFLUX].stop();
@@ -128,7 +128,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         if ( (k>2) && (k<nzl-2) && (j>2) && (j<nyl-2) && (i>2) && (i<nxl-2) ) continue;
 
         // return with failure on non-positive density, energy or pressure
-        idx = IDX(i,j,k,nxl,nyl,nzl);
+        idx = INDX(i,j,k,nxl,nyl,nzl);
         retval = udata->legal_state(rho[idx], mx[idx], my[idx], mz[idx], et[idx]);
         if (check_flag(&retval, "legal_state (fEuler)", 4)) return -1;
 
@@ -136,7 +136,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->profile[PR_PACKDATA].start();
         udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
         udata->profile[PR_PACKDATA].stop();
-        idx = BUFIDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
+        idx = BUFINDX(0,i,j,k,NVAR,nxl+1,nyl,nzl);
         udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
         udata->profile[PR_FACEFLUX].stop();
@@ -146,7 +146,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
           udata->profile[PR_PACKDATA].start();
           udata->pack1D_x_bdry(w1d, rho, mx, my, mz, et, chem, nxl, j, k);
           udata->profile[PR_PACKDATA].stop();
-          idx = BUFIDX(0,nxl,j,k,NVAR,nxl+1,nyl,nzl);
+          idx = BUFINDX(0,nxl,j,k,NVAR,nxl+1,nyl,nzl);
           udata->profile[PR_FACEFLUX].start();
           face_flux(w1d, 0, &(udata->xflux[idx]), *udata);
           udata->profile[PR_FACEFLUX].stop();
@@ -156,7 +156,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->profile[PR_PACKDATA].start();
         udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
         udata->profile[PR_PACKDATA].stop();
-        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
+        idx = BUFINDX(0,i,j,k,NVAR,nxl,nyl+1,nzl);
         udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
         udata->profile[PR_FACEFLUX].stop();
@@ -166,7 +166,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
           udata->profile[PR_PACKDATA].start();
           udata->pack1D_y_bdry(w1d, rho, mx, my, mz, et, chem, i, nyl, k);
           udata->profile[PR_PACKDATA].stop();
-          idx = BUFIDX(0,i,nyl,k,NVAR,nxl,nyl+1,nzl);
+          idx = BUFINDX(0,i,nyl,k,NVAR,nxl,nyl+1,nzl);
           udata->profile[PR_FACEFLUX].start();
           face_flux(w1d, 1, &(udata->yflux[idx]), *udata);
           udata->profile[PR_FACEFLUX].stop();
@@ -176,7 +176,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
         udata->profile[PR_PACKDATA].start();
         udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, chem, i, j, k);
         udata->profile[PR_PACKDATA].stop();
-        idx = BUFIDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
+        idx = BUFINDX(0,i,j,k,NVAR,nxl,nyl,nzl+1);
         udata->profile[PR_FACEFLUX].start();
         face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
         udata->profile[PR_FACEFLUX].stop();
@@ -186,7 +186,7 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
           udata->profile[PR_PACKDATA].start();
           udata->pack1D_z_bdry(w1d, rho, mx, my, mz, et, chem, i, j, nzl);
           udata->profile[PR_PACKDATA].stop();
-          idx = BUFIDX(0,i,j,nzl,NVAR,nxl,nyl,nzl+1);
+          idx = BUFINDX(0,i,j,nzl,NVAR,nxl,nyl,nzl+1);
           udata->profile[PR_FACEFLUX].start();
           face_flux(w1d, 2, &(udata->zflux[idx]), *udata);
           udata->profile[PR_FACEFLUX].stop();
@@ -198,48 +198,48 @@ int fEuler(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (k=0; k<nzl; k++)
     for (j=0; j<nyl; j++)
       for (i=0; i<nxl; i++) {
-        idx = IDX(i,j,k,nxl,nyl,nzl);
-        rhodot[idx] -= ( ( udata->xflux[BUFIDX(0,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(0,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(0,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(0,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(0,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(0,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mxdot[idx]  -= ( ( udata->xflux[BUFIDX(1,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(1,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(1,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(1,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(1,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(1,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mydot[idx]  -= ( ( udata->xflux[BUFIDX(2,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(2,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(2,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(2,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(2,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(2,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
-        mzdot[idx]  -= ( ( udata->xflux[BUFIDX(3,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(3,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(3,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(3,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(3,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(3,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
-        etdot[idx]  -= ( ( udata->xflux[BUFIDX(4,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
-                         - udata->xflux[BUFIDX(4,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
-                       + ( udata->yflux[BUFIDX(4,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
-                         - udata->yflux[BUFIDX(4,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
-                       + ( udata->zflux[BUFIDX(4,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
-                         - udata->zflux[BUFIDX(4,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        idx = INDX(i,j,k,nxl,nyl,nzl);
+        rhodot[idx] -= ( ( udata->xflux[BUFINDX(0,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFINDX(0,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFINDX(0,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFINDX(0,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFINDX(0,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFINDX(0,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mxdot[idx]  -= ( ( udata->xflux[BUFINDX(1,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFINDX(1,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFINDX(1,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFINDX(1,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFINDX(1,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFINDX(1,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mydot[idx]  -= ( ( udata->xflux[BUFINDX(2,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFINDX(2,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFINDX(2,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFINDX(2,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFINDX(2,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFINDX(2,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        mzdot[idx]  -= ( ( udata->xflux[BUFINDX(3,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFINDX(3,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFINDX(3,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFINDX(3,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFINDX(3,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFINDX(3,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+        etdot[idx]  -= ( ( udata->xflux[BUFINDX(4,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                         - udata->xflux[BUFINDX(4,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+                       + ( udata->yflux[BUFINDX(4,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                         - udata->yflux[BUFINDX(4,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+                       + ( udata->zflux[BUFINDX(4,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                         - udata->zflux[BUFINDX(4,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
 
         // compute RHS for tracer/chemistry species
         if (udata->nchem > 0) {
           for (v=0; v<udata->nchem; v++)
-            chemdot[BUFIDX(v,i,j,k,udata->nchem,nxl,nyl,nzl)] -=
-              ( ( udata->xflux[BUFIDX(5+v,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
-                - udata->xflux[BUFIDX(5+v,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
-              + ( udata->yflux[BUFIDX(5+v,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
-                - udata->yflux[BUFIDX(5+v,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
-              + ( udata->zflux[BUFIDX(5+v,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
-                - udata->zflux[BUFIDX(5+v,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
+            chemdot[BUFINDX(v,i,j,k,udata->nchem,nxl,nyl,nzl)] -=
+              ( ( udata->xflux[BUFINDX(5+v,i+1,j,  k,  NVAR,nxl+1,nyl,  nzl  )]
+                - udata->xflux[BUFINDX(5+v,i,  j,  k,  NVAR,nxl+1,nyl,  nzl  )])/(udata->dx)
+              + ( udata->yflux[BUFINDX(5+v,i,  j+1,k,  NVAR,nxl,  nyl+1,nzl  )]
+                - udata->yflux[BUFINDX(5+v,i,  j,  k,  NVAR,nxl,  nyl+1,nzl  )])/(udata->dy)
+              + ( udata->zflux[BUFINDX(5+v,i,  j,  k+1,NVAR,nxl,  nyl,  nzl+1)]
+                - udata->zflux[BUFINDX(5+v,i,  j,  k,  NVAR,nxl,  nyl,  nzl+1)])/(udata->dz) );
         }
 
       }

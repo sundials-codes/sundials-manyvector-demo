@@ -137,42 +137,42 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
 #ifdef ADVECTION_X
         if (xloc < HALF) {
-          rho[IDX(i,j,k,nxl,nyl,nzl)] = rhoL;
-          et[IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoL, uL, ZERO, ZERO, pL);
-          mx[ IDX(i,j,k,nxl,nyl,nzl)] = rhoL*uL;
+          rho[INDX(i,j,k,nxl,nyl,nzl)] = rhoL;
+          et[INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoL, uL, ZERO, ZERO, pL);
+          mx[ INDX(i,j,k,nxl,nyl,nzl)] = rhoL*uL;
         } else {
-          rho[IDX(i,j,k,nxl,nyl,nzl)] = rhoR;
-          et[IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoR, uR, ZERO, ZERO, pR);
-          mx[ IDX(i,j,k,nxl,nyl,nzl)] = rhoR*uR;
+          rho[INDX(i,j,k,nxl,nyl,nzl)] = rhoR;
+          et[INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoR, uR, ZERO, ZERO, pR);
+          mx[ INDX(i,j,k,nxl,nyl,nzl)] = rhoR*uR;
         }
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        my[ INDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        mz[ INDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
 #ifdef ADVECTION_Y
         if (yloc < HALF) {
-          rho[IDX(i,j,k,nxl,nyl,nzl)] = rhoL;
-          et[IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoL, ZERO, uL, ZERO, pL);
-          my[ IDX(i,j,k,nxl,nyl,nzl)] = rhoL*uL;
+          rho[INDX(i,j,k,nxl,nyl,nzl)] = rhoL;
+          et[INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoL, ZERO, uL, ZERO, pL);
+          my[ INDX(i,j,k,nxl,nyl,nzl)] = rhoL*uL;
         } else {
-          rho[IDX(i,j,k,nxl,nyl,nzl)] = rhoR;
-          et[IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoR, ZERO, uR, ZERO, pR);
-          my[ IDX(i,j,k,nxl,nyl,nzl)] = rhoR*uR;
+          rho[INDX(i,j,k,nxl,nyl,nzl)] = rhoR;
+          et[INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoR, ZERO, uR, ZERO, pR);
+          my[ INDX(i,j,k,nxl,nyl,nzl)] = rhoR*uR;
         }
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        mx[ INDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        mz[ INDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
 #ifdef ADVECTION_Z
         if (zloc < HALF) {
-          rho[IDX(i,j,k,nxl,nyl,nzl)] = rhoL;
-          et[IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoL, ZERO, ZERO, uL, pL);
-          mz[ IDX(i,j,k,nxl,nyl,nzl)] = rhoL*uL;
+          rho[INDX(i,j,k,nxl,nyl,nzl)] = rhoL;
+          et[INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoL, ZERO, ZERO, uL, pL);
+          mz[ INDX(i,j,k,nxl,nyl,nzl)] = rhoL*uL;
         } else {
-          rho[IDX(i,j,k,nxl,nyl,nzl)] = rhoR;
-          et[IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoR, ZERO, ZERO, uR, pR);
-          mz[ IDX(i,j,k,nxl,nyl,nzl)] = rhoR*uR;
+          rho[INDX(i,j,k,nxl,nyl,nzl)] = rhoR;
+          et[INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rhoR, ZERO, ZERO, uR, pR);
+          mz[ INDX(i,j,k,nxl,nyl,nzl)] = rhoR*uR;
         }
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        mx[ INDX(i,j,k,nxl,nyl,nzl)] = ZERO;
+        my[ INDX(i,j,k,nxl,nyl,nzl)] = ZERO;
 #endif
       }
   return 0;
@@ -200,11 +200,11 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        Grho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmy[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Get[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Grho[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmx[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmy[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmz[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Get[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
       }
   return 0;
 }
@@ -429,23 +429,23 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
 #endif
         ettrue = udata.eos_inv(rhotrue, mxtrue, mytrue, mztrue, ptrue);
 
-        err = abs(rhotrue-rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(rhotrue-rho[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[0] = max(errI[0], err);
         errR[0] += err*err;
 
-        err = abs(mxtrue-mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mxtrue-mx[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[1] = max(errI[1], err);
         errR[1] += err*err;
 
-        err = abs(mytrue-my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mytrue-my[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[2] = max(errI[2], err);
         errR[2] += err*err;
 
-        err = abs(mztrue-mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mztrue-mz[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[3] = max(errI[3], err);
         errR[3] += err*err;
 
-        err = abs(ettrue-et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(ettrue-et[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[4] = max(errI[4], err);
         errR[4] += err*err;
 

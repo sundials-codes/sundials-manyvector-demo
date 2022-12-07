@@ -47,13 +47,11 @@ foreach(nvar ${_nvar_values})
   target_link_libraries(${_shared_obj}
     PUBLIC
     MPI::MPI_CXX
-    SUNDIALS::nvecparallel
     SUNDIALS::nvecserial
     SUNDIALS::nvecmpimanyvector
     SUNDIALS::nvecmanyvector
     SUNDIALS::sunmatrixsparse
-    SUNDIALS::arkode
-    SUNDIALS::cvode)
+    SUNDIALS::arkode)
 
   # add HDF5
   if(ENABLE_HDF5)
@@ -69,65 +67,55 @@ foreach(nvar ${_nvar_values})
       USEHDF5)
   endif()
 
-  # add MAGMA
-  if (ENABLE_MAGMA)
-    target_compile_definitions(${_shared_obj}
-      PUBLIC
-      USEMAGMA)
-  endif()
-
   # add RAJA
-  if(ENABLE_RAJA)
+  target_link_libraries(${_shared_obj}
+    PUBLIC
+    RAJA
+    Threads::Threads) # not sure why but Raja needs to link to Threads
+  if(RAJA_BACKEND MATCHES "CUDA")
     target_link_libraries(${_shared_obj}
       PUBLIC
-      RAJA
-      Threads::Threads) # not sure why but Raja needs to link to Threads
+      SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
     target_compile_definitions(${_shared_obj}
       PUBLIC
-      USERAJA)
-    if(RAJA_BACKEND MATCHES "CUDA")
-      target_link_libraries(${_shared_obj}
-        PUBLIC
-        SUNDIALS::nvecraja) # should be nveccudaraja but it's exported incorrectly
-      target_compile_definitions(${_shared_obj}
-        PUBLIC
-        RAJA_CUDA)
-    elseif(RAJA_BACKEND MATCHES "HIP")
-      target_link_libraries(${_shared_obj}
-        PUBLIC
-        SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
-      target_compile_definitions(${_shared_obj}
-        PUBLIC
-        RAJA_HIP)
-    elseif(RAJA_BACKEND MATCHES "SERIAL")
-      target_link_libraries(${_shared_obj}
-        PUBLIC
-        SUNDIALS::nvecraja) # not supported in sundials yet (will use GPU)
-      target_compile_definitions(${_shared_obj}
-        PUBLIC
-        RAJA_SERIAL)
-    endif()
+      USE_DEVICE
+      PUBLIC
+      RAJA_CUDA)
+  elseif(RAJA_BACKEND MATCHES "HIP")
+    target_link_libraries(${_shared_obj}
+      PUBLIC
+      SUNDIALS::nvecraja) # should be nvechipraja but it's exported incorrectly
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      USE_DEVICE
+      PUBLIC
+      RAJA_HIP)
+  elseif(RAJA_BACKEND MATCHES "OPENMP")
+    target_link_libraries(${_shared_obj}
+      PUBLIC
+      SUNDIALS::nvecserial) # raja + OpenMP not supported in sundials yet
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      RAJA_OPENMP)
+  elseif(RAJA_BACKEND MATCHES "SERIAL")
+    target_link_libraries(${_shared_obj}
+      PUBLIC
+      SUNDIALS::nvecserial) # raja + serial not supported in sundials yet
+    target_compile_definitions(${_shared_obj}
+      PUBLIC
+      RAJA_SERIAL)
+  else()
+    message(FATAL_ERROR "Unsupported RAJA backend: ${RAJA_BACKEND}")
   endif()
-
 
 endforeach()
 
-# set the filename for chemistry routines and linear solvers depending on the
-# RAJA backend selected (and optional use of MAGMA)
-if(ENABLE_RAJA)
-  set(_chem_solver raja_primordial_network.cpp)
-  if(ENABLE_MAGMA)
-    set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
-  else()
-    if(RAJA_BACKEND MATCHES "CUDA")
-      set(_linear_solver SUNDIALS::sunmatrixcusparse SUNDIALS::sunlinsolcusolversp)
-    elseif(RAJA_BACKEND MATCHES "HIP")
-      set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
-    endif()
-  endif()
+# set the linear solvers depending on the RAJA backend selected
+set(_chem_solver raja_primordial_network.cpp)
+if(RAJA_BACKEND MATCHES "SERIAL|OPENMP")
+  set(_linear_solver SUNDIALS::sunmatrixsparse SUNDIALS::sunlinsolklu)
 else()
-  set(_chem_solver dengo_primordial_network.cpp)
-  set(_linear_solver SUNDIALS::sunlinsolklu)
+  set(_linear_solver SUNDIALS::sunmatrixmagmadense SUNDIALS::sunlinsolmagmadense)
 endif()
 
 
@@ -148,7 +136,7 @@ macro(sundemo_add_executable target)
     "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   # set source properties
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  if (RAJA_BACKEND MATCHES "CUDA")
     foreach(file ${sundemo_add_executable_SOURCES})
       set_source_files_properties(${file} PROPERTIES LANGUAGE CUDA)
     endforeach()
@@ -159,7 +147,7 @@ macro(sundemo_add_executable target)
     ${sundemo_add_executable_SOURCES})
 
   # set executable compile options
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "CUDA"))
+  if (RAJA_BACKEND MATCHES "CUDA")
     target_compile_options(${target}
       PRIVATE "--expt-extended-lambda")
   endif()
@@ -352,19 +340,6 @@ sundemo_add_executable(primordial_ode.exe
     MAX_NCELLS=1000000
     NTHREADS=1)
 
-sundemo_add_executable(primordial_ode_CVODE.exe
-  SOURCES
-    primordial_ode_main.cpp
-    ${_chem_solver}
-  LINK_LIBRARIES
-    shared_obj_nvar_5
-    ${_linear_solver}
-  COMPILE_DEFINITIONS
-    CVKLU
-    MAX_NCELLS=1000000
-    NTHREADS=1
-    USE_CVODE)
-
 # primordial static tests
 sundemo_add_executable(primordial_static_imex.exe
   SOURCES
@@ -434,7 +409,7 @@ sundemo_add_executable(fluid_blast.exe
     NVAR=5)
 
 # magma scaling test
-if (ENABLE_MAGMA)
+if(RAJA_BACKEND MATCHES "CUDA|HIP")
 sundemo_add_executable(magma_scaling.exe
   SOURCES
     magma_scaling_main.cpp

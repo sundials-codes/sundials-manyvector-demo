@@ -41,7 +41,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
 
         // fluid initial conditions
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         rho[idx] = RCONST(4.0);
         mx[idx]  = RCONST(0.5);
         my[idx]  = RCONST(0.3);
@@ -51,7 +51,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         // tracer initial conditions
         if (udata.nchem > 0) {
           for (v=0; v<udata.nchem; v++) {
-            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
             chem[idx] = ONE*(v+1)/udata.nchem;
           }
         }
@@ -83,7 +83,7 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         Grho[idx] = ZERO;
         Gmx[idx]  = ZERO;
         Gmy[idx]  = ZERO;

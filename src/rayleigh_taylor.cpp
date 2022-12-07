@@ -97,7 +97,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
 
@@ -123,7 +123,7 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++)
-        Gmy[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = -grav;
+        Gmy[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = -grav;
   return 0;
 }
 

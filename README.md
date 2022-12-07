@@ -7,7 +7,7 @@ application to assess and demonstrate the large-scale parallel performance of
 new capabilities that have been added to SUNDIALS in recent years. Namely:
 
 1. The new SUNDIALS [MPIManyVector](https://sundials.readthedocs.io/en/latest/nvectors/NVector_links.html#the-nvector-mpimanyvector-module)
-   implementation, that enables flexibility in how a solution "vector" is
+   implementation, that enables flexibility in how a solution data is
    partitioned across computational resources e.g., CPUs and GPUs.
 
 2. The new [ARKODE](https://sundials.readthedocs.io/en/latest/arkode/index.html)
@@ -16,7 +16,7 @@ new capabilities that have been added to SUNDIALS in recent years. Namely:
 
 3. The new flexible SUNDIALS [SUNLinearSolver](https://sundials.readthedocs.io/en/latest/sunlinsol/index.html)
    interfaces, to enable streamlined use of problem specific and scalable
-   linear solver libraries e.g., *hypre*, MAGMA, and NVIDIA cuSPARSE.
+   linear solver libraries e.g., SuiteSparse and MAGMA.
 
 ## Model Equations
 
@@ -35,15 +35,20 @@ homogeneous Neumann (1), homogeneous Dirichlet (2), or reflecting (3) under the
 restriction that if any boundary is set to "periodic" then the opposite face
 must also indicate a periodic condition.
 
-Here, the "solution" is given by
-$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c} \end{bmatrix}^T$
+The system state vector $w$ is
+
+$$w = \begin{bmatrix} \rho & \rho v_x & \rho v_y & \rho v_z & e_t & \mathbf{c} \end{bmatrix}^T = \begin{bmatrix} \rho & m_x & m_y & m_z & e_t & \mathbf{c} \end{bmatrix}^T$$
+
 corresponding to the density, momentum in the x, y, and z directions, total
 energy per unit volume, and any number of chemical densities
 $\mathbf{c}\in\mathbb{R}^{nchem}$ that are advected along with the fluid. The
 fluxes are given by
-$$ F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p) & \mathbf{c} v_x \end{bmatrix}^T,$$
-$$ F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p) & \mathbf{c} v_y \end{bmatrix}^T,$$
-$$ F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.$$
+
+$$F_x(w) = \begin{bmatrix} \rho v_x & \rho v_x^2 + p & \rho v_x v_y & \rho v_x v_z & v_x (e_t+p) & \mathbf{c} v_x \end{bmatrix}^T,$$
+
+$$F_y(w) = \begin{bmatrix} \rho v_y & \rho v_x v_y & \rho v_y^2 + p & \rho v_y v_z & v_y (e_t+p) & \mathbf{c} v_y \end{bmatrix}^T,$$
+
+$$F_z(w) = \begin{bmatrix} \rho v_z & \rho v_x v_z & \rho v_y v_z & \rho v_z^2 + p & v_z (e_t+p) & \mathbf{c} v_z \end{bmatrix}^T.$$
 
 The external force $G(X,t,w)$ is test-problem-dependent, and the ideal gas
 equation of state gives $p = \frac{R}{c_v}(e_t - \frac{\rho}{2}(v_x^2 + v_y^2 + v_z^2))$
@@ -89,8 +94,8 @@ to run a two-dimensional test in the yz-plane, one could specify `nx = 3` and
 `ny = nz = 200`.  When run in parallel, only "active" spatial dimensions (those
 with extent greater than 3) will be parallelized.
 
-Each fluid field ($\rho$, $m_x$, $m_y$, $m_z$, $e_t$) is stored in its own serial
-`N_Vector` object on each MPI rank. Chemical species at all spatial locations over
+The fluid fields $\rho$, $m_x$, $m_y$, $m_z$, and $e_t$ are stored in separate serial
+`N_Vector` objects on each MPI rank. The chemical species at all spatial locations over
 each MPI rank are collocated into a single serial or RAJA `N_Vector` object when
 running on the CPU or GPU respectively. The five fluid vectors and the chemical
 species vector are combined together to form the full "solution" vector $w$ using
@@ -126,11 +131,12 @@ Newton linear systems are block-diagonal. As such, we provide a custom
 `SUNLinearSolver` implementation that solves each MPI rank-local linear system
 independently. The portion of the Jacobian matrix on each rank is itself
 block-diagonal. We further leverage this structure by solving each rank-local
-linear system using either the sparse KLU, batched sparse NVIDIA (GPU-enabled),
-or batched dense MAGMA (GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
+linear system using either the sparse KLU (CPU-only) or batched dense MAGMA
+(GPU-enabled) SUNDIALS `SUNLinearSolver` implementations.
 
-The multirate approach (2) can leverage the structure of $f_2$ at a higher level.
-Since the MRI method applied to this problem evolves "fast" sub-problems of the form
+The multirate approach (2) can leverage the structure of $f_2$ at a higher
+level. Since the MRI method applied to this problem evolves "fast" sub-problems
+of the form
 
 $$v'(t) = f_2(t,v) + r_i(t), \quad i=2,\ldots,s,$$
 
@@ -145,152 +151,149 @@ local ARKStep instance. The collection of independent local IVPs also leads to a
 block diagonal Jacobian, and we again utilize the `SUNLinearSolver` modules listed
 above for linear systems that arise within the modified Newton iteration.
 
-## Building
+## Installation
 
-Steps showing the process to download this demonstration code, install the
-relevant dependencies, and build the code in a Linux or OS X environment are as
-follows. To obtain the demonstration code simply clone this repository with Git:
+The following steps describe how to build the demonstration code in a Linux or
+OS X environment.
+
+
+### Gettting the Code
+
+To obtain the code, clone this repository with Git:
 
 ```bash
   git clone https://github.com/sundials-codes/sundials-manyvector-demo.git
 ```
 
+### Requirements
+
 To compile the code you will need:
+
+* [CMake](https://cmake.org) 3.18 or newer
 
 * modern C and C++ compilers
 
-* [CMake](https://cmake.org) 3.12 or newer
+* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (when
+  using the CUDA backend)
 
 * an MPI library e.g., [OpenMPI](https://www.open-mpi.org/),
   [MPICH](https://www.mpich.org/), etc.
 
-* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
-  integrators and nonlinear solvers
-
 * the [HDF5](https://www.hdfgroup.org/) high-performance data management and
   storage suite
 
-Optionally, when solving problems that involve chemistry on the CPU you will need:
-
-* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
-  of sparse direct linear solvers (specifically KLU).
-
-Optionally, for problems that involve chemistry that will run on GPUs you will
-additionally need:
-
-* the NVIDIA [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (the `nvcc`
-  compiler and optionally the cuSPRASE library)
-
 * the [RAJA](https://github.com/LLNL/RAJA) performance portability library
 
-* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver "multicore+GPU" library
+* the [SUNDIALS](https://computing.llnl.gov/projects/sundials) library of time
+  integrators and nonlinear solvers
 
-To assist in building the code the [scripts](./scripts) directory contains shell
-scripts to setup the environment on specific systems and install some of the required
-dependencies. For example, if working on Summit the following commands may be
-used to setup the environment and install the necessary dependencies:
+* the [SuiteSparse](https://people.engr.tamu.edu/davis/suitesparse.html) library
+  of sparse direct linear solvers (when using a CPU backend)
 
-```bash
-  cd sundials-manyvector-demo/scripts
-  export PROJHOME=/css/proj/[projid]
-  source setup_summit.sh
-  ./build-klu.sh
-  ./build-raja.sh
-  ./build-magma.sh
-  ./build-sundials.sh
-```
+* the [MAGMA](https://icl.utk.edu/magma/) dense linear solver library (when
+  using a GPU backend)
 
-Where `[projid]` is a Summit project ID. For more information on the setup and
-build scripts see the README file in the [scripts](./scripts) directory. As an
-alternative, any of the dependencies for the demonstration code can be installed
-with the [Spack](https://github.com/spack/spack) package manager e.g.,
+### Installing Dependencies
+
+Many of the above dependencies can be installed using the
+[Spack](https://spack.io/) package manager. For information on using Spack see
+the getting started [guide](https://spack.readthedocs.io/en/latest/getting_started.html#getting-started).
+The instructions below were formulated from Spack v0.19.0, although newer versions should also work.
+
+Once Spack is setup, we recommend creating a Spack [environment](https://spack.readthedocs.io/en/latest/environments.html#)
+with the required dependencies e.g., on a system with Pascal GPUs and CUDA
+11.4.2 installed:
 
 ```bash
-  git clone https://github.com/spack/spack.git
-  spack/bin/spack install mpi
-  spack/bin/spack install hdf5 +mpi +pic +szip
-  spack/bin/spack isntall suitesparse
-  spack/bin/spack isntall magma
-  spack/bin/spack install raja +cuda
-  spack/bin/spack install sundials +klu +mpi +raja +cuda
+spack env create sundials-demo
+spack env activate sundials-demo
+spack add sundials@6.2.0 +openmp +mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
+spack add hdf5@1.10.7 +hl +mpi
+spack install
 ```
+
+To assist in building the dependencies on select systems the [spack](./spack)
+directory contains environment files leveraging software already available on
+the system. For example, on the OLCF Summit system:
+
+```bash
+module load gcc/10.2.0
+module load cuda/11.4.2
+module load cmake/3.21.3
+cd spack
+spack env create sundials-demo spack-summit.yaml
+spack env activate sundials-demo
+spack install
+```
+
+### Configuration Options
 
 Once the necessary dependencies are installed, the following CMake variables can
 be used to configure the demonstration code build:
 
 * `CMAKE_INSTALL_PREFIX` - the path where executables and input files should be
-  installed e.g., `path/to/myinstall`. The executables will be installed in the
+  installed e.g., `my/install/path`. The executables will be installed in the
   `bin` directory and input files in the `tests` directory under the given path.
 
-* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`
+* `CMAKE_C_COMPILER` - the C compiler to use e.g., `mpicc`. If not set, CMake
+  will attempt to automatically detect the C compiler.
 
-* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`
+* `CMAKE_C_FLAGS` - the C compiler flags to use e.g., `-g -O2`.
 
-* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`
+* `CMAKE_C_STANDARD` - the C standard to use, defaults to `99`.
 
-* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`
+* `CMAKE_CXX_COMPILER` - the C++ compiler to use e.g., `mpicxx`. If not set,
+  CMake will attempt to automatically detect the C++ compiler.
 
-* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`
+* `CMAKE_CXX_FLAGS` - the C++ flags to use e.g., `-g -O2`.
 
-* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`
-
-* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
-  the value of the `SUNDIALS_ROOT` environment variable
-
-* `ENABLE_RAJA` - build with RAJA support, defaults to `OFF`
+* `CMAKE_CXX_STANDARD` - the C++ standard to use, defaults to `11`.
 
 * `RAJA_ROOT` - the root directory of the RAJA installation, defaults to the
-  value of the `RAJA_ROOT` environment variable
+  value of the `RAJA_ROOT` environment variable. If not set, CMake will attempt
+  to automatically locate a RAJA install on the system.
 
-* `RAJA_BACKEND` - set the RAJA backend to use with the demonstration code,
-  defaults to `CUDA`
+* `RAJA_BACKEND` - the RAJA backend to use with the demonstration code, defaults
+   to `SERIAL`. Supported options are `SERIAL`, `OPENMP` and `CUDA`.  Note that this
+   only applies to on-node parallelism that is used when evaluating chemistry-based
+   components associated with $f_2(w)$.
 
-* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`
+* `SUNDIALS_ROOT` - the root directory of the SUNDIALS installation, defaults to
+  the value of the `SUNDIALS_ROOT` environment variable. If not set, CMake will
+  attempt to automatically locate a SUNDIALS install on the system.
+
+* `ENABLE_HDF5` - build with HDF5 I/O support, defaults to `OFF`.
 
 * `HDF5_ROOT` - the root directory of the HDF5 installation, defaults to the
-  value of the `HDF5_ROOT` environment variable
+  value of the `HDF5_ROOT` environment variable. If not set, CMake will attempt
+  to automatically locate a HDF5 install on the system.
 
-When RAJA is enabled with the CUDA backend the following additional variables
-may also be set:
+When RAJA is installed with CUDA support enabled, the following additional
+variables may also be set:
 
-* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`
+* `CMAKE_CUDA_COMPILER` - the CUDA compiler to use e.g., `nvcc`. If not set,
+  CMake will attempt to automatically detect the CUDA compiler.
 
-* `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use
+* `CMAKE_CUDA_FLAGS` - the CUDA compiler flags to use.
 
-* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target, defaults to `70`
+* `CMAKE_CUDA_ARCHITECTURES` - the CUDA architecture to target e.g., `70`.
 
-* `ENABLE_MAGMA` - build with MAGMA linear solver support, defaults to `OFF`.
-  This requires that SUNDIALS was built with MAGMA support; CMake will automatically
-  utilize the same MAGMA library that was used for SUNDIALS
+### Building
 
-In-source builds are not permitted and as such the code should be configured and
-built from a separate build directory. For example, continuing with the Summit
-case from above, the following commands can be used to build with RAJA targeting
-CUDA and HDF5 output enabled:
+In-source builds are not permitted, as such the code should be configured and
+built from a separate build directory e.g.,
 
 ```bash
   cd sundials-manyvector-demo
   mkdir build
   cd build
   cmake ../. \
-    -DCMAKE_INSTALL_PREFIX="${MEMBERWORK}/[projid]/sundials-demo" \
-    -DCMAKE_C_COMPILER=mpicc \
-    -DCMAKE_C_FLAGS="-g -O2" \
-    -DCMAKE_CXX_COMPILER=mpicxx \
-    -DCMAKE_CXX_FLAGS="-g -O2" \
-    -DENABLE_RAJA="ON" \
+    -DCMAKE_INSTALL_PREFIX="my/install/path/sundials-demo" \
+    -DRAJA_BACKEND="SERIAL" \
     -DENABLE_HDF5="ON"
   make
   make install
 ```
-
-The test executables and input files are installed under the `sundials-demo`
-directory in the member work space for the Summit project ID `[projid]`.
-
-**Note:** In this example, since the environment was configured using the Summit
-setup script, the values for `SUNDIALS_ROOT`, `RAJA_ROOT`, and `HDF5_ROOT` can
-be omitted from the `cmake` command as these values are automatically set from
-the corresponding environment variables defined by the setup script.
 
 ## Running
 
@@ -314,7 +317,7 @@ The input files contain parameters to set up the physical problem:
 
 Parameters to control the execution of the code:
 
-* desired cfl fraction -- `cfl` (if set to zero, then the time step is chosen purely using temporal adaptivity).
+* desired CFL fraction -- `cfl` (if set to zero, then the time step is chosen purely using temporal adaptivity).
 
 * number of desired solution outputs -- `nout`
 

@@ -114,21 +114,21 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
 #ifdef ADVECTION_X
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(xloc-vx0*t));
+        rho[INDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(xloc-vx0*t));
 #endif
 #ifdef ADVECTION_Y
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(yloc-vy0*t));
+        rho[INDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(yloc-vy0*t));
 #endif
 #ifdef ADVECTION_Z
-        rho[IDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(zloc-vz0*t));
+        rho[INDX(i,j,k,nxl,nyl,nzl)] = rho0 + Amp*sin(twopi*(zloc-vz0*t));
 #endif
-        mx[ IDX(i,j,k,nxl,nyl,nzl)] = vx0*rho[IDX(i,j,k,nxl,nyl,nzl)];
-        my[ IDX(i,j,k,nxl,nyl,nzl)] = vy0*rho[IDX(i,j,k,nxl,nyl,nzl)];
-        mz[ IDX(i,j,k,nxl,nyl,nzl)] = vz0*rho[IDX(i,j,k,nxl,nyl,nzl)];
-        et[ IDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rho[IDX(i,j,k,nxl,nyl,nzl)],
-                                                    mx[ IDX(i,j,k,nxl,nyl,nzl)],
-                                                    my[ IDX(i,j,k,nxl,nyl,nzl)],
-                                                    mz[ IDX(i,j,k,nxl,nyl,nzl)], p0);
+        mx[ INDX(i,j,k,nxl,nyl,nzl)] = vx0*rho[INDX(i,j,k,nxl,nyl,nzl)];
+        my[ INDX(i,j,k,nxl,nyl,nzl)] = vy0*rho[INDX(i,j,k,nxl,nyl,nzl)];
+        mz[ INDX(i,j,k,nxl,nyl,nzl)] = vz0*rho[INDX(i,j,k,nxl,nyl,nzl)];
+        et[ INDX(i,j,k,nxl,nyl,nzl)] = udata.eos_inv(rho[INDX(i,j,k,nxl,nyl,nzl)],
+                                                    mx[ INDX(i,j,k,nxl,nyl,nzl)],
+                                                    my[ INDX(i,j,k,nxl,nyl,nzl)],
+                                                    mz[ INDX(i,j,k,nxl,nyl,nzl)], p0);
       }
   return 0;
 }
@@ -155,11 +155,11 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        Grho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmy[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Get[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Grho[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmx[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmy[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmz[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Get[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
       }
   return 0;
 }
@@ -200,27 +200,27 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
 #ifdef ADVECTION_Z
         rhotrue = rho0 + Amp*sin(twopi*(zloc-vz0*t));
 #endif
-        err = abs(rhotrue-rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(rhotrue-rho[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[0] = max(errI[0], err);
         errR[0] += err*err;
 
         mxtrue = rhotrue*vx0;
-        err = abs(mxtrue-mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mxtrue-mx[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[1] = max(errI[1], err);
         errR[1] += err*err;
 
         mytrue = rhotrue*vy0;
-        err = abs(mytrue-my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mytrue-my[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[2] = max(errI[2], err);
         errR[2] += err*err;
 
         mztrue = rhotrue*vz0;
-        err = abs(mztrue-mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mztrue-mz[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[3] = max(errI[3], err);
         errR[3] += err*err;
 
         ettrue = udata.eos_inv(rhotrue, mxtrue, mytrue, mztrue, p0);
-        err = abs(ettrue-et[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(ettrue-et[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[4] = max(errI[4], err);
         errR[4] += err*err;
 

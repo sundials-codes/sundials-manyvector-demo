@@ -129,7 +129,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
@@ -171,7 +171,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
         // tracer initial conditions
         if (udata.nchem > 0) {
           for (v=0; v<udata.nchem; v++) {
-            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
             chem[idx] = ZERO;
             if ((theta >= chemstripes[v][0]) && (theta < chemstripes[v][1]))
               chem[idx] = ONE;
@@ -204,11 +204,11 @@ int external_forces(const realtype& t, N_Vector G, const EulerData& udata)
         xloc = (udata.is+i+HALF)*udata.dx + udata.xl;
         yloc = (udata.js+j+HALF)*udata.dy + udata.yl;
         zloc = (udata.ks+k+HALF)*udata.dz + udata.zl;
-        Grho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmx[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmy[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Gmz[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
-        Get[ IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Grho[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmx[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmy[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Gmz[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
+        Get[ INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)] = ZERO;
       }
   return 0;
 }
@@ -302,19 +302,19 @@ int output_diagnostics(const realtype& t, const N_Vector w, const EulerData& uda
         }
 #endif
 
-        err = abs(rhotrue-rho[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(rhotrue-rho[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[0] = max(errI[0], err);
         errR[0] += err*err;
 
-        err = abs(mxtrue-mx[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mxtrue-mx[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[1] = max(errI[1], err);
         errR[1] += err*err;
 
-        err = abs(mytrue-my[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mytrue-my[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[2] = max(errI[2], err);
         errR[2] += err*err;
 
-        err = abs(mztrue-mz[IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
+        err = abs(mztrue-mz[INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl)]);
         errI[3] = max(errI[3], err);
         errR[3] += err*err;
 
