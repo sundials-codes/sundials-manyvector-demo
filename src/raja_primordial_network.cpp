@@ -11,7 +11,7 @@
 
 #include <raja_primordial_network.hpp>
 
-// HIP vs RAJA vs serial
+// HIP vs RAJA vs serial/OpenMP
 #if defined(RAJA_CUDA)
 #define HIP_OR_CUDA(a,b) b
 #define dmalloc(ptr, len) cudaMalloc((void**)&ptr, len*sizeof(double))
@@ -31,7 +31,7 @@
 
 // sparse vs dense
 #define NSPARSE 64
-#if defined(USEMAGMA)
+#ifdef USE_DEVICE
 #define SPARSE_OR_DENSE(a,b) b
 #else
 #define SPARSE_OR_DENSE(a,b) a
@@ -912,9 +912,13 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 {
   ReactionNetwork *data = (ReactionNetwork*) user_data;
   cvklu_data *ddata = data->DPtr();
+#ifdef USE_DEVICE
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
-
+#else
+  const double *ydata = N_VGetArrayPointer(y);
+  double *ydotdata    = N_VGetArrayPointer(ydot);
+#endif
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     double y_arr[NSPECIES];
@@ -1265,243 +1269,20 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 
   });
 
-  // // synchronize device memory
-  // HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  // HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-  //              cudaError_t cuerr = cudaGetLastError(); )
-  // if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-  //   std::cerr << ">>> ERROR in calculate_rhs_cvklu: XGetLastError returned %s\n"
-  //             << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-  //   return(-1);
-  // }
-
-  return 0;
-}
-
-
-
-#ifndef USEMAGMA
-int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data )
-{
-#ifdef RAJA_CUDA
-
-  // Access CSR sparse matrix structures, and zero out data
-  sunindextype rowptrs[11];
-  sunindextype colvals[NSPARSE];
-
-  // H2_1 by H2_1
-  colvals[0] = 0 ;
-
-  // H2_1 by H2_2
-  colvals[1] = 1 ;
-
-  // H2_1 by H_1
-  colvals[2] = 2 ;
-
-  // H2_1 by H_2
-  colvals[3] = 3 ;
-
-  // H2_1 by H_m0
-  colvals[4] = 4 ;
-
-  // H2_1 by de
-  colvals[5] = 8 ;
-
-  // H2_1 by ge
-  colvals[6] = 9 ;
-
-  // H2_2 by H2_1
-  colvals[7] = 0 ;
-
-  // H2_2 by H2_2
-  colvals[8] = 1 ;
-
-  // H2_2 by H_1
-  colvals[9] = 2 ;
-
-  // H2_2 by H_2
-  colvals[10] = 3 ;
-
-  // H2_2 by H_m0
-  colvals[11] = 4 ;
-
-  // H2_2 by de
-  colvals[12] = 8 ;
-
-  // H2_2 by ge
-  colvals[13] = 9 ;
-
-  // H_1 by H2_1
-  colvals[14] = 0 ;
-
-  // H_1 by H2_2
-  colvals[15] = 1 ;
-
-  // H_1 by H_1
-  colvals[16] = 2 ;
-
-  // H_1 by H_2
-  colvals[17] = 3 ;
-
-  // H_1 by H_m0
-  colvals[18] = 4 ;
-
-  // H_1 by de
-  colvals[19] = 8 ;
-
-  // H_1 by ge
-  colvals[20] = 9 ;
-
-  // H_2 by H2_1
-  colvals[21] = 0 ;
-
-  // H_2 by H2_2
-  colvals[22] = 1 ;
-
-  // H_2 by H_1
-  colvals[23] = 2 ;
-
-  // H_2 by H_2
-  colvals[24] = 3 ;
-
-  // H_2 by H_m0
-  colvals[25] = 4 ;
-
-  // H_2 by de
-  colvals[26] = 8 ;
-
-  // H_2 by ge
-  colvals[27] = 9 ;
-
-  // H_m0 by H2_2
-  colvals[28] = 1 ;
-
-  // H_m0 by H_1
-  colvals[29] = 2 ;
-
-  // H_m0 by H_2
-  colvals[30] = 3 ;
-
-  // H_m0 by H_m0
-  colvals[31] = 4 ;
-
-  // H_m0 by de
-  colvals[32] = 8 ;
-
-  // H_m0 by ge
-  colvals[33] = 9 ;
-
-  // He_1 by He_1
-  colvals[34] = 5 ;
-
-  // He_1 by He_2
-  colvals[35] = 6 ;
-
-  // He_1 by de
-  colvals[36] = 8 ;
-
-  // He_1 by ge
-  colvals[37] = 9 ;
-
-  // He_2 by He_1
-  colvals[38] = 5 ;
-
-  // He_2 by He_2
-  colvals[39] = 6 ;
-
-  // He_2 by He_3
-  colvals[40] = 7 ;
-
-  // He_2 by de
-  colvals[41] = 8 ;
-
-  // He_2 by ge
-  colvals[42] = 9 ;
-
-  // He_3 by He_2
-  colvals[43] = 6 ;
-
-  // He_3 by He_3
-  colvals[44] = 7 ;
-
-  // He_3 by de
-  colvals[45] = 8 ;
-
-  // He_3 by ge
-  colvals[46] = 9 ;
-
-  // de by H2_2
-  colvals[47] = 1 ;
-
-  // de by H_1
-  colvals[48] = 2 ;
-
-  // de by H_2
-  colvals[49] = 3 ;
-
-  // de by H_m0
-  colvals[50] = 4 ;
-
-  // de by He_1
-  colvals[51] = 5 ;
-
-  // de by He_2
-  colvals[52] = 6 ;
-
-  // de by He_3
-  colvals[53] = 7 ;
-
-  // de by de
-  colvals[54] = 8 ;
-
-  // de by ge
-  colvals[55] = 9 ;
-
-  // ge by H2_1
-  colvals[56] = 0 ;
-
-  // ge by H_1
-  colvals[57] = 2 ;
-
-  // ge by H_2
-  colvals[58] = 3 ;
-
-  // ge by He_1
-  colvals[59] = 5 ;
-
-  // ge by He_2
-  colvals[60] = 6 ;
-
-  // ge by He_3
-  colvals[61] = 7 ;
-
-  // ge by de
-  colvals[62] = 8 ;
-
-  // ge by ge
-  colvals[63] = 9 ;
-
-  // set row pointers for CSR structure
-  rowptrs[0] = 0;
-  rowptrs[1] = 7;
-  rowptrs[2] = 14;
-  rowptrs[3] = 21;
-  rowptrs[4] = 28;
-  rowptrs[5] = 34;
-  rowptrs[6] = 38;
-  rowptrs[7] = 43;
-  rowptrs[8] = 47;
-  rowptrs[9] = 56;
-  rowptrs[10] = NSPARSE;
-
-  // copy rowptrs, colvals to the device
-  SUNMatrix_cuSparse_CopyToDevice(J, NULL, rowptrs, colvals);
-  cudaDeviceSynchronize();
+#ifdef USE_DEVICE
+  // synchronize device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    std::cerr << ">>> ERROR in calculate_rhs_cvklu: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return(-1);
+  }
 #endif
 
   return 0;
 }
-#endif
 
 
 
@@ -1514,21 +1295,18 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   cvklu_data *ddata = data->DPtr();
   const double *ydata = N_VGetDeviceArrayPointer(y);
 
-  // Access dense matrix structures, and zero out data
-#ifdef USEMAGMA
+#ifdef USE_DEVICE
+  // Access vector data and dense matrix structures
+  const double *ydata = N_VGetDeviceArrayPointer(y);
   realtype *matrix_data = SUNMatrix_MagmaDense_Data(J);
 #else
-  // Access CSR sparse matrix structures, and zero out data
-#ifdef RAJA_CUDA
-  realtype *matrix_data = SUNMatrix_cuSparse_Data(J);
-  sunindextype *rowptrs = SUNMatrix_cuSparse_IndexPointers(J);
-  sunindextype *colvals = SUNMatrix_cuSparse_IndexValues(J);
-#elif RAJA_SERIAL
+  // Access vector data and CSR sparse matrix structures
+  const double *ydata = N_VGetArrayPointer(y);
   realtype *matrix_data = SUNSparseMatrix_Data(J);
   sunindextype *rowptrs = SUNSparseMatrix_IndexPointers(J);
   sunindextype *colvals = SUNSparseMatrix_IndexValues(J);
 #endif
-#endif
+  // Zero out matrix values
   SUNMatZero(J);
 
   // Loop over data, filling in Jacobian
@@ -1986,7 +1764,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ idx ] *= Tge;
     matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 9 ]);
 
-#if defined(RAJA_SERIAL) && !defined(USEMAGMA)
+#ifndef USE_DEVICE
     colvals[i * NSPARSE + 0] = i * NSPECIES + 0 ;
     colvals[i * NSPARSE + 1] = i * NSPECIES + 1 ;
     colvals[i * NSPARSE + 2] = i * NSPECIES + 2 ;
@@ -2069,15 +1847,17 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   });
 
-  // // synchronize device memory
-  // HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  // HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-  //              cudaError_t cuerr = cudaGetLastError(); )
-  // if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-  //   std::cerr << ">>> ERROR in calculate_jacobian_cvklu: XGetLastError returned %s\n"
-  //             << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-  //   return(-1);
-  // }
+#ifdef USE_DEVICE
+  // synchronize device memory
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
+               cudaError_t cuerr = cudaGetLastError(); )
+  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
+    std::cerr << ">>> ERROR in calculate_jacobian_cvklu: XGetLastError returned %s\n"
+              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
+    return(-1);
+  }
+#endif
 
   return 0;
 }

@@ -17,6 +17,13 @@
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -26,17 +33,9 @@ int main(int argc, char* argv[]) {
   int Nsubvecs;
 
   // general problem variables
-  int retval;                    // reusable error-checking flag
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (unused here)
   N_Vector w = NULL;             // empty vectors for storing overall solution
   N_Vector *wsubvecs;
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // ensure that realtype is at least double precision
   if (sizeof(realtype) < sizeof(double)) {
@@ -120,7 +119,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USERAJA
+#ifdef USE_DEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
@@ -160,7 +159,7 @@ int main(int argc, char* argv[]) {
           xloc_value = RCONST(0.000001)*(i+udata.is);
           yloc_value = RCONST(0.000000001)*(j+udata.js);
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
-          idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+          idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           wdata[idx] = myid_value + species_value + xloc_value + yloc_value + zloc_value;
         }
   }
@@ -176,7 +175,7 @@ int main(int argc, char* argv[]) {
             xloc_value = RCONST(0.000001)*(i+udata.is);
             yloc_value = RCONST(0.000000001)*(j+udata.js);
             zloc_value = RCONST(0.000000000001)*(k+udata.ks);
-            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
             wdata[idx] = myid_value + species_value + xloc_value + yloc_value + zloc_value;
           }
   }
@@ -206,7 +205,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
+          idx = BUFINDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
           recv_value = udata.Wrecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Wrecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -229,7 +228,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
+          idx = BUFINDX(v,i,j,k,NVAR,3,udata.nyl,udata.nzl);
           recv_value = udata.Erecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Erecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -252,7 +251,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
+          idx = BUFINDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
           recv_value = udata.Srecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Srecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -275,7 +274,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+udata.ks);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
+          idx = BUFINDX(v,j,i,k,NVAR,3,udata.nxl,udata.nzl);
           recv_value = udata.Nrecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Nrecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -298,7 +297,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+keB-2);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
+          idx = BUFINDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
           recv_value = udata.Brecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Brecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -321,7 +320,7 @@ int main(int argc, char* argv[]) {
           zloc_value = RCONST(0.000000000001)*(k+ksF);
           true_value = myid_value + species_value
                      + xloc_value + yloc_value + zloc_value;
-          idx = BUFIDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
+          idx = BUFINDX(v,k,i,j,NVAR,3,udata.nxl,udata.nyl);
           recv_value = udata.Frecv[idx];
           if (abs(recv_value-true_value) > test_tol) {
             cout << "Frecv error: myid = " << udata.myid << ", (v,i,j,k) = ("
@@ -610,6 +609,7 @@ int main(int argc, char* argv[]) {
   for (i=0; i<Nsubvecs; i++)
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
+  udata.FreeData();
   MPI_Finalize();              // Finalize MPI
   return 0;
 }

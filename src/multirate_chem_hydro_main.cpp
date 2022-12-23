@@ -1,7 +1,8 @@
 /*---------------------------------------------------------------
  Programmer(s): Daniel R. Reynolds @ SMU
+                David J. Gardner @ LLNL
  ----------------------------------------------------------------
- Copyright (c) 2019, Southern Methodist University.
+ Copyright (c) 2022, Southern Methodist University.
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
@@ -45,27 +46,17 @@
 // Header files
 //    Physics
 #include <euler3D.hpp>
-#ifdef USERAJA
 #include <raja_primordial_network.hpp>
-#else
-#include <dengo_primordial_network.hpp>
-#endif
 
 //    SUNDIALS
 #include <arkode/arkode_mristep.h>
 #include <arkode/arkode_arkstep.h>
-#include <sunlinsol/sunlinsol_spgmr.h>
-#ifdef USEMAGMA
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
-#ifdef RAJA_CUDA
-#include <sunmatrix/sunmatrix_cusparse.h>
-#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
-#else
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#endif
 #endif
 
 #ifdef DEBUG
@@ -74,7 +65,6 @@
 
 //#define DISABLE_HYDRO
 //#define SETUP_ONLY
-#define INTRUSIVE_PROFILING
 
 // macros for handling formatting of diagnostic output
 #define PRINT_CGS 1
@@ -132,7 +122,6 @@ typedef struct _RankLocalLSContent {
   sunindextype    lastflag;
   EulerData*      udata;
   void*           arkode_mem;
-  N_Vector        work;
   long int        nfeDQ;
 } *RankLocalLSContent;
 #define RankLocalLS_CONTENT(S)  ( (RankLocalLSContent)(S->content) )
@@ -140,7 +129,6 @@ typedef struct _RankLocalLSContent {
 #define RankLocalLS_SUBVEC(S)   ( RankLocalLS_CONTENT(S)->subvec )
 #define RankLocalLS_LASTFLAG(S) ( RankLocalLS_CONTENT(S)->lastflag )
 #define RankLocalLS_UDATA(S)    ( RankLocalLS_CONTENT(S)->udata )
-#define RankLocalLS_WORK(S)     ( RankLocalLS_CONTENT(S)->work )
 #define RankLocalLS_NFEDQ(S)    ( RankLocalLS_CONTENT(S)->nfeDQ )
 SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver LS, N_Vector x,
                                   sunindextype subvec, EulerData* udata,
@@ -151,8 +139,6 @@ int Initialize_RankLocalLS(SUNLinearSolver S);
 int Setup_RankLocalLS(SUNLinearSolver S, SUNMatrix A);
 int Solve_RankLocalLS(SUNLinearSolver S, SUNMatrix A,
                       N_Vector x, N_Vector b, realtype tol);
-int SetATimes_RankLocalLS(SUNLinearSolver S, void* A_data, ATimesFn ATimes);
-int ATimes_RankLocalLS(void* arkode_mem, N_Vector v, N_Vector z);
 sunindextype LastFlag_RankLocalLS(SUNLinearSolver S);
 int Free_RankLocalLS(SUNLinearSolver S);
 
@@ -168,6 +154,13 @@ void cleanup(void **outer_arkode_mem, void **inner_arkode_mem,
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -175,8 +168,6 @@ int main(int argc, char* argv[]) {
   // general problem variables
   long int N;
   int Nsubvecs;
-  int retval;                    // reusable error-checking flag
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   int NoOutput;                  // flag for case when no output is desired
   N_Vector w = NULL;             // empty vectors
@@ -190,21 +181,9 @@ int main(int argc, char* argv[]) {
   void *outer_arkode_mem = NULL; // empty ARKStep memory structures
   void *inner_arkode_mem = NULL;
   ARKODEParameters opts;
-#if defined(RAJA_CUDA) && !defined(USEMAGMA)
-  cusparseHandle_t cusp_handle;
-  cusolverSpHandle_t cusol_handle;
-#endif
+  EulerData udata;
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return(1);
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-
-  // allocate main solver data structure now that MPI has been initialized
-  EulerData udata;
 
   // start various code profilers
   retval = udata.profile[PR_TOTAL].start();
@@ -238,14 +217,6 @@ int main(int argc, char* argv[]) {
   realtype dTout = (udata.tf-udata.t0)/udata.nout;
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-
-  retval = udata.profile[PR_SETUP1].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set slow timestep size as h0 (if >0), or dTout otherwise
   realtype hslow = (opts.h0 > 0) ? opts.h0 : dTout;
@@ -312,29 +283,19 @@ int main(int argc, char* argv[]) {
     } else {
       cout << "   local N_Vector reduction operations disabled\n";
     }
-    if (opts.iterative) {
-      cout << "   iterative block linear solver selected\n";
-    } else {
-      cout << "   direct block linear solver selected\n";
-    }
     if (restart >= 0)
       cout << "   restarting from output number: " << restart << "\n";
 #ifdef DISABLE_HYDRO
     cout << "Hydrodynamics is turned OFF\n";
 #endif
-#ifdef USERAJA
-#ifdef USEMAGMA
-    cout << "Executable built using MAGMA block linear solver\n";
-#endif
 #if defined(RAJA_CUDA)
-    cout << "Executable built with RAJA+CUDA support\n";
+    cout << "Executable built with RAJA+CUDA support and MAGMA linear solver\n";
 #elif defined(RAJA_HIP)
-    cout << "Executable built with RAJA+HIP support\n";
+    cout << "Executable built with RAJA+HIP support and MAGMA linear solver\n";
+#elif defined(RAJA_OPENMP)
+    cout << "Executable built with RAJA+OpenMP support and KLU linear solver\n";
 #else
-    cout << "Executable built with RAJA+SERIAL support\n";
-#endif
-#else
-    cout << "Executable built without RAJA support\n";
+    cout << "Executable built with RAJA+SERIAL support and KLU linear solver\n";
 #endif
   }
 #ifdef DEBUG
@@ -356,15 +317,6 @@ int main(int argc, char* argv[]) {
     DFID_INNER=fopen("diags_chem.txt","w");
   }
 
-  retval = udata.profile[PR_SETUP1].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP2].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // Initialize N_Vector data structures with configured vector operations
   N = (udata.nxl)*(udata.nyl)*(udata.nzl);
   Nsubvecs = 5 + ((udata.nchem > 0) ? 1 : 0);
@@ -378,7 +330,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USERAJA
+#ifdef USE_DEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
@@ -402,27 +354,9 @@ int main(int argc, char* argv[]) {
   if (check_flag((void *) atols, "N_VClone (main)", 0)) MPI_Abort(udata.comm, 1);
   N_VConst(opts.atol, atols);
 
-  retval = udata.profile[PR_SETUP2].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP3].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // initialize Dengo data structure, "network_data" (stored within udata)
   retval = initialize_Dengo_structures(udata);
   if (check_flag(&retval, "initialize_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  retval = udata.profile[PR_SETUP3].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP4].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set initial conditions into overall solution vector (or restart from file)
   // [note: since w and wloc share the same component N_Vectors, this also initializes wloc]
@@ -439,27 +373,9 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   }
 
-  retval = udata.profile[PR_SETUP4].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP5].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // prepare Dengo structures and initial condition vector(s) for fast time scale evolution
   retval = prepare_Dengo_structures(udata.t0, w, udata);
   if (check_flag(&retval, "prepare_Dengo_structures (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  retval = udata.profile[PR_SETUP5].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP6].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
 
   //--- create the fast integrator and set options ---//
@@ -489,121 +405,36 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetUserData(inner_arkode_mem, (void*) inner_content);
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  retval = udata.profile[PR_SETUP6].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP7].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
   // create the fast integrator local linear solver
-  if (opts.iterative) {
-    BLS = SUNLinSol_SPGMR(wsubvecs[5], PREC_NONE, opts.maxliters, udata.ctx);
-    if(check_flag((void*) BLS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
-  } else {
-#ifdef USEMAGMA
-    // Create SUNMatrix for use in linear solves
-    A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
-                                  udata.memhelper, NULL, udata.ctx);
-    if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
-
-    retval = udata.profile[PR_SETUP7].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-    retval = MPI_Barrier(udata.comm);
-    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-    retval = udata.profile[PR_SETUP7A].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
-    // Create the custom SUNLinearSolver object
-    BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
-    if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
-
-    retval = udata.profile[PR_SETUP7A].stop();
-    if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-    retval = MPI_Barrier(udata.comm);
-    if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-    retval = udata.profile[PR_SETUP7B].start();
-    if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
+#ifdef USE_DEVICE
+  // Create SUNMatrix for use in linear solves
+  A = SUNMatrix_MagmaDenseBlock(N, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
+                                udata.memhelper, NULL, udata.ctx);
+  if(check_flag((void *) A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
 #else
-#ifdef RAJA_CUDA
-    // Initialize cuSOLVER and cuSPARSE handles
-    cusparseCreate(&cusp_handle);
-    cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(N, udata.nchem, udata.nchem, 64*udata.nchem,
-                                       cusp_handle, udata.ctx);
-    if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_cuSolverSp_batchQR(wsubvecs[5], A, cusol_handle, udata.ctx);
-    if(check_flag((void*) BLS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
-    // Set the sparsity pattern to be fixed
-    retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
-    if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
-    // Initialiize the Jacobian with the fixed sparsity pattern
-    retval = initialize_sparse_jacobian_cvklu(A, &udata);
-    if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
-#else
-    A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
-    if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
-    if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
+  A = SUNSparseMatrix(N*udata.nchem, N*udata.nchem, 64*N*udata.nchem, CSR_MAT, udata.ctx);
+  if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
-#endif
-  }
 
-  retval = udata.profile[PR_SETUP7B].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  // Create the custom SUNLinearSolver object
+#ifdef USE_DEVICE
+  BLS = SUNLinSol_MagmaDense(wsubvecs[5], A, udata.ctx);
+  if(check_flag((void *) BLS, "SUNLinSol_MagmaDense", 0)) return(1);
+#else
+  BLS = SUNLinSol_KLU(wsubvecs[5], A, udata.ctx);
+  if (check_flag((void*) BLS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
-  retval = udata.profile[PR_SETUP7C].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // create linear solver wrapper and attach the matrix and linear solver to the
   // integrator and set the Jacobian for direct linear solvers
   LS = SUNLinSol_RankLocalLS(BLS, wloc, 5, &udata, inner_arkode_mem, opts, udata.ctx);
   if (check_flag((void*) LS, "SUNLinSol_RankLocalLS (main)", 0)) MPI_Abort(udata.comm, 1);
 
-  retval = udata.profile[PR_SETUP7C].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP7D].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
   retval = ARKStepSetLinearSolver(inner_arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  retval = udata.profile[PR_SETUP7D].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP7E].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  if (!opts.iterative) {
-    retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
-    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
-
-  retval = udata.profile[PR_SETUP7E].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP8].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
+  retval = ARKStepSetJacFn(inner_arkode_mem, Jfast);
+  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // set diagnostics file
   if (udata.showstats && outproc) {
@@ -692,27 +523,12 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetNonlinConvCoef(inner_arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  retval = udata.profile[PR_SETUP8].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
-  retval = udata.profile[PR_SETUP9].start();
-  if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-
   //--- create the slow integrator and set options ---//
 
   // initialize the integrator memory
   outer_arkode_mem = MRIStepCreate(fslow, NULL, udata.t0, w, stepper, udata.ctx);
   if (check_flag((void*) outer_arkode_mem, "MRIStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
 
-  retval = udata.profile[PR_SETUP9].stop();
-  if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef INTRUSIVE_PROFILING
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
-#endif
   retval = udata.profile[PR_MRISETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -845,14 +661,7 @@ int main(int argc, char* argv[]) {
            << ", " << nffi_max << ")\n";
       cout << "   Total number of fast error test failures = (" << netf_min << ", "
            << netf_max << ")\n";
-      if (opts.iterative && nli_max > 0) {
-        cout << "   Total number of fast lin iters = (" << nli_min << ", "
-             << nli_max << ")\n";
-        cout << "   Total number of fast lin conv fails = (" << nlcf_min << ", "
-             << nlcf_max << ")\n";
-        cout << "   Total number of fast lin RHS evals = (" << nlfs_min << ", "
-             << nlfs_max << ")\n";
-      } else if (nls_max > 0) {
+      if (nls_max > 0) {
         cout << "   Total number of fast lin solv setups = (" << nls_min << ", "
              << nls_max << ")\n";
         cout << "   Total number of fast Jac evals = (" << nje_min << ", "
@@ -868,20 +677,6 @@ int main(int argc, char* argv[]) {
     }
     udata.profile[PR_SETUP].print_cumulative_times("setup");
     udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
-    udata.profile[PR_SETUP1].print_cumulative_times("setup-phase1");
-    udata.profile[PR_SETUP2].print_cumulative_times("setup-phase2");
-    udata.profile[PR_SETUP3].print_cumulative_times("setup-phase3");
-    udata.profile[PR_SETUP4].print_cumulative_times("setup-phase4");
-    udata.profile[PR_SETUP5].print_cumulative_times("setup-phase5");
-    udata.profile[PR_SETUP6].print_cumulative_times("setup-phase6");
-    udata.profile[PR_SETUP7].print_cumulative_times("setup-phase7");
-    udata.profile[PR_SETUP7A].print_cumulative_times("setup-phase7a");
-    udata.profile[PR_SETUP7B].print_cumulative_times("setup-phase7b");
-    udata.profile[PR_SETUP7C].print_cumulative_times("setup-phase7c");
-    udata.profile[PR_SETUP7D].print_cumulative_times("setup-phase7d");
-    udata.profile[PR_SETUP7E].print_cumulative_times("setup-phase7e");
-    udata.profile[PR_SETUP8].print_cumulative_times("setup-phase8");
-    udata.profile[PR_SETUP9].print_cumulative_times("setup-phase9");
     udata.profile[PR_MRISETUP].print_cumulative_times("MRIsetup");
     udata.profile[PR_IO].print_cumulative_times("I/O");
     udata.profile[PR_MPI].print_cumulative_times("MPI");
@@ -893,8 +688,7 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
     udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
     udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
-    udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
-    udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
+    udata.profile[PR_MPISYNC].print_cumulative_times("MPI sync");
     // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
     udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
     udata.profile[PR_TRANS].print_cumulative_times("trans");
@@ -911,8 +705,7 @@ int main(int argc, char* argv[]) {
     udata.profile[PR_JACFAST].reset();
     udata.profile[PR_LSETUP].reset();
     udata.profile[PR_LSOLVE].reset();
-    udata.profile[PR_LATIMES].reset();
-    udata.profile[PR_LSOLVEMPI].reset();
+    udata.profile[PR_MPISYNC].reset();
     // udata.profile[PR_POSTFAST].reset();
     udata.profile[PR_DTSTAB].reset();
 
@@ -1049,14 +842,7 @@ int main(int argc, char* argv[]) {
          << ", " << nffi_max << ")\n";
     cout << "   Total number of fast error test failures = (" << netf_min << ", "
          << netf_max << ")\n";
-    if (opts.iterative && nli_max > 0) {
-      cout << "   Total number of fast lin iters = (" << nli_min << ", "
-           << nli_max << ")\n";
-      cout << "   Total number of fast lin conv fails = (" << nlcf_min << ", "
-           << nlcf_max << ")\n";
-      cout << "   Total number of fast lin RHS evals = (" << nlfs_min << ", "
-           << nlfs_max << ")\n";
-    } else if (nls_max > 0) {
+    if (nls_max > 0) {
       cout << "   Total number of fast lin solv setups = (" << nls_min << ", "
            << nls_max << ")\n";
       cout << "   Total number of fast Jac evals = (" << nje_min << ", "
@@ -1072,20 +858,6 @@ int main(int argc, char* argv[]) {
   }
   udata.profile[PR_SETUP].print_cumulative_times("setup");
   udata.profile[PR_CHEMSETUP].print_cumulative_times("chemSetup");
-  udata.profile[PR_SETUP1].print_cumulative_times("setup-phase1");
-  udata.profile[PR_SETUP2].print_cumulative_times("setup-phase2");
-  udata.profile[PR_SETUP3].print_cumulative_times("setup-phase3");
-  udata.profile[PR_SETUP4].print_cumulative_times("setup-phase4");
-  udata.profile[PR_SETUP5].print_cumulative_times("setup-phase5");
-  udata.profile[PR_SETUP6].print_cumulative_times("setup-phase6");
-  udata.profile[PR_SETUP7].print_cumulative_times("setup-phase7");
-  udata.profile[PR_SETUP7A].print_cumulative_times("setup-phase7a");
-  udata.profile[PR_SETUP7B].print_cumulative_times("setup-phase7b");
-  udata.profile[PR_SETUP7C].print_cumulative_times("setup-phase7c");
-  udata.profile[PR_SETUP7D].print_cumulative_times("setup-phase7d");
-  udata.profile[PR_SETUP7E].print_cumulative_times("setup-phase7e");
-  udata.profile[PR_SETUP8].print_cumulative_times("setup-phase8");
-  udata.profile[PR_SETUP9].print_cumulative_times("setup-phase9");
   udata.profile[PR_MRISETUP].print_cumulative_times("MRIsetup");
   udata.profile[PR_IO].print_cumulative_times("I/O");
   udata.profile[PR_MPI].print_cumulative_times("MPI");
@@ -1097,8 +869,7 @@ int main(int argc, char* argv[]) {
   udata.profile[PR_JACFAST].print_cumulative_times("fast Jac");
   udata.profile[PR_LSETUP].print_cumulative_times("lsetup");
   udata.profile[PR_LSOLVE].print_cumulative_times("lsolve");
-  udata.profile[PR_LATIMES].print_cumulative_times("Atimes");
-  udata.profile[PR_LSOLVEMPI].print_cumulative_times("lsolveMPI");
+  udata.profile[PR_MPISYNC].print_cumulative_times("MPI sync");
   // udata.profile[PR_POSTFAST].print_cumulative_times("fast post");
   udata.profile[PR_DTSTAB].print_cumulative_times("dt_stab");
   udata.profile[PR_SIMUL].print_cumulative_times("sim");
@@ -1116,13 +887,7 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
   cleanup(&outer_arkode_mem, &inner_arkode_mem, stepper, inner_content,
           udata, BLS, LS, A, w, wloc, atols, wsubvecs, Nsubvecs);
-#if defined(RAJA_CUDA) && !defined(USEMAGMA)
-  // Destroy the cuSOLVER and cuSPARSE handles
-  if (!opts.iterative) {
-    cusparseDestroy(cusp_handle);
-    cusolverSpDestroy(cusol_handle);
-  }
-#endif
+  udata.FreeData();
   MPI_Finalize();                  // Finalize MPI
   return 0;
 }
@@ -1148,14 +913,9 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   N_Vector wchemdot = NULL;
   wchemdot = N_VGetSubvector_ManyVector(wdot, 5);
   if (check_flag((void *) wchemdot, "N_VGetSubvector_ManyVector (ffast)", 0))  return(-1);
-
-  // call Dengo RHS routine
-#ifdef USERAJA
-  retval = calculate_rhs_cvklu(t, wchem, wchemdot, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_rhs_cvklu(t, wchem, wchemdot,
+                               (udata->nxl)*(udata->nyl)*(udata->nzl),
                                udata->RxNetData);
-#else
-  retval = calculate_rhs_cvklu(t, wchem, wchemdot, udata->RxNetData);
-#endif
   if (check_flag(&retval, "calculate_rhs_cvklu (ffast)", 1)) return(retval);
 
   // scale wdot by TimeUnits to handle step size nondimensionalization
@@ -1188,9 +948,6 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
     }
   }
 
-  // save chem RHS for use in ATimes (iterative linear solvers)
-  if (udata->fchemcur) N_VScale(ONE, wdot, udata->fchemcur);
-
   // stop timer and return
   retval = udata->profile[PR_RHSFAST].stop();
   if (check_flag(&retval, "Profile::stop (ffast)", 1)) return(-1);
@@ -1211,20 +968,15 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   if (check_flag((void *) wchem, "N_VGetSubvector_ManyVector (Jfast)", 0))  return(-1);
   N_Vector fwchem = N_VGetSubvector_ManyVector(fw, 5);
   if (check_flag((void *) fwchem, "N_VGetSubvector_ManyVector (Jfast)", 0))  return(-1);
-#ifdef USERAJA
   retval = calculate_jacobian_cvklu(t, wchem, fwchem, Jac,
                                     (udata->nxl)*(udata->nyl)*(udata->nzl),
                                     udata->RxNetData, tmp1, tmp2, tmp3);
-#else
-  retval = calculate_sparse_jacobian_cvklu(t, wchem, fwchem, Jac,
-                                           udata->RxNetData, tmp1, tmp2, tmp3);
-#endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jfast)", 1)) return(retval);
 
   // scale Jac values by TimeUnits to handle step size nondimensionalization
   realtype *Jdata = NULL;
   realtype TUnit = udata->TimeUnits;
-#ifdef USEMAGMA
+#ifdef USE_DEVICE
   Jdata = SUNMatrix_MagmaDense_Data(Jac);
   if (check_flag((void *) Jdata, "SUNMatrix_MagmaDense_Data (Jimpl)", 0)) return(-1);
   long int ldata = SUNMatrix_MagmaDense_LData(Jac);
@@ -1232,19 +984,10 @@ static int Jfast(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
     Jdata[i] *= TUnit;
   });
 #else
-#ifdef RAJA_CUDA
-  Jdata = SUNMatrix_cuSparse_Data(Jac);
-  if (check_flag((void *) Jdata, "SUNMatrix_cuSparse_Data (Jimpl)", 0)) return(-1);
-  sunindextype nnz = SUNMatrix_cuSparse_NNZ(Jac);
-  RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nnz), [=] RAJA_DEVICE (long int i) {
-    Jdata[i] *= TUnit;
-  });
-#else
   Jdata = SUNSparseMatrix_Data(Jac);
   if (check_flag((void *) Jdata, "SUNSparseMatrix_Data (Jimpl)", 0)) return(-1);
   sunindextype nnz = SUNSparseMatrix_NNZ(Jac);
   for (sunindextype i=0; i<nnz; i++)  Jdata[i] *= TUnit;
-#endif
 #endif
 
   // stop timer and return
@@ -1285,7 +1028,7 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   retval = apply_Dengo_scaling(w, *udata);
   if (check_flag(&retval, "apply_Dengo_scaling (fslow)", 1)) return(-1);
 
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+#ifdef USE_DEVICE
   // ensure that chemistry data is synchronized to host
   N_VCopyFromDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
@@ -1295,8 +1038,8 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (int k=0; k<udata->nzl; k++)
     for (int j=0; j<udata->nyl; j++)
       for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[fidx] = chem[cidx] * EUnitScale
           + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
@@ -1321,13 +1064,13 @@ static int fslow(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   for (int k=0; k<udata->nzl; k++)
     for (int j=0; j<udata->nyl; j++)
       for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }
 
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
+#ifdef USE_DEVICE
   // ensure that chemistry rate-of-change data is synchronized back to device
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(wdot,5));
 #endif
@@ -1407,11 +1150,11 @@ static int RankLocalStepper_Evolve(MRIStepInnerStepper stepper, realtype t0,
   // determine return flag via reduction across ranks
   int ierrs[2], globerrs[2];
   ierrs[0] = retval; ierrs[1] = -retval;
-  retval = content->udata->profile[PR_MPI].start();
+  retval = content->udata->profile[PR_MPISYNC].start();
   if (check_flag(&retval, "Profile::start (RankLocalStepper_Evolve)", 1))  return(-1);
   retval = MPI_Allreduce(ierrs, globerrs, 2, MPI_INT, MPI_MIN, content->udata->comm);
   if (check_flag(&retval, "MPI_Alleduce (RankLocalStepper_Evolve)", 3)) return(-1);
-  retval = content->udata->profile[PR_MPI].stop();
+  retval = content->udata->profile[PR_MPISYNC].stop();
   if (check_flag(&retval, "Profile::stop (RankLocalStepper_Evolve)", 1))  return(-1);
 
   // return unrecoverable failure if relevant;
@@ -1588,8 +1331,6 @@ SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver BLS, N_Vector x,
   S->ops->setup       = Setup_RankLocalLS;
   S->ops->solve       = Solve_RankLocalLS;
   S->ops->lastflag    = LastFlag_RankLocalLS;
-  if (opts.iterative)
-    S->ops->setatimes = SetATimes_RankLocalLS;
   S->ops->free        = Free_RankLocalLS;
 
   // Create, fill and attach content
@@ -1602,24 +1343,14 @@ SUNLinearSolver SUNLinSol_RankLocalLS(SUNLinearSolver BLS, N_Vector x,
   content->udata      = udata;
   content->arkode_mem = arkode_mem;
   content->nfeDQ      = 0;
-  if (opts.iterative) {
-    content->work   = N_VClone(x);
-    udata->fchemcur = N_VClone(N_VGetSubvector_ManyVector(x, subvec));
-  } else {
-    content->work   = NULL;
-    udata->fchemcur = NULL;
-  }
-  S->content = content;
+  S->content          = content;
 
   return(S);
 }
 
 SUNLinearSolver_Type GetType_RankLocalLS(SUNLinearSolver S)
 {
-  if (RankLocalLS_WORK(S))
-    return(SUNLINEARSOLVER_ITERATIVE);
-  else
-    return(SUNLINEARSOLVER_DIRECT);
+  return(SUNLINEARSOLVER_DIRECT);
 }
 
 int Initialize_RankLocalLS(SUNLinearSolver S)
@@ -1655,85 +1386,15 @@ int Solve_RankLocalLS(SUNLinearSolver S, SUNMatrix A,
     return(RankLocalLS_LASTFLAG(S));
   }
 
-  // pass solve call down to the block linear solver, and return resulting flag
+  // pass solve call down to the block linear solver
   RankLocalLS_LASTFLAG(S) = SUNLinSolSolve(RankLocalLS_BLS(S), A, xsub, bsub, tol);
+
+  // stop profiling timer
+  retval = RankLocalLS_UDATA(S)->profile[PR_LSOLVE].stop();
+  if (check_flag(&retval, "Profile::stop (Solve_RankLocalLS)", 1))  return(-1);
+
+  // return flag from block linear solver
   return(RankLocalLS_LASTFLAG(S));
-}
-
-int SetATimes_RankLocalLS(SUNLinearSolver S, void* A_data, ATimesFn ATimes)
-{
-  // Ignore the input ARKODE ATimes function and attach a custom ATimes function
-  RankLocalLS_LASTFLAG(S) = SUNLinSolSetATimes(RankLocalLS_BLS(S),
-                                               RankLocalLS_CONTENT(S),
-                                               ATimes_RankLocalLS);
-  return(RankLocalLS_LASTFLAG(S));
-}
-
-int ATimes_RankLocalLS(void* A_data, N_Vector v, N_Vector z)
-{
-  // Access the linear solver content
-  RankLocalLSContent content = (RankLocalLSContent) A_data;
-
-  // Shortcuts to content
-  EulerData* udata      = content->udata;
-  void*      arkode_mem = content->arkode_mem;
-
-  // Get the current time, gamma, and error weights
-  realtype tcur;
-  int retval = ARKStepGetCurrentTime(arkode_mem, &tcur);
-  if (check_flag(&retval, "ARKStepGetCurrentTime (Atimes_RankLocalLS)", 1)) return(-1);
-
-  N_Vector ycur;
-  retval = ARKStepGetCurrentState(arkode_mem, &ycur);
-  if (check_flag(&retval, "ARKStepGetCurrentState (Atimes_RankLocalLS)", 1)) return(-1);
-
-  realtype gamma;
-  retval = ARKStepGetCurrentGamma(arkode_mem, &gamma);
-  if (check_flag(&retval, "ARKStepGetCurrentGamma (Atimes_RankLocalLS)", 1)) return(-1);
-
-  N_Vector work = content->work;
-  retval = ARKStepGetErrWeights(arkode_mem, work);
-  if (check_flag(&retval, "ARKStepGetErrWeights (Atimes_RankLocalLS)", 1)) return(-1);
-
-  // Get ycur and weight vector for chem species
-  N_Vector y = N_VGetSubvector_ManyVector(ycur, content->subvec);
-  N_Vector w = N_VGetSubvector_ManyVector(work, content->subvec);
-
-  // Start timer
-  retval = udata->profile[PR_LATIMES].start();
-  if (check_flag(&retval, "Profile::start (Atimes)", 1)) return(-1);
-
-  // Set perturbation to 1/||v||
-  realtype sig = ONE / N_VWrmsNorm(v, w);
-
-  // Set work = y + sig * v
-  N_VLinearSum(sig, v, ONE, y, w);
-
-  // Set z = fchem(t, y + sig * v)
-#ifdef USERAJA
-  retval = calculate_rhs_cvklu(tcur, w, z, (udata->nxl)*(udata->nyl)*(udata->nzl),
-                               udata->RxNetData);
-#else
-  retval = calculate_rhs_cvklu(tcur, w, z, udata->RxNetData);
-#endif
-  content->nfeDQ++;
-  if (check_flag(&retval, "calculate_rhs_cvklu (Atimes)", 1)) return(retval);
-
-  // scale wchemdot by TimeUnits to handle step size nondimensionalization
-  N_VScale(udata->TimeUnits, z, z);
-
-  // Compute Jv approximation: z = (z - fchemcur) / sig
-  realtype siginv = ONE / sig;
-  N_VLinearSum(siginv, z, -siginv, udata->fchemcur, z);
-
-  // Compute Av approximation: z = (I - gamma J) v
-  N_VLinearSum(ONE, v, -gamma, z, z);
-
-  // Stop timer and return
-  retval = udata->profile[PR_LATIMES].stop();
-  if (check_flag(&retval, "Profile::stop (Atimes)", 1)) return(-1);
-
-  return(0);
 }
 
 sunindextype LastFlag_RankLocalLS(SUNLinearSolver S)
@@ -1746,7 +1407,6 @@ int Free_RankLocalLS(SUNLinearSolver S)
 {
   RankLocalLSContent content = RankLocalLS_CONTENT(S);
   if (content == NULL) return(0);
-  if (content->work) N_VDestroy(content->work);
   free(S->ops);
   free(S->content);
   free(S);

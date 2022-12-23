@@ -1,7 +1,8 @@
 /*---------------------------------------------------------------
  Programmer(s): Daniel R. Reynolds @ SMU
+                David J. Gardner @ LLNL
  ----------------------------------------------------------------
- Copyright (c) 2019, Southern Methodist University.
+ Copyright (c) 2022, Southern Methodist University.
  All rights reserved.
  For details, see the LICENSE file.
  ----------------------------------------------------------------
@@ -43,7 +44,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
 {
   int retval;
   double dbuff[28];
-  long int ibuff[27];
+  long int ibuff[28];
 
   // disable 'restart' by default
   restart = -1;
@@ -54,16 +55,16 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     cout << "Reading command-line options\n";
 
     // use 'gopt' to handle parsing command-line; first define all available options
-    const int nopt = 59;
+    const int nopt = 57;
     struct option options[nopt+1];
     enum iarg { ifname, ihelp, ixl, ixr, iyl, iyr, izl, izr, it0,
                 itf, igam, imun, ilun, itun, inx, iny, inz, ixlb,
                 ixrb, iylb, iyrb, izlb, izrb, icfl, inout, ishow,
-                iord, idord, iebt, iibt, imbt, iadmth, imnef, imhnil, 
-                imaxst, isfty, ibias, igrow, ipq, ik1, ik2, ik3, 
-                iemx1, iemaf, ih0, ihmin, ihmax, ifixed, ihtrans, 
-                irtol, iatol, irest, ipred, imxnit, inlcoef, ifk, 
-                ilr, iils, imxlit };
+                iord, idord, iebt, iibt, imbt, iadmth, imnef, imhnil,
+                imaxst, isfty, ibias, igrow, ipq, ik1, ik2, ik3,
+                iemx1, iemaf, ih0, ihmin, ihmax, ifixed, ihtrans,
+                irtol, iatol, irest, ipred, imxnit, inlcoef, ifk,
+                ilr };
     for (int i=0; i<nopt; i++) {
       options[i].short_name = '0';
       options[i].flags = GOPT_ARGUMENT_REQUIRED;
@@ -130,8 +131,6 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     options[inlcoef].long_name = "nlconvcoef";
     options[ifk].long_name = "fusedkernels";
     options[ilr].long_name = "localreduce";
-    options[iils].long_name = "iterative";
-    options[imxlit].long_name = "maxliters";
     argc = gopt(argv, options);
 
     // handle help request
@@ -204,8 +203,6 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
            << "\nAvailable N_Vector options (and the default if not provided):\n"
            << "   --fusedkernels=<int>   (" << opts.fusedkernels << ")\n"
            << "   --localreduce=<int>    (" << opts.localreduce << ")\n"
-           << "   --iterative=<int>      (" << opts.iterative << ")\n"
-           << "   --maxliters=<int>      (" << opts.maxliters << ")\n"
            << "\nAlternately, all of these options may be specified in a single\n"
            << "input file (with command-line arguments taking precedence if an\n"
            << "option is multiply-defined) via:"
@@ -298,8 +295,6 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
         retval += sscanf(line,"nlconvcoef = %lf", &opts.nlconvcoef);
         retval += sscanf(line,"fusedkernels = %i", &opts.fusedkernels);
         retval += sscanf(line,"localreduce = %i", &opts.localreduce);
-        retval += sscanf(line,"iterative = %i", &opts.iterative);
-        retval += sscanf(line,"maxliters = %i", &opts.maxliters);
 
         /* if unable to read the line (and it looks suspicious) issue a warning */
         if (retval == 0 && strstr(line, "=") != NULL && line[0] != '#')
@@ -338,7 +333,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[ishow].count)   udata.showstats   = 1;
     if (options[iord].count)    opts.order        = atoi(options[iord].argument);
     if (options[idord].count)   opts.dense_order  = atoi(options[idord].argument);
-    if (options[iebt].count)    
+    if (options[iebt].count)
       opts.etable = (ARKODE_ERKTableID)  atoi(options[iebt].argument);
     if (options[iibt].count)
       opts.itable = (ARKODE_DIRKTableID) atoi(options[iibt].argument);
@@ -370,8 +365,6 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     if (options[inlcoef].count) opts.nlconvcoef   = atof(options[inlcoef].argument);
     if (options[ifk].count)     opts.fusedkernels = atoi(options[ifk].argument);
     if (options[ilr].count)     opts.localreduce  = atoi(options[ilr].argument);
-    if (options[iils].count)    opts.iterative    = atoi(options[iils].argument);
-    if (options[imxlit].count)  opts.maxliters    = atoi(options[imxlit].argument);
 
     // pack buffers with final parameter values
     ibuff[0]  = (long int) udata.nx;
@@ -401,8 +394,6 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
     ibuff[24] = (long int) opts.fixedstep;
     ibuff[25] = (long int) opts.fusedkernels;
     ibuff[26] = (long int) opts.localreduce;
-    ibuff[27] = (long int) opts.iterative;
-    ibuff[28] = (long int) opts.maxliters;
 
     dbuff[0]  = (double) udata.xl;
     dbuff[1]  = (double) udata.xr;
@@ -438,7 +429,7 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   // perform broadcast and unpack results
   retval = MPI_Bcast(dbuff, 28, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
-  retval = MPI_Bcast(ibuff, 29, MPI_LONG, 0, MPI_COMM_WORLD);
+  retval = MPI_Bcast(ibuff, 27, MPI_LONG, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (load_inputs)", 3)) return(-1);
 
   // unpack buffers
@@ -469,8 +460,6 @@ int load_inputs(int myid, int argc, char* argv[], EulerData& udata,
   opts.fixedstep = ibuff[24];
   opts.fusedkernels = ibuff[25];
   opts.localreduce = ibuff[26];
-  opts.iterative = ibuff[27];
-  opts.maxliters = ibuff[28];
 
   udata.xl = dbuff[0];
   udata.xr = dbuff[1];
@@ -527,7 +516,7 @@ int check_conservation(const realtype& t, const N_Vector w, const EulerData& uda
   for (k=0; k<udata.nzl; k++)
     for (j=0; j<udata.nyl; j++)
       for (i=0; i<udata.nxl; i++) {
-        idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+        idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
         sumvals[0] += rho[idx];
         sumvals[1] += et[idx];
       }
@@ -601,7 +590,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
     for (k=0; k<udata.nzl; k++)
       for (j=0; j<udata.nyl; j++)
         for (i=0; i<udata.nxl; i++) {
-          idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+          idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           rmsvals[0] += pow(rho[idx]*DUnits, 2);
           rmsvals[1] += pow( mx[idx]*MUnits, 2);
           rmsvals[2] += pow( my[idx]*MUnits, 2);
@@ -609,7 +598,7 @@ int print_stats(const realtype& t, const N_Vector w, const int& firstlast,
           rmsvals[4] += pow( et[idx]*EUnits, 2);
           if (udata.nchem > 0) {
             for (v=0; v<udata.nchem; v++) {
-              idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+              idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
               rmsvals[5+v] += pow( chem[idx], 2);
             }
           }
@@ -716,8 +705,6 @@ int write_parameters(const realtype& tcur, const realtype& hcur, const int& iout
     fprintf(UFID, "atol = " ESYM "\n", opts.atol);
     fprintf(UFID, "fusedkernels = %i\n", opts.fusedkernels);
     fprintf(UFID, "localreduce = %i\n", opts.localreduce);
-    fprintf(UFID, "iterative = %i\n", opts.iterative);
-    fprintf(UFID, "maxliters = %i\n", opts.maxliters);
     fprintf(UFID, "restart = %i\n", iout);
     fclose(UFID);
   }
@@ -737,7 +724,6 @@ int output_solution(const realtype& tcur, const N_Vector w, const realtype& hcur
                     const int& iout, const EulerData& udata, const ARKODEParameters& opts)
 {
 #ifdef USEHDF5
-
   // reusable variables
   char outname[100];
   char chemname[13];

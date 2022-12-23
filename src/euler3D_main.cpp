@@ -38,6 +38,13 @@
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -45,9 +52,7 @@ int main(int argc, char* argv[]) {
   // general problem variables
   long int N, i;
   int Nsubvecs;
-  int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled if negative)
   N_Vector w = NULL;             // empty vectors for storing overall solution
   N_Vector *wsubvecs;
@@ -56,12 +61,6 @@ int main(int argc, char* argv[]) {
   ARKODEParameters opts;
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // start various code profilers
   retval = udata.profile[PR_SETUP].start();
@@ -158,7 +157,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USERAJA
+#ifdef USE_DEVICE
     wsubvecs[5] = N_VNew_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
@@ -475,8 +474,7 @@ int main(int argc, char* argv[]) {
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
   ARKStepFree(&arkode_mem);    // Free integrator memory
-  retval = MPI_Barrier(udata.comm);
-  if (check_flag(&retval, "MPI_Barrier (main)", 3)) MPI_Abort(udata.comm, 1);
+  udata.FreeData();
   MPI_Finalize();              // Finalize MPI
   return 0;
 }

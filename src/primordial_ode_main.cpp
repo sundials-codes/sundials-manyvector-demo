@@ -18,34 +18,16 @@
 //    Physics
 #include <random>
 #include <euler3D.hpp>
-#ifdef USERAJA
 #include <raja_primordial_network.hpp>
-#else
-#include <dengo_primordial_network.hpp>
-#endif
 
 //    SUNDIALS
-#ifdef USE_CVODE
-#include <cvode/cvode.h>
-#include <cvode/cvode_ls.h>
-#else
 #include <arkode/arkode_arkstep.h>
-#endif
-#include <sunlinsol/sunlinsol_spgmr.h>
-#ifdef USEMAGMA
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
-#if defined(RAJA_CUDA)
-#include <sunmatrix/sunmatrix_cusparse.h>
-#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
-#elif defined(CVKLU)
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#else
-#include <sunmatrix/sunmatrix_dense.h>
-#include <sunlinsol/sunlinsol_dense.h>
-#endif
 #endif
 
 #ifdef DEBUG
@@ -83,6 +65,13 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -91,9 +80,7 @@ int main(int argc, char* argv[]) {
   long int N, nstrip;
 
   // general problem variables
-  int retval;                    // reusable error-checking flag
   int idense;                    // flag denoting integration type (dense output vs tstop)
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use (disabled here)
   int nprocs;                    // total number of MPI processes
   N_Vector w = NULL;             // empty vectors for storing overall solution, absolute tolerance array
@@ -102,21 +89,9 @@ int main(int argc, char* argv[]) {
   SUNMatrix A = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
   ARKODEParameters opts;
-#if defined(RAJA_CUDA) && !defined(USEMAGMA)
-  cusparseHandle_t cusp_handle;
-  cusolverSpHandle_t cusol_handle;
-#endif
+  EulerData udata;
 
   //--- General Initialization ---//
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
-
-  // allocate main solver data structure now that MPI has been initialized
-  EulerData udata;
 
   // ensure that this is run in serial
   retval = MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -150,15 +125,6 @@ int main(int argc, char* argv[]) {
   // set nstrip value to all cells on this process
   nstrip = udata.nxl * udata.nyl * udata.nzl;
 
-#ifndef USERAJA
-  // ensure that nxl*nyl*nzl (inputs) <= MAX_NCELLS (dengo preprocessor value)
-  if (nstrip > MAX_NCELLS) {
-    cerr << "primordial_ode error: total spatial subdomain size (" <<
-      nstrip << ") exceeds maximum (" << MAX_NCELLS << ")\n";
-    MPI_Abort(MPI_COMM_WORLD, 1);
-  }
-#endif
-
   // Output problem setup information
   bool outproc = (udata.myid == 0);
   if (outproc) {
@@ -169,19 +135,14 @@ int main(int argc, char* argv[]) {
     cout << "   time domain = (" << udata.t0 << ", " << udata.tf << "]\n";
     cout << "   spatial grid: " << udata.nx << " x " << udata.ny << " x "
          << udata.nz << "\n";
-#ifdef USERAJA
-#ifdef USEMAGMA
-    cout << "Executable built using MAGMA block linear solver\n";
-#endif
 #if defined(RAJA_CUDA)
-    cout << "Executable built with RAJA+CUDA support\n";
+    cout << "Executable built with RAJA+CUDA support and MAGMA linear solver\n";
 #elif defined(RAJA_HIP)
-    cout << "Executable built with RAJA+HIP support\n";
+    cout << "Executable built with RAJA+HIP support and MAGMA linear solver\n";
+#elif defined(RAJA_OPENMP)
+    cout << "Executable built with RAJA+OpenMP support and KLU linear solver\n";
 #else
-    cout << "Executable built with RAJA+SERIAL support\n";
-#endif
-#else
-    cout << "Executable built without RAJA support\n";
+    cout << "Executable built with RAJA+SERIAL support and KLU linear solver\n";
 #endif
   }
 
@@ -194,23 +155,15 @@ int main(int argc, char* argv[]) {
   // initialize primordial rate tables, etc
   retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-#ifdef USERAJA
+
   // Initialize ReactionNetwork for host/device reaction rate structure.
   ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
                                                    nstrip, -1.0, nullptr);
   if (network_data == nullptr)  return(1);
-  //    store pointer to network_data in udata
-  udata.RxNetData = (void*) network_data;
-#else
-  cvklu_data *network_data = cvklu_setup_data("primordial_tables.h5", NULL, NULL);
 
-  //    overwrite internal strip size
-  network_data->nstrip = nstrip;
-  //    set redshift value for non-cosmological run
-  network_data->current_z = -1.0;
   //    store pointer to network_data in udata
   udata.RxNetData = (void*) network_data;
-#endif
+
 
   //    stop profiler.
   retval = udata.profile[PR_CHEMSETUP].stop();
@@ -218,7 +171,7 @@ int main(int argc, char* argv[]) {
 
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
-#ifdef USERAJA
+#ifdef USE_DEVICE
   w = N_VNew_Raja(N, udata.ctx);
   if (check_flag((void *) w, "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
   atols = N_VNew_Raja(N, udata.ctx);
@@ -232,7 +185,14 @@ int main(int argc, char* argv[]) {
 
   // root process determines locations, radii and strength of density clumps
   long int nclumps = CLUMPS_PER_PROC*udata.nprocs;
-  double *clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
+  double *clump_data;
+#ifdef RAJA_CUDA
+  cudaMallocManaged((void**)&(clump_data), nclumps * 5 * sizeof(double));
+#elif RAJA_HIP
+  hipMallocManaged((void**)&(clump_data), nclumps * 5 * sizeof(double));
+#else
+  clump_data = (double*) malloc(nclumps * 5 * sizeof(double));
+#endif
   if (udata.myid == 0) {
 
     // initialize mersenne twister with seed equal to the number of MPI ranks (for reproducibility)
@@ -264,6 +224,11 @@ int main(int argc, char* argv[]) {
   // root process broadcasts clump information
   retval = MPI_Bcast(clump_data, nclumps*5, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   if (check_flag(&retval, "MPI_Bcast (initial_conditions)", 3)) return -1;
+
+  // ensure that clump data is synchronized between host/device device memory
+#ifdef USE_DEVICE
+  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
+#endif
 
   // output clump information
   if (udata.myid == 0) {
@@ -312,10 +277,16 @@ int main(int argc, char* argv[]) {
   const long int ks = udata.ks;
 
   // set initial conditions -- essentially-neutral primordial gas
+#ifdef USE_DEVICE
+  realtype *wdata = N_VGetDeviceArrayPointer(w);
+#else
   realtype *wdata = N_VGetArrayPointer(w);
-  for (int k=0; k<udata.nzl; k++)
-    for (int j=0; j<udata.nyl; j++)
-      for (int i=0; i<udata.nxl; i++) {
+#endif
+  RAJA::View<double, RAJA::Layout<4> > wview(wdata, udata.nzl, udata.nyl, udata.nxl, udata.nchem);
+  RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
+                                                RAJA::RangeSegment(0, udata.nyl),
+                                                RAJA::RangeSegment(0, udata.nxl)),
+                               [=] RAJA_DEVICE (int k, int j, int i) {
 
         // cell-specific local variables
         realtype density, xloc, yloc, zloc, cx, cy, cz, cr, cs, xdist, ydist, zdist, rsq;
@@ -401,23 +372,17 @@ int main(int argc, char* argv[]) {
 
         // copy final results into vector: H2_1, H2_2, H_1, H_2, H_m0, He_1, He_2, He_3, de, ge;
         // converting to 'dimensionless' electron number density
-        long int idx2 = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        wdata[idx2+0] = nH2I;
-        wdata[idx2+1] = nH2II;
-        wdata[idx2+2] = nHI;
-        wdata[idx2+3] = nHII;
-        wdata[idx2+4] = nHM;
-        wdata[idx2+5] = nHeI;
-        wdata[idx2+6] = nHeII;
-        wdata[idx2+7] = nHeIII;
-        wdata[idx2+8] = de / m_amu;
-        wdata[idx2+9] = ge;
-      }
-
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-  // ensure that initial condition is synchronized to device
-  N_VCopyToDevice_Raja(w);
-#endif
+        wview(k,j,i,0) = nH2I;
+        wview(k,j,i,1) = nH2II;
+        wview(k,j,i,2) = nHI;
+        wview(k,j,i,3) = nHII;
+        wview(k,j,i,4) = nHM;
+        wview(k,j,i,5) = nHeI;
+        wview(k,j,i,6) = nHeII;
+        wview(k,j,i,7) = nHeIII;
+        wview(k,j,i,8) = de / m_amu;
+        wview(k,j,i,9) = ge;
+      });
 
   // set absolute tolerance array
   N_VConst(opts.atol, atols);
@@ -426,7 +391,7 @@ int main(int argc, char* argv[]) {
   // for (k=0; k<udata.nzl; k++)
   //   for (j=0; j<udata.nyl; j++)
   //     for (i=0; i<udata.nxl; i++) {
-  //       idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+  //       idx = BUFINDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
   //       atdata[idx+0] = opts.atol; // H2I
   //       atdata[idx+1] = opts.atol; // H2II
   //       atdata[idx+2] = opts.atol; // HI
@@ -440,10 +405,6 @@ int main(int argc, char* argv[]) {
   //     }
 
   // move input solution values into 'scale' components of network_data structure
-#ifdef USERAJA
-  RAJA::View<double, RAJA::Layout<4> > wview(N_VGetDeviceArrayPointer(w),
-                                             udata.nzl, udata.nyl, udata.nxl, udata.nchem);
-  cvklu_data *h_data = network_data->HPtr();
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(h_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
@@ -462,136 +423,33 @@ int main(int argc, char* argv[]) {
 
   // compute auxiliary values within network_data structure
   setting_up_extra_variables(network_data, nstrip);
-#else
-  double *sc = network_data->scale[0];
-  double *isc = network_data->inv_scale[0];
-  for (int k=0; k<udata.nzl; k++)
-    for (int j=0; j<udata.nyl; j++)
-      for (int i=0; i<udata.nxl; i++)
-        for (int l=0; l<udata.nchem; l++) {
-          long int idx = BUFIDX(l,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-          sc[idx] = wdata[idx];
-          isc[idx] = ONE / wdata[idx];
-          wdata[idx] = ONE;
-        }
-
-  // compute auxiliary values within network_data structure
-  setting_up_extra_variables(network_data, sc, nstrip);
-#endif
 
   // initialize the integrator memory
-#ifdef USE_CVODE
-  arkode_mem = CVodeCreate(CV_BDF, udata.ctx);
-  if (check_flag((void*) arkode_mem, "CVodeCreate (main)", 0)) MPI_Abort(udata.comm, 1);
-  retval = CVodeInit(arkode_mem, frhs, udata.t0, w);
-  if (check_flag(&retval, "CVodeInit (main)", 1)) MPI_Abort(udata.comm, 1);
-#else
   arkode_mem = ARKStepCreate(NULL, frhs, udata.t0, w, udata.ctx);
   if (check_flag((void*) arkode_mem, "ARKStepCreate (main)", 0)) MPI_Abort(udata.comm, 1);
-#endif
 
   // create matrix and linear solver modules
-  if (opts.iterative) {
-    LS = SUNLinSol_SPGMR(w, PREC_NONE, opts.maxliters, udata.ctx);
-    if(check_flag((void*) LS, "SUNLinSol_SPGMR (main)", 0)) MPI_Abort(udata.comm, 1);
-  } else {
-#ifdef USEMAGMA
-  // Create SUNMatrix for use in linear solves
+#ifdef USE_DEVICE
   A = SUNMatrix_MagmaDenseBlock(nstrip, udata.nchem, udata.nchem, SUNMEMTYPE_DEVICE,
                                 udata.memhelper, NULL, udata.ctx);
   if(check_flag((void *)A, "SUNMatrix_MagmaDenseBlock", 0)) return(1);
-
-  // Create the SUNLinearSolver object
   LS = SUNLinSol_MagmaDense(w, A, udata.ctx);
   if(check_flag((void *)LS, "SUNLinSol_MagmaDense", 0)) return(1);
 #else
-#if defined RAJA_CUDA
-    // Initialize cuSOLVER and cuSPARSE handles
-    cusparseCreate(&cusp_handle);
-    cusolverSpCreate(&cusol_handle);
-    A = SUNMatrix_cuSparse_NewBlockCSR(nstrip, udata.nchem, udata.nchem, 64*udata.nchem,
-                                       cusp_handle, udata.ctx);
-    if(check_flag((void*) A, "SUNMatrix_cuSparse_NewBlockCSR (main)", 0)) MPI_Abort(udata.comm, 1);
-    LS = SUNLinSol_cuSolverSp_batchQR(w, A, cusol_handle, udata.ctx);
-    if(check_flag((void*) LS, "SUNLinSol_cuSolverSp_batchQR (main)", 0)) MPI_Abort(udata.comm, 1);
-    // Set the sparsity pattern to be fixed
-    retval = SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
-    if(check_flag(&retval, "SUNMatrix_cuSolverSp_SetFixedPattern (main)", 0)) MPI_Abort(udata.comm, 1);
-    // Initialiize the Jacobian with the fixed sparsity pattern
-    retval = initialize_sparse_jacobian_cvklu(A, &udata);
-    if(check_flag(&retval, "initialize_sparse_jacobian_cvklu (main)", 0)) MPI_Abort(udata.comm, 1);
-#elif defined CVKLU
-    A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT, udata.ctx);
-    if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    LS = SUNLinSol_KLU(w, A, udata.ctx);
-    if (check_flag((void*) LS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
-#else
-    A  = SUNDenseMatrix(N, N, udata.ctx);
-    if (check_flag((void*) A, "SUNDenseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
-    LS = SUNLinSol_Dense(w, A, udata.ctx);
-    if (check_flag((void*) LS, "SUNLinSol_Dense (main)", 0)) MPI_Abort(udata.comm, 1);
+  A  = SUNSparseMatrix(N, N, 64*nstrip, CSR_MAT, udata.ctx);
+  if (check_flag((void*) A, "SUNSparseMatrix (main)", 0)) MPI_Abort(udata.comm, 1);
+  LS = SUNLinSol_KLU(w, A, udata.ctx);
+  if (check_flag((void*) LS, "SUNLinSol_KLU (main)", 0)) MPI_Abort(udata.comm, 1);
 #endif
-#endif
-  }
 
   // attach matrix and linear solver to the integrator
-#ifdef USE_CVODE
-  retval = CVodeSetLinearSolver(arkode_mem, LS, A);
-  if (check_flag(&retval, "CVodeSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  if (!opts.iterative) {
-    retval = CVodeSetJacFn(arkode_mem, Jrhs);
-    if (check_flag(&retval, "CVodeSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
-#else
   retval = ARKStepSetLinearSolver(arkode_mem, LS, A);
   if (check_flag(&retval, "ARKStepSetLinearSolver (main)", 1)) MPI_Abort(udata.comm, 1);
-  if (!opts.iterative) {
-    retval = ARKStepSetJacFn(arkode_mem, Jrhs);
-    if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
-#endif
+  retval = ARKStepSetJacFn(arkode_mem, Jrhs);
+  if (check_flag(&retval, "ARKStepSetJacFn (main)", 1)) MPI_Abort(udata.comm, 1);
 
   // setup the ARKStep integrator based on inputs
 
-#ifdef USE_CVODE
-  //    pass network_udata to user functions
-  retval = CVodeSetUserData(arkode_mem, (void *) (&udata));
-  if (check_flag(&retval, "CVodeSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set max order
-  if (opts.order != 0) {
-    retval = CVodeSetMaxOrd(arkode_mem, opts.order);
-    if (check_flag(&retval, "CVodeSetMaxOrd (main)", 1)) MPI_Abort(udata.comm, 1);
-  }
-
-  //    set initial time step size
-  retval = CVodeSetInitStep(arkode_mem, opts.h0);
-  if (check_flag(&retval, "CVodeSetInitStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set minimum time step size
-  retval = CVodeSetMinStep(arkode_mem, opts.hmin);
-  if (check_flag(&retval, "CVodeSetMinStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum time step size
-  retval = CVodeSetMaxStep(arkode_mem, opts.hmax);
-  if (check_flag(&retval, "CVodeSetMaxStep (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum allowed error test failures
-  retval = CVodeSetMaxErrTestFails(arkode_mem, opts.maxnef);
-  if (check_flag(&retval, "CVodeSetMaxErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum allowed hnil warnings
-  retval = CVodeSetMaxHnilWarns(arkode_mem, opts.mxhnil);
-  if (check_flag(&retval, "CVodeSetMaxHnilWarns (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set maximum allowed steps
-  retval = CVodeSetMaxNumSteps(arkode_mem, opts.mxsteps);
-  if (check_flag(&retval, "CVodeSetMaxNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-
-  //    set tolerances
-  retval = CVodeSVtolerances(arkode_mem, opts.rtol, atols);
-  if (check_flag(&retval, "CVodeSVtolerances (main)", 1)) MPI_Abort(udata.comm, 1);
-#else
   //    pass network_udata to user functions
   retval = ARKStepSetUserData(arkode_mem, (void *) (&udata));
   if (check_flag(&retval, "ARKStepSetUserData (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -683,8 +541,6 @@ int main(int argc, char* argv[]) {
   retval = ARKStepSetNonlinConvCoef(arkode_mem, opts.nlconvcoef);
   if (check_flag(&retval, "ARKStepSetNonlinConvCoef (main)", 1)) MPI_Abort(udata.comm, 1);
 
-#endif
-
   // Initial batch of outputs
   retval = udata.profile[PR_IO].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
@@ -717,15 +573,9 @@ int main(int argc, char* argv[]) {
   realtype tout = udata.t0+dTout;
   for (int iout=restart; iout<restart+udata.nout; iout++) {
 
-#ifdef USE_CVODE
-    if (!idense)
-      retval = CVodeSetStopTime(arkode_mem, tout);
-    retval = CVode(arkode_mem, tout, w, &t, CV_NORMAL);  // call integrator
-#else
     if (!idense)
       retval = ARKStepSetStopTime(arkode_mem, tout);
     retval = ARKStepEvolve(arkode_mem, tout, w, &t, ARK_NORMAL);  // call integrator
-#endif
     if (retval >= 0) {                                            // successful solve: update output time
       tout = min(tout+dTout, udata.tf);
     } else {                                                      // unsuccessful solve: break
@@ -755,7 +605,6 @@ int main(int argc, char* argv[]) {
 
 
   // reconstruct overall solution values, converting back to mass densities
-#ifdef USERAJA
   RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
                                                 RAJA::RangeSegment(0, udata.nyl),
                                                 RAJA::RangeSegment(0, udata.nxl)),
@@ -771,23 +620,6 @@ int main(int argc, char* argv[]) {
         wview(k,j,i,8) *= scview(k,j,i,8) * m_amu;         // de
         wview(k,j,i,9) *= scview(k,j,i,9);                 // ge
       });
-#else
-  for (int k=0; k<udata.nzl; k++)
-    for (int j=0; j<udata.nyl; j++)
-      for (int i=0; i<udata.nxl; i++) {
-        long int idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        wdata[idx] *= sc[idx] * H2I_weight;        // H2I
-        wdata[idx+1] *= sc[idx+1] * H2II_weight;   // H2II
-        wdata[idx+2] *= sc[idx+2] * HI_weight;     // HI
-        wdata[idx+3] *= sc[idx+3] * HII_weight;    // HII
-        wdata[idx+4] *= sc[idx+4] * HM_weight;     // HM
-        wdata[idx+5] *= sc[idx+5] * HeI_weight;    // HeI
-        wdata[idx+6] *= sc[idx+6] * HeII_weight;   // HeII
-        wdata[idx+7] *= sc[idx+7] * HeIII_weight;  // HeIII
-        wdata[idx+8] *= sc[idx+8] * m_amu;         // de
-        wdata[idx+9] *= sc[idx+9];                 // ge
-      }
-#endif
 
   // compute simulation time
   retval = udata.profile[PR_SIMUL].stop();
@@ -798,26 +630,6 @@ int main(int argc, char* argv[]) {
   long int nls, nje, nli, nlcf, nfls;
   nst = nst_a = nfe = nfi = netf = nni = ncf = 0;
   nls = nje = nli = nlcf = nfls = 0;
-#ifdef USE_CVODE
-  retval = CVodeGetNumSteps(arkode_mem, &nst);
-  if (check_flag(&retval, "CVodeGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumRhsEvals(arkode_mem, &nfi);
-  if (check_flag(&retval, "CVodeGetNumRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumErrTestFails(arkode_mem, &netf);
-  if (check_flag(&retval, "CVodeGetNumErrTestFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNonlinSolvStats(arkode_mem, &nni, &ncf);
-  if (check_flag(&retval, "CVodeGetNonlinSolvStats (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinSolvSetups(arkode_mem, &nls);
-  if (check_flag(&retval, "CVodeGetNumLinSolvSetups (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumJacEvals(arkode_mem, &nje);
-  if (check_flag(&retval, "CVodeGetNumJacEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinIters(arkode_mem, &nli);
-  if (check_flag(&retval, "CVodeGetNumLinIters (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinConvFails(arkode_mem, &nlcf);
-  if (check_flag(&retval, "CVodeGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
-  retval = CVodeGetNumLinRhsEvals(arkode_mem, &nfls);
-  if (check_flag(&retval, "CVodeGetNumLinRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-#else
   retval = ARKStepGetNumSteps(arkode_mem, &nst);
   if (check_flag(&retval, "ARKStepGetNumSteps (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumStepAttempts(arkode_mem, &nst_a);
@@ -838,18 +650,13 @@ int main(int argc, char* argv[]) {
   if (check_flag(&retval, "ARKStepGetNumLinConvFails (main)", 1)) MPI_Abort(udata.comm, 1);
   retval = ARKStepGetNumLinRhsEvals(arkode_mem, &nfls);
   if (check_flag(&retval, "ARKStepGetNumLinRhsEvals (main)", 1)) MPI_Abort(udata.comm, 1);
-#endif
 
   if (outproc) {
     cout << "\nFinal Solver Statistics:\n";
     cout << "   Internal solver steps = " << nst << " (attempted = " << nst_a << ")\n";
     cout << "   Total RHS evals:  Fe = " << nfe << ",  Fi = " << nfi << "\n";
     cout << "   Total number of error test failures = " << netf << "\n";
-    if (opts.iterative && nli > 0) {
-      cout << "   Total number of lin iters = " << nli << "\n";
-      cout << "   Total number of lin conv fails = " << nlcf << "\n";
-      cout << "   Total number of lin RHS evals = " << nfls << "\n";
-    } else if (nls > 0) {
+    if (nls > 0) {
       cout << "   Total number of lin solv setups = " << nls << "\n";
       cout << "   Total number of Jac evals = " << nje << "\n";
     }
@@ -863,28 +670,21 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up and return with successful completion
-#ifdef USERAJA
-  cvklu_free_data(network_data);  // Free ReactionNetwork data structure
-#else
-  free(network_data);
-#endif
+  cvklu_free_data(network_data, udata.memhelper);  // Free Dengo data structure
   udata.RxNetData = NULL;
+#ifdef RAJA_CUDA
+  cudaFree(clump_data);
+#elif RAJA_HIP
+  hipFree(clump_data);
+#else
   free(clump_data);
+#endif
   N_VDestroy(w);                  // Free solution and absolute tolerance vectors
   N_VDestroy(atols);
   SUNLinSolFree(LS);              // Free matrix and linear solver
   SUNMatDestroy(A);
-#if defined(RAJA_CUDA) && !defined(USEMAGMA)
-  if (!opts.iterative) {
-    cusparseDestroy(cusp_handle);   // Destroy the cuSOLVER and cuSPARSE handles
-    cusolverSpDestroy(cusol_handle);
-  }
-#endif
-#ifdef USE_CVODE
-  CVodeFree(&arkode_mem);         // Free integrator memory
-#else
   ARKStepFree(&arkode_mem);       // Free integrator memory
-#endif
+  udata.FreeData();
   MPI_Finalize();                 // Finalize MPI
   return 0;
 }
@@ -903,12 +703,9 @@ static int frhs(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   N_VConst(ZERO, wdot);
 
   // call Dengo RHS routine
-#ifdef USERAJA
-  retval = calculate_rhs_cvklu(t, w, wdot, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_rhs_cvklu(t, w, wdot,
+                               (udata->nxl)*(udata->nyl)*(udata->nzl),
                                udata->RxNetData);
-#else
-  retval = calculate_rhs_cvklu(t, w, wdot, udata->RxNetData);
-#endif
   if (check_flag(&retval, "calculate_rhs_cvklu (frhs)", 1)) return(retval);
 
   // stop timer and return
@@ -926,13 +723,9 @@ static int Jrhs(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
   if (check_flag(&retval, "Profile::start (Jrhs)", 1)) return(-1);
 
   // call Jacobian routine
-#ifdef USERAJA
-  retval = calculate_jacobian_cvklu(t, w, fw, Jac, (udata->nxl)*(udata->nyl)*(udata->nzl),
+  retval = calculate_jacobian_cvklu(t, w, fw, Jac,
+                                    (udata->nxl)*(udata->nyl)*(udata->nzl),
                                     udata->RxNetData, tmp1, tmp2, tmp3);
-#else
-  retval = calculate_sparse_jacobian_cvklu(t, w, fw, Jac, udata->RxNetData,
-                                           tmp1, tmp2, tmp3);
-#endif
   if (check_flag(&retval, "calculate_jacobian_cvklu (Jrhs)", 1)) return(retval);
 
   // stop timer and return
@@ -966,17 +759,12 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
 
   // get current number of time steps
   long int nst = 0;
-#ifdef USE_CVODE
-  CVodeGetNumSteps(arkode_mem, &nst);
-#else
   ARKStepGetNumSteps(arkode_mem, &nst);
-#endif
 
   // print current time and number of steps
   printf("\nt = %.3e  (nst = %li)\n", t, nst);
 
   // determine mean, min, max values for each component
-#ifdef USERAJA
   RAJA::ReduceSum<REDUCEPOLICY, double> cmean0(ZERO);
   RAJA::ReduceSum<REDUCEPOLICY, double> cmean1(ZERO);
   RAJA::ReduceSum<REDUCEPOLICY, double> cmean2(ZERO);
@@ -1040,88 +828,6 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
   printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
          cmax0.get(), cmax1.get(), cmax2.get(), cmax3.get(), cmax4.get(),
          cmax5.get(), cmax6.get(), cmax7.get(), cmax8.get(), cmax9.get());
-#else
-  double *sc = network_data->scale[0];
-  double cmean0, cmean1, cmean2, cmean3, cmean4, cmean5, cmean6, cmean7, cmean8, cmean9;
-  cmean0 = cmean1 = cmean2 = cmean3 = cmean4 = cmean5 = cmean6 = cmean7 = cmean8 = cmean9 = ZERO;
-  double cmax0, cmax1, cmax2, cmax3, cmax4, cmax5, cmax6, cmax7, cmax8, cmax9;
-  cmax0 = cmax1 = cmax2 = cmax3 = cmax4 = cmax5 = cmax6 = cmax7 = cmax8 = cmax9 = ZERO;
-  double cmin0, cmin1, cmin2, cmin3, cmin4, cmin5, cmin6, cmin7, cmin8, cmin9;
-  cmin0 = cmin1 = cmin2 = cmin3 = cmin4 = cmin5 = cmin6 = cmin7 = cmin8 = cmin9 = 1e300;
-  for (int k=0; k<udata.nzl; k++)
-    for (int j=0; j<udata.nyl; j++)
-      for (int i=0; i<udata.nxl; i++) {
-        long int idx;
-        idx = BUFIDX(0,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean0 += sc[idx]*wdata[idx];
-        cmax0  = max(cmax0, sc[idx]*wdata[idx]);
-        cmin0  = min(cmin0, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(1,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean1 += sc[idx]*wdata[idx];
-        cmax1  = max(cmax1, sc[idx]*wdata[idx]);
-        cmin1  = min(cmin1, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(2,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean2 += sc[idx]*wdata[idx];
-        cmax2  = max(cmax2, sc[idx]*wdata[idx]);
-        cmin2  = min(cmin2, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(3,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean3 += sc[idx]*wdata[idx];
-        cmax3  = max(cmax3, sc[idx]*wdata[idx]);
-        cmin3  = min(cmin3, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(4,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean4 += sc[idx]*wdata[idx];
-        cmax4  = max(cmax4, sc[idx]*wdata[idx]);
-        cmin4  = min(cmin4, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(5,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean5 += sc[idx]*wdata[idx];
-        cmax5  = max(cmax5, sc[idx]*wdata[idx]);
-        cmin5  = min(cmin5, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(6,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean6 += sc[idx]*wdata[idx];
-        cmax6  = max(cmax6, sc[idx]*wdata[idx]);
-        cmin6  = min(cmin6, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(7,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean7 += sc[idx]*wdata[idx];
-        cmax7  = max(cmax7, sc[idx]*wdata[idx]);
-        cmin7  = min(cmin7, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(8,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean8 += sc[idx]*wdata[idx];
-        cmax8  = max(cmax8, sc[idx]*wdata[idx]);
-        cmin8  = min(cmin8, sc[idx]*wdata[idx]);
-
-        idx = BUFIDX(9,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
-        cmean9 += sc[idx]*wdata[idx];
-        cmax9  = max(cmax9, sc[idx]*wdata[idx]);
-        cmin9  = min(cmin9, sc[idx]*wdata[idx]);
-      }
-  cmean0 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean1 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean2 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean3 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean4 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean5 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean6 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean7 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean8 /= (udata.nxl * udata.nyl * udata.nzl);
-  cmean9 /= (udata.nxl * udata.nyl * udata.nzl);
-
-  // print solutions at first location
-  printf("  component:  H2I     H2II    HI      HII     HM      HeI     HeII    HeIII   de      ge\n");
-  printf("        min: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmin0, cmin1, cmin2, cmin3, cmin4, cmin5, cmin6, cmin7, cmin8, cmin9);
-  printf("       mean: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmean0, cmean1, cmean2, cmean3, cmean4, cmean5, cmean6, cmean7, cmean8, cmean9);
-  printf("        max: %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e %.1e\n",
-         cmax0, cmax1, cmax2, cmax3, cmax4, cmax5, cmax6, cmax7, cmax8, cmax9);
-#endif
 }
 
 

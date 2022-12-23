@@ -27,19 +27,16 @@
 #include "stdio.h"
 #include <iostream>
 #include "string.h"
+#define THRUST_IGNORE_CUB_VERSION_CHECK
 #include <RAJA/RAJA.hpp>
 #include <sundials/sundials_types.h>
-#ifdef USEMAGMA
+#include <sundials/sundials_memory.h>
+#ifdef USE_DEVICE
 #include <sunmatrix/sunmatrix_magmadense.h>
 #include <sunlinsol/sunlinsol_magmadense.h>
 #else
-#ifdef RAJA_CUDA
-#include <sunmatrix/sunmatrix_cusparse.h>
-#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
-#elif RAJA_SERIAL
 #include <sunmatrix/sunmatrix_sparse.h>
 #include <sunlinsol/sunlinsol_klu.h>
-#endif
 #endif
 
 #define NSPECIES 10
@@ -49,6 +46,18 @@
 #ifdef RAJA_SERIAL
 using EXECPOLICY = RAJA::loop_exec;
 using REDUCEPOLICY = RAJA::loop_reduce;
+using XYZ_KERNEL_POL =
+  RAJA::KernelPolicy< RAJA::statement::For<2, EXECPOLICY,
+                        RAJA::statement::For<1, EXECPOLICY,
+                          RAJA::statement::For<0, EXECPOLICY,
+                            RAJA::statement::Lambda<0>
+                          >
+                        >
+                      >
+                    >;
+#elif RAJA_OPENMP
+using EXECPOLICY = RAJA::omp_parallel_for_exec;
+using REDUCEPOLICY = RAJA::omp_reduce;
 using XYZ_KERNEL_POL =
   RAJA::KernelPolicy< RAJA::statement::For<2, EXECPOLICY,
                         RAJA::statement::For<1, EXECPOLICY,
@@ -72,7 +81,7 @@ using XYZ_KERNEL_POL =
                           >
                         >
                       >;
-#else // RAJA_HIP
+#elif RAJA_HIP
 #define EXECPOLICY    RAJA::hip_exec<256>
 #define REDUCEPOLICY  RAJA::hip_reduce
 using XYZ_KERNEL_POL =
@@ -86,6 +95,8 @@ using XYZ_KERNEL_POL =
                           >
                         >
                       >;
+#else
+#error "Unsupported RAJA backend"
 #endif
 
 

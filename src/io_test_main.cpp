@@ -17,6 +17,13 @@
 // Main Program
 int main(int argc, char* argv[]) {
 
+  // initialize MPI
+  int myid, retval;
+  retval = MPI_Init(&argc, &argv);
+  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
+  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
+
 #ifdef DEBUG
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 #endif
@@ -26,19 +33,11 @@ int main(int argc, char* argv[]) {
   int Nsubvecs;
 
   // general problem variables
-  int retval;                    // reusable error-checking flag
-  int myid;                      // MPI process ID
   int restart;                   // restart file number to use
   N_Vector w, wtest, werr;       // empty vectors for storing overall solution
   N_Vector *wsubvecs;
   realtype tout;
   w = wtest = werr = NULL;
-
-  // initialize MPI
-  retval = MPI_Init(&argc, &argv);
-  if (check_flag(&retval, "MPI_Init (main)", 3)) return 1;
-  retval = MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-  if (check_flag(&retval, "MPI_Comm_rank (main)", 3)) MPI_Abort(MPI_COMM_WORLD, 1);
 
   // ensure that realtype is at least double precision
   if (sizeof(realtype) < sizeof(double)) {
@@ -97,7 +96,7 @@ int main(int argc, char* argv[]) {
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
-#ifdef USERAJA
+#ifdef USE_DEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
     if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
@@ -138,7 +137,7 @@ int main(int argc, char* argv[]) {
           xloc_value = RCONST(0.0001)*(i+udata.is);
           yloc_value = RCONST(0.0000001)*(j+udata.js);
           zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-          idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+          idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
           wdata[idx] = species_value + xloc_value + yloc_value + zloc_value;
         }
   }
@@ -154,7 +153,7 @@ int main(int argc, char* argv[]) {
             xloc_value = RCONST(0.0001)*(i+udata.is);
             yloc_value = RCONST(0.0000001)*(j+udata.js);
             zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-            idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+            idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
             wdata[idx] = species_value + xloc_value + yloc_value + zloc_value;
           }
         }
@@ -202,7 +201,7 @@ int main(int argc, char* argv[]) {
             xloc_value = RCONST(0.0001)*(i+udata.is);
             yloc_value = RCONST(0.0000001)*(j+udata.js);
             zloc_value = RCONST(0.0000000001)*(k+udata.ks);
-            idx = IDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
+            idx = INDX(i,j,k,udata.nxl,udata.nyl,udata.nzl);
             realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
             realtype recv_value = wdata[idx];
             if (abs(recv_value-true_value) > test_tol) {
@@ -225,7 +224,7 @@ int main(int argc, char* argv[]) {
               yloc_value = RCONST(0.0000001)*(j+udata.js);
               zloc_value = RCONST(0.0000000001)*(k+udata.ks);
               species_value = RCONST(0.001)*(5+v);
-              idx = BUFIDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
+              idx = BUFINDX(v,i,j,k,udata.nchem,udata.nxl,udata.nyl,udata.nzl);
               realtype true_value = species_value + xloc_value + yloc_value + zloc_value;
               realtype recv_value = wdata[idx];
               if (abs(recv_value-true_value) > test_tol) {
@@ -253,6 +252,7 @@ int main(int argc, char* argv[]) {
   for (i=0; i<Nsubvecs; i++)
     N_VDestroy(wsubvecs[i]);
   delete[] wsubvecs;
+  udata.FreeData();
   MPI_Finalize();              // Finalize MPI
   return 0;
 }
