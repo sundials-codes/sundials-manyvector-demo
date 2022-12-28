@@ -1,0 +1,22 @@
+# This is a Spack Environment file.
+#
+spack:
+  packages:
+    all:
+      providers:
+        target:
+        - x86_64
+        blas:
+        - openblas
+        mpi:
+        - openmpi
+      compiler:
+      - gcc@9.5.0
+  specs:
+  - sundials@6.2.0 +openmp +mpi +klu +raja ^suite-sparse@5.8.1 ^raja@0.13.0
+  - hdf5@1.10.7 +hl +mpi
+  view: /opt/view
+  concretizer:
+    unify: true
+  config:
+    install_tree: /opt/software
