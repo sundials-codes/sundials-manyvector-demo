@@ -15,8 +15,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Spack view
-        run: ls /opt/view
-      - name: Spack view 2
         run: ls /opt/view/*
       - name: Configure
         run: |
@@ -24,6 +22,8 @@ jobs:
           -B ${{github.workspace}}/build \
           -D CMAKE_C_COMPILER=$(which gcc) \
           -D CMAKE_CXX_COMPILER=$(which g++) \
+          -D MPI_C_COMPILER=/opt/view/bin/mpicc \
+          -D MPI_CXX_COMPILER=/opt/view/bin/mpicxx \
           -D RAJA_ROOT=/opt/view \
           -D RAJA_BACKEND=SERIAL \
           -D SUNDIALS_ROOT=/opt/view \
