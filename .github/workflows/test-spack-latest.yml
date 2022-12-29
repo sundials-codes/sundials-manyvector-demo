@@ -1,0 +1,29 @@
+name: Test - spack@latest
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/sundials-codes/sundials-demo-spack-latest:spack-latest
+      options: --user root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Configure
+        run: |
+          cmake \
+          -B ${{github.workspace}}/build \
+          -D CMAKE_C_COMPILER=$(which gcc) \
+          -D CMAKE_CXX_COMPILER=$(which g++) \
+          -D RAJA_ROOT=/opt/view \
+          -D RAJA_BACKEND=SERIAL \
+          -D SUNDIALS_ROOT=/opt/view \
+          -D ENABLE_HDF5=ON
+          -D HDF5_ROOT=/opt/view
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build
