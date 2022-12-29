@@ -20,7 +20,7 @@ jobs:
         run: ls /opt/view/*
       - name: Configure
         run: |
-          cmake \
+          /opt/view/bin/cmake \
           -B ${{github.workspace}}/build \
           -D CMAKE_C_COMPILER=$(which gcc) \
           -D CMAKE_CXX_COMPILER=$(which g++) \
