@@ -27,7 +27,7 @@ jobs:
           -D RAJA_ROOT=/opt/view \
           -D RAJA_BACKEND=SERIAL \
           -D SUNDIALS_ROOT=/opt/view \
-          -D ENABLE_HDF5=ON
+          -D ENABLE_HDF5=ON \
           -D HDF5_ROOT=/opt/view
       - name: Build
         run: cmake --build ${{github.workspace}}/build
