@@ -30,4 +30,4 @@ jobs:
           -D ENABLE_HDF5=ON \
           -D HDF5_ROOT=/opt/view
       - name: Build
-        run: cmake --build ${{github.workspace}}/build
+        run: /opt/view/bin/cmake --build ${{github.workspace}}/build
