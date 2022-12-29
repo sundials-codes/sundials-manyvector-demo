@@ -14,6 +14,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      - name: Spack find
+        run: spack find
+      - name: Spack view
+        run: ls /opt/view
+      - name: Spack view 2
+        run: ls /opt/view/*
       - name: Configure
         run: |
           cmake \
