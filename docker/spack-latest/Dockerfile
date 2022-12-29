@@ -52,6 +52,13 @@ RUN cd /opt/spack-environment \
 RUN cd /opt/spack-environment && \
     spack env activate --sh -d . >> /etc/profile.d/z10_spack_environment.sh
 
+# Update path
+RUN echo $PATH
+RUN echo ${PATH}
+ENV PATH="/opt/view/bin:$PATH"
+RUN echo $PATH
+RUN echo ${PATH}
+
 # Allow mpirun as root
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
