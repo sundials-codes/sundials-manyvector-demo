@@ -17,7 +17,7 @@ jobs:
       - name: Configure
         run: |
           cmake \
-          -B ${{github.workspace}}/build \
+          -B ${{GITHUB_WORKSPACE}}/build \
           -D CMAKE_C_COMPILER=$(which gcc) \
           -D CMAKE_CXX_COMPILER=$(which g++) \
           -D RAJA_ROOT=/opt/view \
@@ -26,12 +26,12 @@ jobs:
           -D ENABLE_HDF5=ON \
           -D HDF5_ROOT=/opt/view
       - name: Build
-        run: cmake --build ${{github.workspace}}/build
+        run: cmake --build ${{GITHUB_WORKSPACE}}/build -j
       - name: Test
-        run: ctest --test-dir ${{github.workspace}}/build
+        run: ctest --test-dir ${{GITHUB_WORKSPACE}}/build
       - name: Archive files from failed build
         uses: actions/upload-artifact@v3
         if: failure()
         with:
           name: build_files
-          path: ${{github.workspace}}/build*
+          path: ${{GITHUB_WORKSPACE}}/build
