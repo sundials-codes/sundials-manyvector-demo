@@ -30,9 +30,8 @@ jobs:
       - name: Test
         run: ctest --test-dir ${{github.workspace}}/build
       - name: Archive files from failed build
-        uses: actions/upload-artifact@v2.2.4
+        uses: actions/upload-artifact@v3
         if: failure()
         with:
           name: build_files
-          path: |
-            ${{ github.workspace }}/build
+          path: ${{github.workspace}}/build
