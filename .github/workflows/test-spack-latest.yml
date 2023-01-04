@@ -34,4 +34,4 @@ jobs:
         if: failure()
         with:
           name: build_files
-          path: ${{github.workspace}}/build/
+          path: ${{github.workspace}}/build*
