@@ -29,3 +29,10 @@ jobs:
         run: cmake --build ${{github.workspace}}/build
       - name: Test
         run: ctest --test-dir ${{github.workspace}}/build
+      - name: Archive files from failed build
+        uses: actions/upload-artifact@v2.2.4
+        if: failure()
+        with:
+          name: build_files
+          path: |
+            ${{ github.workspace }}/build
