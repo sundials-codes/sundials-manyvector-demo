@@ -151,22 +151,22 @@ int main(int argc, char* argv[]) {
   for (i=0; i<5; i++) {
     wsubvecs[i] = NULL;
     wsubvecs[i] = N_VNew_Serial(N, udata.ctx);
-    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    if (check_flag((void *) wsubvecs[i], "N_VNew_Serial (main, hydro)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[i], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main, hydro)", 1)) MPI_Abort(udata.comm, 1);
   }
   if (udata.nchem > 0) {
     wsubvecs[5] = NULL;
 #ifdef USE_DEVICE
     wsubvecs[5] = N_VNewManaged_Raja(N*udata.nchem, udata.ctx);
-    if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+    if (check_flag((void *) wsubvecs[5], "N_VNewManaged_Raja (main, chem)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Raja(wsubvecs[5], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Raja (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (check_flag(&retval, "N_VEnableFusedOps_Raja (main, chem)", 1)) MPI_Abort(udata.comm, 1);
 #else
     wsubvecs[5] = N_VNew_Serial(N*udata.nchem, udata.ctx);
-    if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
+    if (check_flag((void *) wsubvecs[5], "N_VNew_Serial (main, chem)", 0)) MPI_Abort(udata.comm, 1);
     retval = N_VEnableFusedOps_Serial(wsubvecs[5], opts.fusedkernels);
-    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main)", 1)) MPI_Abort(udata.comm, 1);
+    if (check_flag(&retval, "N_VEnableFusedOps_Serial (main, chem)", 1)) MPI_Abort(udata.comm, 1);
 #endif
   }
   w = N_VMake_MPIManyVector(udata.comm, Nsubvecs, wsubvecs, udata.ctx);  // combined solution vector

@@ -295,7 +295,7 @@ public:
     memhelper(NULL)
   {
     nchem = (NVAR) - 5;
-    SUNContext_Create((void*) &comm, &ctx);
+    if (SUNContext_Create((void*) &comm, &ctx)) throw std::runtime_error("Error: Unable to create SUNDIALS context");
     HIP_OR_CUDA( memhelper = SUNMemoryHelper_Hip(ctx);,
                  memhelper = SUNMemoryHelper_Cuda(ctx); )
   };
