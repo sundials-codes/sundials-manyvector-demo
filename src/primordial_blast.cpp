@@ -325,11 +325,10 @@ int initialize_Dengo_structures(EulerData& udata) {
 
   // Initialize ReactionNetwork for host/device reaction rate structure.
   ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
-                                                   udata.nxl * udata.nyl * udata.nzl,
-                                                   -1.0, nullptr);
+                                                   udata.nxl * udata.nyl * udata.nzl, -1.0);
   if (network_data == nullptr)  return(1);
 
-  // Initialize "scale" and "inv_scale".
+  // Initialize "scale" and "inv_scale" on device (but in host cvklu_data structure).
   cvklu_data *hdata = network_data->HPtr();
   double *sc = hdata->scale;
   double *isc = hdata->inv_scale;
@@ -338,9 +337,9 @@ int initialize_Dengo_structures(EulerData& udata) {
     sc[i] = ONE;
     isc[i] = ONE;
   });
-  udata.RxNetData = (void*) network_data;
 
-  // Stop profiler and return.
+  // Store pointer to network_data in udata, stop profiler, and return.
+  udata.RxNetData = (void*) network_data;
   retval = udata.profile[PR_CHEMSETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
   return(0);
@@ -350,7 +349,7 @@ int initialize_Dengo_structures(EulerData& udata) {
 // Utility routine to free Dengo data structures
 void free_Dengo_structures(EulerData& udata) {
   ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
-  cvklu_free_data(data);
+  delete data;
   udata.RxNetData = NULL;
 }
 
@@ -360,11 +359,11 @@ void free_Dengo_structures(EulerData& udata) {
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 {
 
-  // Access ReactionNetwork for Dengo data structure.
+  // Access ReactionNetwork for Dengo data structure, and extract host cvklu_data structure.
   ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
-  // Move current chemical solution values into 'network_data->scale' structure.
+  // Move current chemical solution values into "network_data->scale" structure.
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
@@ -389,7 +388,7 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
    });
 
   // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, udata.nxl*udata.nyl*udata.nzl );
+  setting_up_extra_variables( data, udata.nxl*udata.nyl*udata.nzl );
   return(0);
 }
 
@@ -397,11 +396,11 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 // into overall N_Vector solution (does not change 'scale')
 int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  // Access ReactionNetwork for Dengo data structure.
+  // Access ReactionNetwork for Dengo data structure, and extract host cvklu_data structure.
   ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
-  // Update current overall solution using 'network_data->scale' structure.
+  // Update current overall solution using "network_data->scale" structure.
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -427,11 +426,11 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 // Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  // Access ReactionNetwork for Dengo data structure.
+  // Access ReactionNetwork for Dengo data structure, and extract host cvklu_data structure.
   ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
   cvklu_data *network_data = data->HPtr();
 
-  // Update current overall solution using 'network_data->scale' structure.
+  // Update current overall solution using "network_data->scale" structure.
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);

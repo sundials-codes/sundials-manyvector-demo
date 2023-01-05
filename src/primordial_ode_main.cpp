@@ -88,8 +88,8 @@ int main(int argc, char* argv[]) {
   SUNLinearSolver LS = NULL;     // empty linear solver and matrix structures
   SUNMatrix A = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
+  EulerData udata;               // solver data structures
   ARKODEParameters opts;
-  EulerData udata;
 
   //--- General Initialization ---//
 
@@ -158,14 +158,11 @@ int main(int argc, char* argv[]) {
 
   // Initialize ReactionNetwork for host/device reaction rate structure.
   ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
-                                                   nstrip, -1.0, nullptr);
+                                                   nstrip, -1.0);
   if (network_data == nullptr)  return(1);
 
-  //    store pointer to network_data in udata
+  //    store pointer to network_data in udata, and stop chemistry setup profiler.
   udata.RxNetData = (void*) network_data;
-
-
-  //    stop profiler.
   retval = udata.profile[PR_CHEMSETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
 
@@ -406,6 +403,7 @@ int main(int argc, char* argv[]) {
 
   // move input solution values into 'scale' components of network_data structure
   int nchem = udata.nchem;
+  cvklu_data *h_data = network_data->HPtr();
   RAJA::View<double, RAJA::Layout<4> > scview(h_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
   RAJA::View<double, RAJA::Layout<4> > iscview(h_data->inv_scale, udata.nzl,
@@ -547,11 +545,7 @@ int main(int argc, char* argv[]) {
   //    Output initial conditions to disk (IMPLEMENT LATER, IF DESIRED)
 
   //    Output problem-specific diagnostic information
-#ifdef USERAJA
   print_info(arkode_mem, udata.t0, w, network_data->HPtr(), udata);
-#else
-  print_info(arkode_mem, udata.t0, w, network_data, udata);
-#endif
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -589,11 +583,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
     //    output statistics to stdout
-#ifdef USERAJA
     print_info(arkode_mem, t, w, network_data->HPtr(), udata);
-#else
-    print_info(arkode_mem, t, w, network_data, udata);
-#endif
 
     //    output results to disk
     //    TODO
@@ -670,7 +660,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up and return with successful completion
-  cvklu_free_data(network_data, udata.memhelper);  // Free Dengo data structure
+  delete network_data;            // Free ReactionNetwork data structure
   udata.RxNetData = NULL;
 #ifdef RAJA_CUDA
   cudaFree(clump_data);
@@ -739,7 +729,7 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
                 cvklu_data *network_data, EulerData &udata)
 {
   // access N_Vector data
-#ifdef USERAJA
+#ifdef USE_DEVICE
   realtype *wdata = N_VGetDeviceArrayPointer(w);
 #else
   realtype *wdata = N_VGetArrayPointer(w);

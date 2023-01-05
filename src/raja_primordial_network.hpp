@@ -42,7 +42,7 @@
 #define NSPECIES 10
 
 
-// desired execution policy for all RAJA loops
+// set RAJA policies
 #ifdef RAJA_SERIAL
 using EXECPOLICY = RAJA::loop_exec;
 using REDUCEPOLICY = RAJA::loop_reduce;
@@ -99,6 +99,18 @@ using XYZ_KERNEL_POL =
 #error "Unsupported RAJA backend"
 #endif
 
+// set device memory space utility macros and prototypes
+#if defined(RAJA_CUDA)
+#define devMalloc(ptr, memType, size) cudaMalloc((void**)&ptr, size)
+#elif defined(RAJA_HIP)
+#define devMalloc(ptr, memType, size) hipMalloc((void**)&ptr, size)
+#else
+#define devMalloc(ptr, memType, size) ptr = (memType *) malloc(size)
+#endif
+void devFree(void** ptr);
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize);
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize);
+int copyFence();
 
 
 // Main reaction network data structure
@@ -276,6 +288,10 @@ typedef struct cvklu_data {
 } cvklu_data;
 
 
+// Prototype for cvklu_data deallocation routine
+void cvklu_free_data(cvklu_data*);
+
+
 // Mirrored host/device reaction network class
 class ReactionNetwork {
 
@@ -286,74 +302,28 @@ public:
     host_(nullptr), device_(nullptr) {
     if (valid) {
       host_ = (cvklu_data*) malloc(sizeof(cvklu_data));
-#if defined(RAJA_CUDA)
-      cudaMalloc((void **)&device_, sizeof(cvklu_data));
-#elif defined(RAJA_HIP)
-      hipMalloc((void **)&device_, sizeof(cvklu_data));
-#else
-      device_ = (cvklu_data*) malloc(sizeof(cvklu_data));
-#endif
+      devMalloc(device_, cvklu_data, sizeof(cvklu_data));
     }
   }
 
   // Destructor: frees host and device arrays.
   ~ReactionNetwork() {
-    if (host_ != nullptr)  free(host_);
-#if defined(RAJA_CUDA)
-    if (device_ != nullptr)  cudaFree(device_);
-#elif defined(RAJA_HIP)
-    if (device_ != nullptr)  hipFree(device_);
-#else
-    if (device_ != nullptr)  free(device_);
-#endif
+    if (host_ != nullptr) {
+      cvklu_free_data(host_);
+      free(host_);
+    }
     host_ = nullptr;
-    device_ = nullptr;
+    devFree((void **) &device_);
   }
 
-  // Utility routines to copy host <-> device data.
+  // Utility routines to copy host <-> device data.  Note that although these
+  // data structures live on the host-vs-device, their internal arrays are
+  // only ever allocated on the device.
   int HostToDevice() {
-#if defined(RAJA_CUDA)
-    cudaMemcpy(device_, host_, sizeof(cvklu_data), cudaMemcpyHostToDevice);
-    cudaDeviceSynchronize();
-    cudaError_t retval = cudaGetLastError();
-    if (retval != cudaSuccess)
-      return 1;
-    else
-      return 0;
-#elif defined(RAJA_HIP)
-    hipMemcpy(device_, host_, sizeof(cvklu_data), hipMemcpyHostToDevice);
-    hipDeviceSynchronize();
-    hipError_t retval = hipGetLastError();
-    if (retval != hipSuccess)
-      return 1;
-    else
-      return 0;
-#else
-    memcpy(device_, host_, sizeof(cvklu_data));
-    return 0;
-#endif
+    return copyHostToDevice(device_, host_, sizeof(cvklu_data));
   }
   int DeviceToHost() {
-#if defined(RAJA_CUDA)
-    cudaMemcpy(host_, device_, sizeof(cvklu_data), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-    cudaError_t retval = cudaGetLastError();
-    if (retval != cudaSuccess)
-      return 1;
-    else
-      return 0;
-#elif defined(RAJA_HIP)
-    hipMemcpy(host_, device_, sizeof(cvklu_data), hipMemcpyDeviceToHost);
-    hipDeviceSynchronize();
-    hipError_t retval = hipGetLastError();
-    if (retval != hipSuccess)
-      return 1;
-    else
-      return 0;
-#else
-    memcpy(host_, device_, sizeof(cvklu_data));
-    return 0;
-#endif
+    return copyDeviceToHost(host_, device_, sizeof(cvklu_data));
   }
 
   // Accessor functions to return the host and device data pointers.
@@ -373,9 +343,7 @@ typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
 typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix ,
                      void *, N_Vector, N_Vector, N_Vector);
 
-ReactionNetwork* cvklu_setup_data(MPI_Comm, const char *, long int,
-                                  realtype, void *);
-void cvklu_free_data(ReactionNetwork*);
+ReactionNetwork* cvklu_setup_data(MPI_Comm, const char *, long int, realtype);
 int cvklu_read_rate_tables(cvklu_data*, const char *, MPI_Comm);
 int cvklu_read_cooling_tables(cvklu_data*, const char *, MPI_Comm);
 int cvklu_read_gamma(cvklu_data*, const char *, MPI_Comm);

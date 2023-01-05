@@ -180,8 +180,8 @@ int main(int argc, char* argv[]) {
   MRIStepInnerStepper stepper = NULL;
   void *outer_arkode_mem = NULL; // empty ARKStep memory structures
   void *inner_arkode_mem = NULL;
+  EulerData udata;               // solver data structures
   ARKODEParameters opts;
-  EulerData udata;
 
   //--- General Initialization ---//
 

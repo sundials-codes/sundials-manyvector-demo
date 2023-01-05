@@ -11,24 +11,6 @@
 
 #include <raja_primordial_network.hpp>
 
-// HIP vs RAJA vs serial/OpenMP
-#if defined(RAJA_CUDA)
-#define HIP_OR_CUDA(a,b) b
-#define dmalloc(ptr, len) cudaMalloc((void**)&ptr, len*sizeof(double))
-#define dcopy(dst, src, len) cudaMemcpy(dst, src, (len)*sizeof(double), cudaMemcpyHostToDevice)
-#define dfree(ptr)   cudaFree(ptr)
-#elif defined(RAJA_HIP)
-#define HIP_OR_CUDA(a,b) a
-#define dmalloc(ptr, len) hipMalloc((void**)&ptr, len*sizeof(double))
-#define dcopy(dst, src, len) hipMemcpy(dst, src, (len)*sizeof(double), hipMemcpyHostToDevice)
-#define dfree(ptr)   hipFree(ptr)
-#else
-#define HIP_OR_CUDA(a,b) ((void)0);
-#define dmalloc(ptr, len) ptr = (double *) malloc(len*sizeof(double))
-#define dcopy(dst, src, len) memcpy(dst, src, (len)*sizeof(double))
-#define dfree(ptr)   free(ptr)
-#endif
-
 // sparse vs dense
 #define NSPARSE 64
 #ifdef USE_DEVICE
@@ -39,11 +21,117 @@
 #define SPARSEIDX(blk,off) (blk*NSPARSE + off)
 #define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
 
+// device memory space utility routine implementations
+#if defined(RAJA_CUDA)
+void devFree(void** ptr) {
+  if (*ptr != nullptr) {
+    cudaFree(*ptr);
+    *ptr = nullptr;
+  }
+}
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize) {
+  cudaMemcpy(devPtr, hostPtr, memSize, cudaMemcpyHostToDevice);
+  cudaDeviceSynchronize();
+  cudaError_t retval = cudaGetLastError();
+  if (retval != cudaSuccess) {
+    std::cerr << ">>> ERROR in copying host-to-device memory: cudaGetLastError returned %s\n"
+              << cudaGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize) {
+  cudaMemcpy(hostPtr, devPtr, memSize, cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+  cudaError_t retval = cudaGetLastError();
+  if (retval != cudaSuccess) {
+    std::cerr << ">>> ERROR in copying device-to-host memory: cudaGetLastError returned %s\n"
+              << cudaGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyFence() {
+  cudaDeviceSynchronize();
+  cudaError_t retval = cudaGetLastError();
+  if (retval != cudaSuccess) {
+    std::cerr << ">>> ERROR in synchronizing device memory: cudaGetLastError returned %s\n"
+              << cudaGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+#elif defined(RAJA_HIP)
+void devFree(void** ptr) {
+  if (*ptr != nullptr) {
+    hipFree(*ptr);
+    *ptr = nullptr;
+  }
+}
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize) {
+  hipMemcpy(devPtr, hostPtr, memSize, hipMemcpyHostToDevice);
+  hipDeviceSynchronize();
+  hipError_t retval = hipGetLastError();
+  if (retval != hipSuccess) {
+    std::cerr << ">>> ERROR in copying host-to-device memory: hipGetLastError returned %s\n"
+              << hipGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize) {
+  hipMemcpy(hostPtr, devPtr, memSize, hipMemcpyDeviceToHost);
+  hipDeviceSynchronize();
+  hipError_t retval = hipGetLastError();
+  if (retval != hipSuccess) {
+    std::cerr << ">>> ERROR in copying device-to-host memory: hipGetLastError returned %s\n"
+              << hipGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyFence() {
+  hipDeviceSynchronize();
+  hipError_t retval = hipGetLastError();
+  if (retval != hipSuccess) {
+    std::cerr << ">>> ERROR in synchronizing device memory: hipGetLastError returned %s\n"
+              << hipGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+#else
+void devFree(void** ptr) {
+  if (*ptr != nullptr) {
+    free(*ptr);
+    *ptr = nullptr;
+  }
+}
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize) {
+  memcpy(devPtr, hostPtr, memSize);
+  return 0;
+}
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize) {
+  memcpy(hostPtr, devPtr, memSize);
+  return 0;
+}
+int copyFence() {
+  return 0;
+}
+#endif
+
+
 // HDF5 table lookup size
 #define TSIZE 1024
 
 ReactionNetwork* cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
-                                  long int ncells, double current_z, void *queue)
+                                  long int ncells, double current_z)
 {
 
   //-----------------------------------------------------
@@ -65,186 +153,191 @@ ReactionNetwork* cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
   hdata->nstrip = ncells;
   hdata->current_z = current_z;
 
-  // allocate reaction rate arrays on device
-  dmalloc(hdata->Ts, ncells);
-  dmalloc(hdata->dTs_ge, ncells);
-  dmalloc(hdata->mdensity, ncells);
-  dmalloc(hdata->inv_mdensity, ncells);
-  dmalloc(hdata->rs_k01, ncells);
-  dmalloc(hdata->drs_k01, ncells);
-  dmalloc(hdata->rs_k02, ncells);
-  dmalloc(hdata->drs_k02, ncells);
-  dmalloc(hdata->rs_k03, ncells);
-  dmalloc(hdata->drs_k03, ncells);
-  dmalloc(hdata->rs_k04, ncells);
-  dmalloc(hdata->drs_k04, ncells);
-  dmalloc(hdata->rs_k05, ncells);
-  dmalloc(hdata->drs_k05, ncells);
-  dmalloc(hdata->rs_k06, ncells);
-  dmalloc(hdata->drs_k06, ncells);
-  dmalloc(hdata->rs_k07, ncells);
-  dmalloc(hdata->drs_k07, ncells);
-  dmalloc(hdata->rs_k08, ncells);
-  dmalloc(hdata->drs_k08, ncells);
-  dmalloc(hdata->rs_k09, ncells);
-  dmalloc(hdata->drs_k09, ncells);
-  dmalloc(hdata->rs_k10, ncells);
-  dmalloc(hdata->drs_k10, ncells);
-  dmalloc(hdata->rs_k11, ncells);
-  dmalloc(hdata->drs_k11, ncells);
-  dmalloc(hdata->rs_k12, ncells);
-  dmalloc(hdata->drs_k12, ncells);
-  dmalloc(hdata->rs_k13, ncells);
-  dmalloc(hdata->drs_k13, ncells);
-  dmalloc(hdata->rs_k14, ncells);
-  dmalloc(hdata->drs_k14, ncells);
-  dmalloc(hdata->rs_k15, ncells);
-  dmalloc(hdata->drs_k15, ncells);
-  dmalloc(hdata->rs_k16, ncells);
-  dmalloc(hdata->drs_k16, ncells);
-  dmalloc(hdata->rs_k17, ncells);
-  dmalloc(hdata->drs_k17, ncells);
-  dmalloc(hdata->rs_k18, ncells);
-  dmalloc(hdata->drs_k18, ncells);
-  dmalloc(hdata->rs_k19, ncells);
-  dmalloc(hdata->drs_k19, ncells);
-  dmalloc(hdata->rs_k21, ncells);
-  dmalloc(hdata->drs_k21, ncells);
-  dmalloc(hdata->rs_k22, ncells);
-  dmalloc(hdata->drs_k22, ncells);
-  dmalloc(hdata->cs_brem_brem, ncells);
-  dmalloc(hdata->dcs_brem_brem, ncells);
-  dmalloc(hdata->cs_ceHeI_ceHeI, ncells);
-  dmalloc(hdata->dcs_ceHeI_ceHeI, ncells);
-  dmalloc(hdata->cs_ceHeII_ceHeII, ncells);
-  dmalloc(hdata->dcs_ceHeII_ceHeII, ncells);
-  dmalloc(hdata->cs_ceHI_ceHI, ncells);
-  dmalloc(hdata->dcs_ceHI_ceHI, ncells);
-  dmalloc(hdata->cs_cie_cooling_cieco, ncells);
-  dmalloc(hdata->dcs_cie_cooling_cieco, ncells);
-  dmalloc(hdata->cs_ciHeI_ciHeI, ncells);
-  dmalloc(hdata->dcs_ciHeI_ciHeI, ncells);
-  dmalloc(hdata->cs_ciHeII_ciHeII, ncells);
-  dmalloc(hdata->dcs_ciHeII_ciHeII, ncells);
-  dmalloc(hdata->cs_ciHeIS_ciHeIS, ncells);
-  dmalloc(hdata->dcs_ciHeIS_ciHeIS, ncells);
-  dmalloc(hdata->cs_ciHI_ciHI, ncells);
-  dmalloc(hdata->dcs_ciHI_ciHI, ncells);
-  dmalloc(hdata->cs_compton_comp_, ncells);
-  dmalloc(hdata->dcs_compton_comp_, ncells);
-  dmalloc(hdata->cs_gloverabel08_gael, ncells);
-  dmalloc(hdata->dcs_gloverabel08_gael, ncells);
-  dmalloc(hdata->cs_gloverabel08_gaH2, ncells);
-  dmalloc(hdata->dcs_gloverabel08_gaH2, ncells);
-  dmalloc(hdata->cs_gloverabel08_gaHe, ncells);
-  dmalloc(hdata->dcs_gloverabel08_gaHe, ncells);
-  dmalloc(hdata->cs_gloverabel08_gaHI, ncells);
-  dmalloc(hdata->dcs_gloverabel08_gaHI, ncells);
-  dmalloc(hdata->cs_gloverabel08_gaHp, ncells);
-  dmalloc(hdata->dcs_gloverabel08_gaHp, ncells);
-  dmalloc(hdata->cs_gloverabel08_h2lte, ncells);
-  dmalloc(hdata->dcs_gloverabel08_h2lte, ncells);
-  dmalloc(hdata->cs_h2formation_h2mcool, ncells);
-  dmalloc(hdata->dcs_h2formation_h2mcool, ncells);
-  dmalloc(hdata->cs_h2formation_h2mheat, ncells);
-  dmalloc(hdata->dcs_h2formation_h2mheat, ncells);
-  dmalloc(hdata->cs_h2formation_ncrd1, ncells);
-  dmalloc(hdata->dcs_h2formation_ncrd1, ncells);
-  dmalloc(hdata->cs_h2formation_ncrd2, ncells);
-  dmalloc(hdata->dcs_h2formation_ncrd2, ncells);
-  dmalloc(hdata->cs_h2formation_ncrn, ncells);
-  dmalloc(hdata->dcs_h2formation_ncrn, ncells);
-  dmalloc(hdata->cs_reHeII1_reHeII1, ncells);
-  dmalloc(hdata->dcs_reHeII1_reHeII1, ncells);
-  dmalloc(hdata->cs_reHeII2_reHeII2, ncells);
-  dmalloc(hdata->dcs_reHeII2_reHeII2, ncells);
-  dmalloc(hdata->cs_reHeIII_reHeIII, ncells);
-  dmalloc(hdata->dcs_reHeIII_reHeIII, ncells);
-  dmalloc(hdata->cs_reHII_reHII, ncells);
-  dmalloc(hdata->dcs_reHII_reHII, ncells);
-  dmalloc(hdata->cie_optical_depth_approx, ncells);
-  dmalloc(hdata->h2_optical_depth_approx, ncells);
+  //
+  // Perform initialization in host cvklu_data structure (but filling data
+  // directly on the device).
+  //
 
-  // allocate scaling arrays
-  dmalloc(hdata->scale, NSPECIES*ncells);
-  dmalloc(hdata->inv_scale, NSPECIES*ncells);
+  // Allocate reaction rate arrays.
+  devMalloc(hdata->Ts, double, sizeof(double)*ncells);
+  devMalloc(hdata->dTs_ge, double, sizeof(double)*ncells);
+  devMalloc(hdata->mdensity, double, sizeof(double)*ncells);
+  devMalloc(hdata->inv_mdensity, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k01, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k01, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k02, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k02, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k03, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k03, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k04, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k04, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k05, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k05, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k06, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k06, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k07, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k07, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k08, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k08, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k09, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k09, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k10, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k10, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k11, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k11, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k12, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k12, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k13, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k13, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k14, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k14, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k15, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k15, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k16, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k16, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k17, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k17, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k18, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k18, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k19, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k19, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k21, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k21, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k22, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k22, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_brem_brem, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_brem_brem, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ceHeI_ceHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ceHeI_ceHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ceHeII_ceHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ceHeII_ceHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ceHI_ceHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ceHI_ceHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_cie_cooling_cieco, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_cie_cooling_cieco, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHeI_ciHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHeI_ciHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHeII_ciHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHeII_ciHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHeIS_ciHeIS, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHeIS_ciHeIS, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHI_ciHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHI_ciHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_compton_comp_, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_compton_comp_, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gael, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gael, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaH2, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaH2, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaHe, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaHe, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaHp, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaHp, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_h2lte, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_h2lte, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_h2mcool, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_h2mcool, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_h2mheat, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_h2mheat, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_ncrd1, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_ncrd1, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_ncrd2, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_ncrd2, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_ncrn, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_ncrn, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHeII1_reHeII1, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHeII1_reHeII1, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHeII2_reHeII2, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHeII2_reHeII2, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHeIII_reHeIII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHeIII_reHeIII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHII_reHII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHII_reHII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cie_optical_depth_approx, double, sizeof(double)*ncells);
+  devMalloc(hdata->h2_optical_depth_approx, double, sizeof(double)*ncells);
 
-  // initialize temperature so it won't crash
+  // Allocate scaling arrays.
+  devMalloc(hdata->scale, double, sizeof(double)*NSPECIES*ncells);
+  devMalloc(hdata->inv_scale, double, sizeof(double)*NSPECIES*ncells);
+
+  // Initialize temperature.
   double *Ts_dev = hdata->Ts;
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] RAJA_DEVICE (long int i) {
     Ts_dev[i] = 1000.0;
   });
 
-  // Temperature-related pieces
+  // Set temperature-related pieces.
   hdata->bounds[0] = 1.0;
   hdata->bounds[1] = 100000.0;
   hdata->nbins = TSIZE - 1;
   hdata->dbin = (log(hdata->bounds[1]) - log(hdata->bounds[0])) / hdata->nbins;
   hdata->idbin = 1.0L / hdata->dbin;
 
-  // allocate Temperature-dependent rate tables on device
-  dmalloc(hdata->r_k01, TSIZE);
-  dmalloc(hdata->r_k02, TSIZE);
-  dmalloc(hdata->r_k03, TSIZE);
-  dmalloc(hdata->r_k04, TSIZE);
-  dmalloc(hdata->r_k05, TSIZE);
-  dmalloc(hdata->r_k06, TSIZE);
-  dmalloc(hdata->r_k07, TSIZE);
-  dmalloc(hdata->r_k08, TSIZE);
-  dmalloc(hdata->r_k09, TSIZE);
-  dmalloc(hdata->r_k10, TSIZE);
-  dmalloc(hdata->r_k11, TSIZE);
-  dmalloc(hdata->r_k12, TSIZE);
-  dmalloc(hdata->r_k13, TSIZE);
-  dmalloc(hdata->r_k14, TSIZE);
-  dmalloc(hdata->r_k15, TSIZE);
-  dmalloc(hdata->r_k16, TSIZE);
-  dmalloc(hdata->r_k17, TSIZE);
-  dmalloc(hdata->r_k18, TSIZE);
-  dmalloc(hdata->r_k19, TSIZE);
-  dmalloc(hdata->r_k21, TSIZE);
-  dmalloc(hdata->r_k22, TSIZE);
-  dmalloc(hdata->c_brem_brem, TSIZE);
-  dmalloc(hdata->c_ceHeI_ceHeI, TSIZE);
-  dmalloc(hdata->c_ceHeII_ceHeII, TSIZE);
-  dmalloc(hdata->c_ceHI_ceHI, TSIZE);
-  dmalloc(hdata->c_cie_cooling_cieco, TSIZE);
-  dmalloc(hdata->c_ciHeI_ciHeI, TSIZE);
-  dmalloc(hdata->c_ciHeII_ciHeII, TSIZE);
-  dmalloc(hdata->c_ciHeIS_ciHeIS, TSIZE);
-  dmalloc(hdata->c_ciHI_ciHI, TSIZE);
-  dmalloc(hdata->c_compton_comp_, TSIZE);
-  dmalloc(hdata->c_gloverabel08_gael, TSIZE);
-  dmalloc(hdata->c_gloverabel08_gaH2, TSIZE);
-  dmalloc(hdata->c_gloverabel08_gaHe, TSIZE);
-  dmalloc(hdata->c_gloverabel08_gaHI, TSIZE);
-  dmalloc(hdata->c_gloverabel08_gaHp, TSIZE);
-  dmalloc(hdata->c_gloverabel08_h2lte, TSIZE);
-  dmalloc(hdata->c_h2formation_h2mcool, TSIZE);
-  dmalloc(hdata->c_h2formation_h2mheat, TSIZE);
-  dmalloc(hdata->c_h2formation_ncrd1, TSIZE);
-  dmalloc(hdata->c_h2formation_ncrd2, TSIZE);
-  dmalloc(hdata->c_h2formation_ncrn, TSIZE);
-  dmalloc(hdata->c_reHeII1_reHeII1, TSIZE);
-  dmalloc(hdata->c_reHeII2_reHeII2, TSIZE);
-  dmalloc(hdata->c_reHeIII_reHeIII, TSIZE);
-  dmalloc(hdata->c_reHII_reHII, TSIZE);
-  dmalloc(hdata->g_gammaH2_1, TSIZE);
-  dmalloc(hdata->g_dgammaH2_1_dT, TSIZE);
-  dmalloc(hdata->g_gammaH2_2, TSIZE);
-  dmalloc(hdata->g_dgammaH2_2_dT, TSIZE);
+  // Allocate Temperature-dependent rate tables.
+  devMalloc(hdata->r_k01, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k02, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k03, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k04, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k05, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k06, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k07, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k08, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k09, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k10, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k11, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k12, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k13, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k14, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k15, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k16, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k17, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k18, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k19, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k21, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k22, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_brem_brem, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ceHeI_ceHeI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ceHeII_ceHeII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ceHI_ceHI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_cie_cooling_cieco, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHeI_ciHeI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHeII_ciHeII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHeIS_ciHeIS, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHI_ciHI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_compton_comp_, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gael, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaH2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaHe, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaHI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaHp, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_h2lte, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_h2mcool, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_h2mheat, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_ncrd1, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_ncrd2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_ncrn, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHeII1_reHeII1, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHeII2_reHeII2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHeIII_reHeIII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHII_reHII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_gammaH2_1, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_dgammaH2_1_dT, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_gammaH2_2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_dgammaH2_2_dT, double, sizeof(double)*TSIZE);
 
-  // Input rate tables from HDF5 file into device memory;
+  // Input rate tables from HDF5 file into device memory.
   int passfail = 0;
   if (cvklu_read_rate_tables(hdata, FileLocation, comm) != 0)     passfail += 1;
   if (cvklu_read_cooling_tables(hdata, FileLocation, comm) != 0)  passfail += 1;
   if (cvklu_read_gamma(hdata, FileLocation, comm) != 0)           passfail += 1;
 
-  // Copy the host cvklu_data structure contents to the device cvklu_data structure,
-  if (data->HostToDevice() != 0)
-    passfail += 1;
+  // Copy the host cvklu_data structure contents to the device cvklu_data structure.
+  if (data->HostToDevice() != 0)  passfail += 1;
 
-  // Determine overall success/failure of this routine; if any failure occurred return an invalid object.
+  // Determine overall success/failure of this routine; if any failure occurred on
+  // any MPI rank then return an invalid object.
   int allpass = 0;
   if (MPI_Allreduce(&passfail, &allpass, 1, MPI_INT, MPI_SUM, comm) != MPI_SUCCESS)
     allpass = 1;
@@ -257,170 +350,166 @@ ReactionNetwork* cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
 }
 
 
-void cvklu_free_data(ReactionNetwork *data)
+void cvklu_free_data(cvklu_data *data)
 {
 
   //-----------------------------------------------------
   // Function : cvklu_free_data
   // Description: Frees reaction/ cooling rate data
-  //   structures from within the ReactionNetwork
+  //   structures from within the cvklu_data structure
   //-----------------------------------------------------
 
-  // Access the host cvklu_data data within the ReactionNetwork.
-  cvklu_data *hdata = data->HPtr();
-
-  // Free device arrays from within the cvklu_data structure
-  if (hdata->scale != nullptr)  dfree(hdata->scale);
-  if (hdata->inv_scale != nullptr)  dfree(hdata->inv_scale);
-  if (hdata->Ts != nullptr)  dfree(hdata->Ts);
-  if (hdata->dTs_ge != nullptr)  dfree(hdata->dTs_ge);
-  if (hdata->mdensity != nullptr)  dfree(hdata->mdensity);
-  if (hdata->inv_mdensity != nullptr)  dfree(hdata->inv_mdensity);
-  if (hdata->rs_k01 != nullptr)  dfree(hdata->rs_k01);
-  if (hdata->drs_k01 != nullptr)  dfree(hdata->drs_k01);
-  if (hdata->rs_k02 != nullptr)  dfree(hdata->rs_k02);
-  if (hdata->drs_k02 != nullptr)  dfree(hdata->drs_k02);
-  if (hdata->rs_k03 != nullptr)  dfree(hdata->rs_k03);
-  if (hdata->drs_k03 != nullptr)  dfree(hdata->drs_k03);
-  if (hdata->rs_k04 != nullptr)  dfree(hdata->rs_k04);
-  if (hdata->drs_k04 != nullptr)  dfree(hdata->drs_k04);
-  if (hdata->rs_k05 != nullptr)  dfree(hdata->rs_k05);
-  if (hdata->drs_k05 != nullptr)  dfree(hdata->drs_k05);
-  if (hdata->rs_k06 != nullptr)  dfree(hdata->rs_k06);
-  if (hdata->drs_k06 != nullptr)  dfree(hdata->drs_k06);
-  if (hdata->rs_k07 != nullptr)  dfree(hdata->rs_k07);
-  if (hdata->drs_k07 != nullptr)  dfree(hdata->drs_k07);
-  if (hdata->rs_k08 != nullptr)  dfree(hdata->rs_k08);
-  if (hdata->drs_k08 != nullptr)  dfree(hdata->drs_k08);
-  if (hdata->rs_k09 != nullptr)  dfree(hdata->rs_k09);
-  if (hdata->drs_k09 != nullptr)  dfree(hdata->drs_k09);
-  if (hdata->rs_k10 != nullptr)  dfree(hdata->rs_k10);
-  if (hdata->drs_k10 != nullptr)  dfree(hdata->drs_k10);
-  if (hdata->rs_k11 != nullptr)  dfree(hdata->rs_k11);
-  if (hdata->drs_k11 != nullptr)  dfree(hdata->drs_k11);
-  if (hdata->rs_k12 != nullptr)  dfree(hdata->rs_k12);
-  if (hdata->drs_k12 != nullptr)  dfree(hdata->drs_k12);
-  if (hdata->rs_k13 != nullptr)  dfree(hdata->rs_k13);
-  if (hdata->drs_k13 != nullptr)  dfree(hdata->drs_k13);
-  if (hdata->rs_k14 != nullptr)  dfree(hdata->rs_k14);
-  if (hdata->drs_k14 != nullptr)  dfree(hdata->drs_k14);
-  if (hdata->rs_k15 != nullptr)  dfree(hdata->rs_k15);
-  if (hdata->drs_k15 != nullptr)  dfree(hdata->drs_k15);
-  if (hdata->rs_k16 != nullptr)  dfree(hdata->rs_k16);
-  if (hdata->drs_k16 != nullptr)  dfree(hdata->drs_k16);
-  if (hdata->rs_k17 != nullptr)  dfree(hdata->rs_k17);
-  if (hdata->drs_k17 != nullptr)  dfree(hdata->drs_k17);
-  if (hdata->rs_k18 != nullptr)  dfree(hdata->rs_k18);
-  if (hdata->drs_k18 != nullptr)  dfree(hdata->drs_k18);
-  if (hdata->rs_k19 != nullptr)  dfree(hdata->rs_k19);
-  if (hdata->drs_k19 != nullptr)  dfree(hdata->drs_k19);
-  if (hdata->rs_k21 != nullptr)  dfree(hdata->rs_k21);
-  if (hdata->drs_k21 != nullptr)  dfree(hdata->drs_k21);
-  if (hdata->rs_k22 != nullptr)  dfree(hdata->rs_k22);
-  if (hdata->drs_k22 != nullptr)  dfree(hdata->drs_k22);
-  if (hdata->cs_brem_brem != nullptr)  dfree(hdata->cs_brem_brem);
-  if (hdata->dcs_brem_brem != nullptr)  dfree(hdata->dcs_brem_brem);
-  if (hdata->cs_ceHeI_ceHeI != nullptr)  dfree(hdata->cs_ceHeI_ceHeI);
-  if (hdata->dcs_ceHeI_ceHeI != nullptr)  dfree(hdata->dcs_ceHeI_ceHeI);
-  if (hdata->cs_ceHeII_ceHeII != nullptr)  dfree(hdata->cs_ceHeII_ceHeII);
-  if (hdata->dcs_ceHeII_ceHeII != nullptr)  dfree(hdata->dcs_ceHeII_ceHeII);
-  if (hdata->cs_ceHI_ceHI != nullptr)  dfree(hdata->cs_ceHI_ceHI);
-  if (hdata->dcs_ceHI_ceHI != nullptr)  dfree(hdata->dcs_ceHI_ceHI);
-  if (hdata->cs_cie_cooling_cieco != nullptr)  dfree(hdata->cs_cie_cooling_cieco);
-  if (hdata->dcs_cie_cooling_cieco != nullptr)  dfree(hdata->dcs_cie_cooling_cieco);
-  if (hdata->cs_ciHeI_ciHeI != nullptr)  dfree(hdata->cs_ciHeI_ciHeI);
-  if (hdata->dcs_ciHeI_ciHeI != nullptr)  dfree(hdata->dcs_ciHeI_ciHeI);
-  if (hdata->cs_ciHeII_ciHeII != nullptr)  dfree(hdata->cs_ciHeII_ciHeII);
-  if (hdata->dcs_ciHeII_ciHeII != nullptr)  dfree(hdata->dcs_ciHeII_ciHeII);
-  if (hdata->cs_ciHeIS_ciHeIS != nullptr)  dfree(hdata->cs_ciHeIS_ciHeIS);
-  if (hdata->dcs_ciHeIS_ciHeIS != nullptr)  dfree(hdata->dcs_ciHeIS_ciHeIS);
-  if (hdata->cs_ciHI_ciHI != nullptr)  dfree(hdata->cs_ciHI_ciHI);
-  if (hdata->dcs_ciHI_ciHI != nullptr)  dfree(hdata->dcs_ciHI_ciHI);
-  if (hdata->cs_compton_comp_ != nullptr)  dfree(hdata->cs_compton_comp_);
-  if (hdata->dcs_compton_comp_ != nullptr)  dfree(hdata->dcs_compton_comp_);
-  if (hdata->cs_gloverabel08_gael != nullptr)  dfree(hdata->cs_gloverabel08_gael);
-  if (hdata->dcs_gloverabel08_gael != nullptr)  dfree(hdata->dcs_gloverabel08_gael);
-  if (hdata->cs_gloverabel08_gaH2 != nullptr)  dfree(hdata->cs_gloverabel08_gaH2);
-  if (hdata->dcs_gloverabel08_gaH2 != nullptr)  dfree(hdata->dcs_gloverabel08_gaH2);
-  if (hdata->cs_gloverabel08_gaHe != nullptr)  dfree(hdata->cs_gloverabel08_gaHe);
-  if (hdata->dcs_gloverabel08_gaHe != nullptr)  dfree(hdata->dcs_gloverabel08_gaHe);
-  if (hdata->cs_gloverabel08_gaHI != nullptr)  dfree(hdata->cs_gloverabel08_gaHI);
-  if (hdata->dcs_gloverabel08_gaHI != nullptr)  dfree(hdata->dcs_gloverabel08_gaHI);
-  if (hdata->cs_gloverabel08_gaHp != nullptr)  dfree(hdata->cs_gloverabel08_gaHp);
-  if (hdata->dcs_gloverabel08_gaHp != nullptr)  dfree(hdata->dcs_gloverabel08_gaHp);
-  if (hdata->cs_gloverabel08_h2lte != nullptr)  dfree(hdata->cs_gloverabel08_h2lte);
-  if (hdata->dcs_gloverabel08_h2lte != nullptr)  dfree(hdata->dcs_gloverabel08_h2lte);
-  if (hdata->cs_h2formation_h2mcool != nullptr)  dfree(hdata->cs_h2formation_h2mcool);
-  if (hdata->dcs_h2formation_h2mcool != nullptr)  dfree(hdata->dcs_h2formation_h2mcool);
-  if (hdata->cs_h2formation_h2mheat != nullptr)  dfree(hdata->cs_h2formation_h2mheat);
-  if (hdata->dcs_h2formation_h2mheat != nullptr)  dfree(hdata->dcs_h2formation_h2mheat);
-  if (hdata->cs_h2formation_ncrd1 != nullptr)  dfree(hdata->cs_h2formation_ncrd1);
-  if (hdata->dcs_h2formation_ncrd1 != nullptr)  dfree(hdata->dcs_h2formation_ncrd1);
-  if (hdata->cs_h2formation_ncrd2 != nullptr)  dfree(hdata->cs_h2formation_ncrd2);
-  if (hdata->dcs_h2formation_ncrd2 != nullptr)  dfree(hdata->dcs_h2formation_ncrd2);
-  if (hdata->cs_h2formation_ncrn != nullptr)  dfree(hdata->cs_h2formation_ncrn);
-  if (hdata->dcs_h2formation_ncrn != nullptr)  dfree(hdata->dcs_h2formation_ncrn);
-  if (hdata->cs_reHeII1_reHeII1 != nullptr)  dfree(hdata->cs_reHeII1_reHeII1);
-  if (hdata->dcs_reHeII1_reHeII1 != nullptr)  dfree(hdata->dcs_reHeII1_reHeII1);
-  if (hdata->cs_reHeII2_reHeII2 != nullptr)  dfree(hdata->cs_reHeII2_reHeII2);
-  if (hdata->dcs_reHeII2_reHeII2 != nullptr)  dfree(hdata->dcs_reHeII2_reHeII2);
-  if (hdata->cs_reHeIII_reHeIII != nullptr)  dfree(hdata->cs_reHeIII_reHeIII);
-  if (hdata->dcs_reHeIII_reHeIII != nullptr)  dfree(hdata->dcs_reHeIII_reHeIII);
-  if (hdata->cs_reHII_reHII != nullptr)  dfree(hdata->cs_reHII_reHII);
-  if (hdata->dcs_reHII_reHII != nullptr)  dfree(hdata->dcs_reHII_reHII);
-  if (hdata->cie_optical_depth_approx != nullptr)  dfree(hdata->cie_optical_depth_approx);
-  if (hdata->h2_optical_depth_approx != nullptr)  dfree(hdata->h2_optical_depth_approx);
-  if (hdata->r_k01 != nullptr)  dfree(hdata->r_k01);
-  if (hdata->r_k02 != nullptr)  dfree(hdata->r_k02);
-  if (hdata->r_k03 != nullptr)  dfree(hdata->r_k03);
-  if (hdata->r_k04 != nullptr)  dfree(hdata->r_k04);
-  if (hdata->r_k05 != nullptr)  dfree(hdata->r_k05);
-  if (hdata->r_k06 != nullptr)  dfree(hdata->r_k06);
-  if (hdata->r_k07 != nullptr)  dfree(hdata->r_k07);
-  if (hdata->r_k08 != nullptr)  dfree(hdata->r_k08);
-  if (hdata->r_k09 != nullptr)  dfree(hdata->r_k09);
-  if (hdata->r_k10 != nullptr)  dfree(hdata->r_k10);
-  if (hdata->r_k11 != nullptr)  dfree(hdata->r_k11);
-  if (hdata->r_k12 != nullptr)  dfree(hdata->r_k12);
-  if (hdata->r_k13 != nullptr)  dfree(hdata->r_k13);
-  if (hdata->r_k14 != nullptr)  dfree(hdata->r_k14);
-  if (hdata->r_k15 != nullptr)  dfree(hdata->r_k15);
-  if (hdata->r_k16 != nullptr)  dfree(hdata->r_k16);
-  if (hdata->r_k17 != nullptr)  dfree(hdata->r_k17);
-  if (hdata->r_k18 != nullptr)  dfree(hdata->r_k18);
-  if (hdata->r_k19 != nullptr)  dfree(hdata->r_k19);
-  if (hdata->r_k21 != nullptr)  dfree(hdata->r_k21);
-  if (hdata->r_k22 != nullptr)  dfree(hdata->r_k22);
-  if (hdata->c_brem_brem != nullptr)  dfree(hdata->c_brem_brem);
-  if (hdata->c_ceHeI_ceHeI != nullptr)  dfree(hdata->c_ceHeI_ceHeI);
-  if (hdata->c_ceHeII_ceHeII != nullptr)  dfree(hdata->c_ceHeII_ceHeII);
-  if (hdata->c_ceHI_ceHI != nullptr)  dfree(hdata->c_ceHI_ceHI);
-  if (hdata->c_cie_cooling_cieco != nullptr)  dfree(hdata->c_cie_cooling_cieco);
-  if (hdata->c_ciHeI_ciHeI != nullptr)  dfree(hdata->c_ciHeI_ciHeI);
-  if (hdata->c_ciHeII_ciHeII != nullptr)  dfree(hdata->c_ciHeII_ciHeII);
-  if (hdata->c_ciHeIS_ciHeIS != nullptr)  dfree(hdata->c_ciHeIS_ciHeIS);
-  if (hdata->c_ciHI_ciHI != nullptr)  dfree(hdata->c_ciHI_ciHI);
-  if (hdata->c_compton_comp_ != nullptr)  dfree(hdata->c_compton_comp_);
-  if (hdata->c_gloverabel08_gael != nullptr)  dfree(hdata->c_gloverabel08_gael);
-  if (hdata->c_gloverabel08_gaH2 != nullptr)  dfree(hdata->c_gloverabel08_gaH2);
-  if (hdata->c_gloverabel08_gaHe != nullptr)  dfree(hdata->c_gloverabel08_gaHe);
-  if (hdata->c_gloverabel08_gaHI != nullptr)  dfree(hdata->c_gloverabel08_gaHI);
-  if (hdata->c_gloverabel08_gaHp != nullptr)  dfree(hdata->c_gloverabel08_gaHp);
-  if (hdata->c_gloverabel08_h2lte != nullptr)  dfree(hdata->c_gloverabel08_h2lte);
-  if (hdata->c_h2formation_h2mcool != nullptr)  dfree(hdata->c_h2formation_h2mcool);
-  if (hdata->c_h2formation_h2mheat != nullptr)  dfree(hdata->c_h2formation_h2mheat);
-  if (hdata->c_h2formation_ncrd1 != nullptr)  dfree(hdata->c_h2formation_ncrd1);
-  if (hdata->c_h2formation_ncrd2 != nullptr)  dfree(hdata->c_h2formation_ncrd2);
-  if (hdata->c_h2formation_ncrn != nullptr)  dfree(hdata->c_h2formation_ncrn);
-  if (hdata->c_reHeII1_reHeII1 != nullptr)  dfree(hdata->c_reHeII1_reHeII1);
-  if (hdata->c_reHeII2_reHeII2 != nullptr)  dfree(hdata->c_reHeII2_reHeII2);
-  if (hdata->c_reHeIII_reHeIII != nullptr)  dfree(hdata->c_reHeIII_reHeIII);
-  if (hdata->c_reHII_reHII != nullptr)  dfree(hdata->c_reHII_reHII);
-  if (hdata->g_gammaH2_1 != nullptr)  dfree(hdata->g_gammaH2_1);
-  if (hdata->g_dgammaH2_1_dT != nullptr)  dfree(hdata->g_dgammaH2_1_dT);
-  if (hdata->g_gammaH2_2 != nullptr)  dfree(hdata->g_gammaH2_2);
-  if (hdata->g_dgammaH2_2_dT != nullptr)  dfree(hdata->g_dgammaH2_2_dT);
-  delete data;
+  // Free device arrays from within the cvklu_data structure.
+  devFree((void **) &data->scale);
+  devFree((void **) &data->inv_scale);
+  devFree((void **) &data->Ts);
+  devFree((void **) &data->dTs_ge);
+  devFree((void **) &data->mdensity);
+  devFree((void **) &data->inv_mdensity);
+  devFree((void **) &data->rs_k01);
+  devFree((void **) &data->drs_k01);
+  devFree((void **) &data->rs_k02);
+  devFree((void **) &data->drs_k02);
+  devFree((void **) &data->rs_k03);
+  devFree((void **) &data->drs_k03);
+  devFree((void **) &data->rs_k04);
+  devFree((void **) &data->drs_k04);
+  devFree((void **) &data->rs_k05);
+  devFree((void **) &data->drs_k05);
+  devFree((void **) &data->rs_k06);
+  devFree((void **) &data->drs_k06);
+  devFree((void **) &data->rs_k07);
+  devFree((void **) &data->drs_k07);
+  devFree((void **) &data->rs_k08);
+  devFree((void **) &data->drs_k08);
+  devFree((void **) &data->rs_k09);
+  devFree((void **) &data->drs_k09);
+  devFree((void **) &data->rs_k10);
+  devFree((void **) &data->drs_k10);
+  devFree((void **) &data->rs_k11);
+  devFree((void **) &data->drs_k11);
+  devFree((void **) &data->rs_k12);
+  devFree((void **) &data->drs_k12);
+  devFree((void **) &data->rs_k13);
+  devFree((void **) &data->drs_k13);
+  devFree((void **) &data->rs_k14);
+  devFree((void **) &data->drs_k14);
+  devFree((void **) &data->rs_k15);
+  devFree((void **) &data->drs_k15);
+  devFree((void **) &data->rs_k16);
+  devFree((void **) &data->drs_k16);
+  devFree((void **) &data->rs_k17);
+  devFree((void **) &data->drs_k17);
+  devFree((void **) &data->rs_k18);
+  devFree((void **) &data->drs_k18);
+  devFree((void **) &data->rs_k19);
+  devFree((void **) &data->drs_k19);
+  devFree((void **) &data->rs_k21);
+  devFree((void **) &data->drs_k21);
+  devFree((void **) &data->rs_k22);
+  devFree((void **) &data->drs_k22);
+  devFree((void **) &data->cs_brem_brem);
+  devFree((void **) &data->dcs_brem_brem);
+  devFree((void **) &data->cs_ceHeI_ceHeI);
+  devFree((void **) &data->dcs_ceHeI_ceHeI);
+  devFree((void **) &data->cs_ceHeII_ceHeII);
+  devFree((void **) &data->dcs_ceHeII_ceHeII);
+  devFree((void **) &data->cs_ceHI_ceHI);
+  devFree((void **) &data->dcs_ceHI_ceHI);
+  devFree((void **) &data->cs_cie_cooling_cieco);
+  devFree((void **) &data->dcs_cie_cooling_cieco);
+  devFree((void **) &data->cs_ciHeI_ciHeI);
+  devFree((void **) &data->dcs_ciHeI_ciHeI);
+  devFree((void **) &data->cs_ciHeII_ciHeII);
+  devFree((void **) &data->dcs_ciHeII_ciHeII);
+  devFree((void **) &data->cs_ciHeIS_ciHeIS);
+  devFree((void **) &data->dcs_ciHeIS_ciHeIS);
+  devFree((void **) &data->cs_ciHI_ciHI);
+  devFree((void **) &data->dcs_ciHI_ciHI);
+  devFree((void **) &data->cs_compton_comp_);
+  devFree((void **) &data->dcs_compton_comp_);
+  devFree((void **) &data->cs_gloverabel08_gael);
+  devFree((void **) &data->dcs_gloverabel08_gael);
+  devFree((void **) &data->cs_gloverabel08_gaH2);
+  devFree((void **) &data->dcs_gloverabel08_gaH2);
+  devFree((void **) &data->cs_gloverabel08_gaHe);
+  devFree((void **) &data->dcs_gloverabel08_gaHe);
+  devFree((void **) &data->cs_gloverabel08_gaHI);
+  devFree((void **) &data->dcs_gloverabel08_gaHI);
+  devFree((void **) &data->cs_gloverabel08_gaHp);
+  devFree((void **) &data->dcs_gloverabel08_gaHp);
+  devFree((void **) &data->cs_gloverabel08_h2lte);
+  devFree((void **) &data->dcs_gloverabel08_h2lte);
+  devFree((void **) &data->cs_h2formation_h2mcool);
+  devFree((void **) &data->dcs_h2formation_h2mcool);
+  devFree((void **) &data->cs_h2formation_h2mheat);
+  devFree((void **) &data->dcs_h2formation_h2mheat);
+  devFree((void **) &data->cs_h2formation_ncrd1);
+  devFree((void **) &data->dcs_h2formation_ncrd1);
+  devFree((void **) &data->cs_h2formation_ncrd2);
+  devFree((void **) &data->dcs_h2formation_ncrd2);
+  devFree((void **) &data->cs_h2formation_ncrn);
+  devFree((void **) &data->dcs_h2formation_ncrn);
+  devFree((void **) &data->cs_reHeII1_reHeII1);
+  devFree((void **) &data->dcs_reHeII1_reHeII1);
+  devFree((void **) &data->cs_reHeII2_reHeII2);
+  devFree((void **) &data->dcs_reHeII2_reHeII2);
+  devFree((void **) &data->cs_reHeIII_reHeIII);
+  devFree((void **) &data->dcs_reHeIII_reHeIII);
+  devFree((void **) &data->cs_reHII_reHII);
+  devFree((void **) &data->dcs_reHII_reHII);
+  devFree((void **) &data->cie_optical_depth_approx);
+  devFree((void **) &data->h2_optical_depth_approx);
+  devFree((void **) &data->r_k01);
+  devFree((void **) &data->r_k02);
+  devFree((void **) &data->r_k03);
+  devFree((void **) &data->r_k04);
+  devFree((void **) &data->r_k05);
+  devFree((void **) &data->r_k06);
+  devFree((void **) &data->r_k07);
+  devFree((void **) &data->r_k08);
+  devFree((void **) &data->r_k09);
+  devFree((void **) &data->r_k10);
+  devFree((void **) &data->r_k11);
+  devFree((void **) &data->r_k12);
+  devFree((void **) &data->r_k13);
+  devFree((void **) &data->r_k14);
+  devFree((void **) &data->r_k15);
+  devFree((void **) &data->r_k16);
+  devFree((void **) &data->r_k17);
+  devFree((void **) &data->r_k18);
+  devFree((void **) &data->r_k19);
+  devFree((void **) &data->r_k21);
+  devFree((void **) &data->r_k22);
+  devFree((void **) &data->c_brem_brem);
+  devFree((void **) &data->c_ceHeI_ceHeI);
+  devFree((void **) &data->c_ceHeII_ceHeII);
+  devFree((void **) &data->c_ceHI_ceHI);
+  devFree((void **) &data->c_cie_cooling_cieco);
+  devFree((void **) &data->c_ciHeI_ciHeI);
+  devFree((void **) &data->c_ciHeII_ciHeII);
+  devFree((void **) &data->c_ciHeIS_ciHeIS);
+  devFree((void **) &data->c_ciHI_ciHI);
+  devFree((void **) &data->c_compton_comp_);
+  devFree((void **) &data->c_gloverabel08_gael);
+  devFree((void **) &data->c_gloverabel08_gaH2);
+  devFree((void **) &data->c_gloverabel08_gaHe);
+  devFree((void **) &data->c_gloverabel08_gaHI);
+  devFree((void **) &data->c_gloverabel08_gaHp);
+  devFree((void **) &data->c_gloverabel08_h2lte);
+  devFree((void **) &data->c_h2formation_h2mcool);
+  devFree((void **) &data->c_h2formation_h2mheat);
+  devFree((void **) &data->c_h2formation_ncrd1);
+  devFree((void **) &data->c_h2formation_ncrd2);
+  devFree((void **) &data->c_h2formation_ncrn);
+  devFree((void **) &data->c_reHeII1_reHeII1);
+  devFree((void **) &data->c_reHeII2_reHeII2);
+  devFree((void **) &data->c_reHeIII_reHeIII);
+  devFree((void **) &data->c_reHII_reHII);
+  devFree((void **) &data->g_gammaH2_1);
+  devFree((void **) &data->g_dgammaH2_1_dT);
+  devFree((void **) &data->g_gammaH2_2);
+  devFree((void **) &data->g_dgammaH2_2_dT);
 }
 
 
@@ -511,39 +600,30 @@ int cvklu_read_rate_tables(cvklu_data *hdata, const char *FileLocation, MPI_Comm
   if (MPI_Bcast(k22, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
 
   // Copy tables into rate data structure
-  dcopy(hdata->r_k01, k01, TSIZE);
-  dcopy(hdata->r_k02, k02, TSIZE);
-  dcopy(hdata->r_k03, k03, TSIZE);
-  dcopy(hdata->r_k04, k04, TSIZE);
-  dcopy(hdata->r_k05, k05, TSIZE);
-  dcopy(hdata->r_k06, k06, TSIZE);
-  dcopy(hdata->r_k07, k07, TSIZE);
-  dcopy(hdata->r_k08, k08, TSIZE);
-  dcopy(hdata->r_k09, k09, TSIZE);
-  dcopy(hdata->r_k10, k10, TSIZE);
-  dcopy(hdata->r_k11, k11, TSIZE);
-  dcopy(hdata->r_k12, k12, TSIZE);
-  dcopy(hdata->r_k13, k13, TSIZE);
-  dcopy(hdata->r_k14, k14, TSIZE);
-  dcopy(hdata->r_k15, k15, TSIZE);
-  dcopy(hdata->r_k16, k16, TSIZE);
-  dcopy(hdata->r_k17, k17, TSIZE);
-  dcopy(hdata->r_k18, k18, TSIZE);
-  dcopy(hdata->r_k19, k19, TSIZE);
-  dcopy(hdata->r_k21, k21, TSIZE);
-  dcopy(hdata->r_k22, k22, TSIZE);
+  passfail += copyHostToDevice(hdata->r_k01, k01, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k02, k02, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k03, k03, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k04, k04, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k05, k05, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k06, k06, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k07, k07, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k08, k08, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k09, k09, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k10, k10, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k11, k11, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k12, k12, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k13, k13, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k14, k14, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k15, k15, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k16, k16, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k17, k17, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k18, k18, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k19, k19, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k21, k21, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k22, k22, sizeof(double)*TSIZE);
 
   // ensure that copies have completed
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-      passfail += 1;
-    }
-#endif
+  passfail += copyFence();
 
   // Free temporary arrays and return
   free(k01);
@@ -670,43 +750,34 @@ int cvklu_read_cooling_tables(cvklu_data *hdata, const char *FileLocation, MPI_C
   if (MPI_Bcast(c_reHII_reHII, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
 
   // Copy tables into rate data structure
-  dcopy(hdata->c_brem_brem, c_brem_brem, TSIZE);
-  dcopy(hdata->c_ceHeI_ceHeI, c_ceHeI_ceHeI, TSIZE);
-  dcopy(hdata->c_ceHeII_ceHeII, c_ceHeII_ceHeII, TSIZE);
-  dcopy(hdata->c_ceHI_ceHI, c_ceHI_ceHI, TSIZE);
-  dcopy(hdata->c_cie_cooling_cieco, c_cie_cooling_cieco, TSIZE);
-  dcopy(hdata->c_ciHeI_ciHeI, c_ciHeI_ciHeI, TSIZE);
-  dcopy(hdata->c_ciHeII_ciHeII, c_ciHeII_ciHeII, TSIZE);
-  dcopy(hdata->c_ciHeIS_ciHeIS, c_ciHeIS_ciHeIS, TSIZE);
-  dcopy(hdata->c_ciHI_ciHI, c_ciHI_ciHI, TSIZE);
-  dcopy(hdata->c_compton_comp_, c_compton_comp_, TSIZE);
-  dcopy(hdata->c_gloverabel08_gael, c_gloverabel08_gael, TSIZE);
-  dcopy(hdata->c_gloverabel08_gaH2, c_gloverabel08_gaH2, TSIZE);
-  dcopy(hdata->c_gloverabel08_gaHe, c_gloverabel08_gaHe, TSIZE);
-  dcopy(hdata->c_gloverabel08_gaHI, c_gloverabel08_gaHI, TSIZE);
-  dcopy(hdata->c_gloverabel08_gaHp, c_gloverabel08_gaHp, TSIZE);
-  dcopy(hdata->c_gloverabel08_h2lte, c_gloverabel08_h2lte, TSIZE);
-  dcopy(hdata->c_h2formation_h2mcool, c_h2formation_h2mcool, TSIZE);
-  dcopy(hdata->c_h2formation_h2mheat, c_h2formation_h2mheat, TSIZE);
-  dcopy(hdata->c_h2formation_ncrd1, c_h2formation_ncrd1, TSIZE);
-  dcopy(hdata->c_h2formation_ncrd2, c_h2formation_ncrd2, TSIZE);
-  dcopy(hdata->c_h2formation_ncrn, c_h2formation_ncrn, TSIZE);
-  dcopy(hdata->c_reHeII1_reHeII1, c_reHeII1_reHeII1, TSIZE);
-  dcopy(hdata->c_reHeII2_reHeII2, c_reHeII2_reHeII2, TSIZE);
-  dcopy(hdata->c_reHeIII_reHeIII, c_reHeIII_reHeIII, TSIZE);
-  dcopy(hdata->c_reHII_reHII, c_reHII_reHII, TSIZE);
+  passfail += copyHostToDevice(hdata->c_brem_brem, c_brem_brem, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ceHeI_ceHeI, c_ceHeI_ceHeI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ceHeII_ceHeII, c_ceHeII_ceHeII, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ceHI_ceHI, c_ceHI_ceHI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_cie_cooling_cieco, c_cie_cooling_cieco, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHeI_ciHeI, c_ciHeI_ciHeI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHeII_ciHeII, c_ciHeII_ciHeII, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHeIS_ciHeIS, c_ciHeIS_ciHeIS, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHI_ciHI, c_ciHI_ciHI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_compton_comp_, c_compton_comp_, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gael, c_gloverabel08_gael, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaH2, c_gloverabel08_gaH2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaHe, c_gloverabel08_gaHe, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaHI, c_gloverabel08_gaHI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaHp, c_gloverabel08_gaHp, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_h2lte, c_gloverabel08_h2lte, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_h2mcool, c_h2formation_h2mcool, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_h2mheat, c_h2formation_h2mheat, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_ncrd1, c_h2formation_ncrd1, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_ncrd2, c_h2formation_ncrd2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_ncrn, c_h2formation_ncrn, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHeII1_reHeII1, c_reHeII1_reHeII1, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHeII2_reHeII2, c_reHeII2_reHeII2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHeIII_reHeIII, c_reHeIII_reHeIII, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHII_reHII, c_reHII_reHII, sizeof(double)*TSIZE);
 
   // ensure that table data is synchronized between host/device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-      std::cerr << ">>> ERROR in cvklu_read_cooling_tables: XGetLastError returned %s\n"
-                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-      passfail += 1;
-    }
-#endif
+  passfail += copyFence();
 
   // Free temporary arrays and return
   free(c_brem_brem);
@@ -773,22 +844,13 @@ int cvklu_read_gamma(cvklu_data *hdata, const char *FileLocation, MPI_Comm comm)
   if (MPI_Bcast(g_dgammaH2_2_dT, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
 
   // Copy tables into rate data structure
-  dcopy(hdata->g_gammaH2_1, g_gammaH2_1, TSIZE);
-  dcopy(hdata->g_dgammaH2_1_dT, g_dgammaH2_1_dT, TSIZE);
-  dcopy(hdata->g_gammaH2_2, g_gammaH2_2, TSIZE);
-  dcopy(hdata->g_dgammaH2_2_dT, g_dgammaH2_2_dT, TSIZE);
+  passfail += copyHostToDevice(hdata->g_gammaH2_1, g_gammaH2_1, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->g_dgammaH2_1_dT, g_dgammaH2_1_dT, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->g_gammaH2_2, g_gammaH2_2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->g_dgammaH2_2_dT, g_dgammaH2_2_dT, sizeof(double)*TSIZE);
 
   // ensure that table data is synchronized between host/device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-      std::cerr << ">>> ERROR in cvklu_read_gamma: XGetLastError returned %s\n"
-                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-      passfail += 1;
-    }
-#endif
+  passfail += copyFence();
 
   // Free temporary arrays and return
   free(g_gammaH2_1);
@@ -829,7 +891,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *ddata, const doubl
   // Initiate the "guess" temperature
   double T    = Ts;
   double Tnew = T*1.1;
-  double Tdiff = Tnew - T;
+  //double Tdiff = fabs(Tnew - T);
   double dge_dT;
   //int count = 0;
 
@@ -883,7 +945,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *ddata, const doubl
     Tnew = T - dge/dge_dT;
     Ts = Tnew;
 
-    Tdiff = fabs(T - Tnew);
+    //Tdiff = fabs(T - Tnew);
     // fprintf(stderr, "T: %0.5g ; Tnew: %0.5g; dge_dT: %.5g, dge: %.5g, ge: %.5g \n", T,Tnew, dge_dT, dge, ge);
     // count += 1;
     // if (count > MAX_T_ITERATION){
@@ -910,8 +972,8 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *ddata, const doubl
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
                         long int nstrip, void *user_data)
 {
-  ReactionNetwork *data = (ReactionNetwork*) user_data;
-  cvklu_data *ddata = data->DPtr();
+  ReactionNetwork *rxdata = (ReactionNetwork*) user_data;
+  cvklu_data *data = rxdata->DPtr();
 #ifdef USE_DEVICE
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
@@ -923,364 +985,354 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 
     double y_arr[NSPECIES];
     long int j = i * NSPECIES;
-    const double H2_1 = y_arr[0] = ydata[j]*ddata->scale[j];
-    const double H2_2 = y_arr[1] = ydata[j+1]*ddata->scale[j+1];
-    const double H_1 = y_arr[2]  = ydata[j+2]*ddata->scale[j+2];
-    const double H_2 = y_arr[3]  = ydata[j+3]*ddata->scale[j+3];
-    const double H_m0 = y_arr[4] = ydata[j+4]*ddata->scale[j+4];
-    const double He_1 = y_arr[5] = ydata[j+5]*ddata->scale[j+5];
-    const double He_2 = y_arr[6] = ydata[j+6]*ddata->scale[j+6];
-    const double He_3 = y_arr[7] = ydata[j+7]*ddata->scale[j+7];
-    const double de = y_arr[8]   = ydata[j+8]*ddata->scale[j+8];
-    const double ge = y_arr[9]   = ydata[j+9]*ddata->scale[j+9];
+    const double H2_1 = y_arr[0] = ydata[j]*data->scale[j];
+    const double H2_2 = y_arr[1] = ydata[j+1]*data->scale[j+1];
+    const double H_1  = y_arr[2] = ydata[j+2]*data->scale[j+2];
+    const double H_2  = y_arr[3] = ydata[j+3]*data->scale[j+3];
+    const double H_m0 = y_arr[4] = ydata[j+4]*data->scale[j+4];
+    const double He_1 = y_arr[5] = ydata[j+5]*data->scale[j+5];
+    const double He_2 = y_arr[6] = ydata[j+6]*data->scale[j+6];
+    const double He_3 = y_arr[7] = ydata[j+7]*data->scale[j+7];
+    const double de   = y_arr[8] = ydata[j+8]*data->scale[j+8];
+    const double ge   = y_arr[9] = ydata[j+9]*data->scale[j+9];
 
     // Calculate temperature in this cell
-    cvklu_calculate_temperature(ddata, y_arr, i, ddata->Ts[i], ddata->dTs_ge[i]);
+    cvklu_calculate_temperature(data, y_arr, i, data->Ts[i], data->dTs_ge[i]);
 
     // Calculate reaction rates in this cell
-    //cvklu_interpolate_rates(ddata, i);
+    //cvklu_interpolate_rates(data, i);
     int bin_id;
 
-    const double lb = log(ddata->bounds[0]);
+    const double lb = log(data->bounds[0]);
 
-    bin_id = (int) (ddata->idbin * (log(ddata->Ts[i]) - lb));
+    bin_id = (int) (data->idbin * (log(data->Ts[i]) - lb));
     if (bin_id <= 0) {
       bin_id = 0;
-    } else if (bin_id >= ddata->nbins) {
-      bin_id = ddata->nbins - 1;
+    } else if (bin_id >= data->nbins) {
+      bin_id = data->nbins - 1;
     }
-    const double t1 = (lb + (bin_id    ) * ddata->dbin);
-    const double t2 = (lb + (bin_id + 1) * ddata->dbin);
-    const double Tdef = (log(ddata->Ts[i]) - t1)/(t2 - t1);
+    const double t1 = (lb + (bin_id    ) * data->dbin);
+    const double t2 = (lb + (bin_id + 1) * data->dbin);
+    const double Tdef = (log(data->Ts[i]) - t1)/(t2 - t1);
     const double dT = (t2 - t1);
-    const double invTs = 1.0 / ddata->Ts[i];
+    const double invTs = 1.0 / data->Ts[i];
     const double Tfactor = invTs/dT;
 
-    ddata->rs_k01[i] = ddata->r_k01[bin_id] +
-      Tdef * (ddata->r_k01[bin_id+1] - ddata->r_k01[bin_id]);
-    ddata->drs_k01[i] = (ddata->r_k01[bin_id+1] - ddata->r_k01[bin_id])*Tfactor;
+    data->rs_k01[i] = data->r_k01[bin_id] +
+      Tdef * (data->r_k01[bin_id+1] - data->r_k01[bin_id]);
+    data->drs_k01[i] = (data->r_k01[bin_id+1] - data->r_k01[bin_id])*Tfactor;
 
-    ddata->rs_k02[i] = ddata->r_k02[bin_id] +
-      Tdef * (ddata->r_k02[bin_id+1] - ddata->r_k02[bin_id]);
-    ddata->drs_k02[i] = (ddata->r_k02[bin_id+1] - ddata->r_k02[bin_id])*Tfactor;
+    data->rs_k02[i] = data->r_k02[bin_id] +
+      Tdef * (data->r_k02[bin_id+1] - data->r_k02[bin_id]);
+    data->drs_k02[i] = (data->r_k02[bin_id+1] - data->r_k02[bin_id])*Tfactor;
 
-    ddata->rs_k03[i] = ddata->r_k03[bin_id] +
-      Tdef * (ddata->r_k03[bin_id+1] - ddata->r_k03[bin_id]);
-    ddata->drs_k03[i] = (ddata->r_k03[bin_id+1] - ddata->r_k03[bin_id])*Tfactor;
+    data->rs_k03[i] = data->r_k03[bin_id] +
+      Tdef * (data->r_k03[bin_id+1] - data->r_k03[bin_id]);
+    data->drs_k03[i] = (data->r_k03[bin_id+1] - data->r_k03[bin_id])*Tfactor;
 
-    ddata->rs_k04[i] = ddata->r_k04[bin_id] +
-      Tdef * (ddata->r_k04[bin_id+1] - ddata->r_k04[bin_id]);
-    ddata->drs_k04[i] = (ddata->r_k04[bin_id+1] - ddata->r_k04[bin_id])*Tfactor;
+    data->rs_k04[i] = data->r_k04[bin_id] +
+      Tdef * (data->r_k04[bin_id+1] - data->r_k04[bin_id]);
+    data->drs_k04[i] = (data->r_k04[bin_id+1] - data->r_k04[bin_id])*Tfactor;
 
-    ddata->rs_k05[i] = ddata->r_k05[bin_id] +
-      Tdef * (ddata->r_k05[bin_id+1] - ddata->r_k05[bin_id]);
-    ddata->drs_k05[i] = (ddata->r_k05[bin_id+1] - ddata->r_k05[bin_id])*Tfactor;
+    data->rs_k05[i] = data->r_k05[bin_id] +
+      Tdef * (data->r_k05[bin_id+1] - data->r_k05[bin_id]);
+    data->drs_k05[i] = (data->r_k05[bin_id+1] - data->r_k05[bin_id])*Tfactor;
 
-    ddata->rs_k06[i] = ddata->r_k06[bin_id] +
-      Tdef * (ddata->r_k06[bin_id+1] - ddata->r_k06[bin_id]);
-    ddata->drs_k06[i] = (ddata->r_k06[bin_id+1] - ddata->r_k06[bin_id])*Tfactor;
+    data->rs_k06[i] = data->r_k06[bin_id] +
+      Tdef * (data->r_k06[bin_id+1] - data->r_k06[bin_id]);
+    data->drs_k06[i] = (data->r_k06[bin_id+1] - data->r_k06[bin_id])*Tfactor;
 
-    ddata->rs_k07[i] = ddata->r_k07[bin_id] +
-      Tdef * (ddata->r_k07[bin_id+1] - ddata->r_k07[bin_id]);
-    ddata->drs_k07[i] = (ddata->r_k07[bin_id+1] - ddata->r_k07[bin_id])*Tfactor;
+    data->rs_k07[i] = data->r_k07[bin_id] +
+      Tdef * (data->r_k07[bin_id+1] - data->r_k07[bin_id]);
+    data->drs_k07[i] = (data->r_k07[bin_id+1] - data->r_k07[bin_id])*Tfactor;
 
-    ddata->rs_k08[i] = ddata->r_k08[bin_id] +
-      Tdef * (ddata->r_k08[bin_id+1] - ddata->r_k08[bin_id]);
-    ddata->drs_k08[i] = (ddata->r_k08[bin_id+1] - ddata->r_k08[bin_id])*Tfactor;
+    data->rs_k08[i] = data->r_k08[bin_id] +
+      Tdef * (data->r_k08[bin_id+1] - data->r_k08[bin_id]);
+    data->drs_k08[i] = (data->r_k08[bin_id+1] - data->r_k08[bin_id])*Tfactor;
 
-    ddata->rs_k09[i] = ddata->r_k09[bin_id] +
-      Tdef * (ddata->r_k09[bin_id+1] - ddata->r_k09[bin_id]);
-    ddata->drs_k09[i] = (ddata->r_k09[bin_id+1] - ddata->r_k09[bin_id])*Tfactor;
+    data->rs_k09[i] = data->r_k09[bin_id] +
+      Tdef * (data->r_k09[bin_id+1] - data->r_k09[bin_id]);
+    data->drs_k09[i] = (data->r_k09[bin_id+1] - data->r_k09[bin_id])*Tfactor;
 
-    ddata->rs_k10[i] = ddata->r_k10[bin_id] +
-      Tdef * (ddata->r_k10[bin_id+1] - ddata->r_k10[bin_id]);
-    ddata->drs_k10[i] = (ddata->r_k10[bin_id+1] - ddata->r_k10[bin_id])*Tfactor;
+    data->rs_k10[i] = data->r_k10[bin_id] +
+      Tdef * (data->r_k10[bin_id+1] - data->r_k10[bin_id]);
+    data->drs_k10[i] = (data->r_k10[bin_id+1] - data->r_k10[bin_id])*Tfactor;
 
-    ddata->rs_k11[i] = ddata->r_k11[bin_id] +
-      Tdef * (ddata->r_k11[bin_id+1] - ddata->r_k11[bin_id]);
-    ddata->drs_k11[i] = (ddata->r_k11[bin_id+1] - ddata->r_k11[bin_id])*Tfactor;
+    data->rs_k11[i] = data->r_k11[bin_id] +
+      Tdef * (data->r_k11[bin_id+1] - data->r_k11[bin_id]);
+    data->drs_k11[i] = (data->r_k11[bin_id+1] - data->r_k11[bin_id])*Tfactor;
 
-    ddata->rs_k12[i] = ddata->r_k12[bin_id] +
-      Tdef * (ddata->r_k12[bin_id+1] - ddata->r_k12[bin_id]);
-    ddata->drs_k12[i] = (ddata->r_k12[bin_id+1] - ddata->r_k12[bin_id])*Tfactor;
+    data->rs_k12[i] = data->r_k12[bin_id] +
+      Tdef * (data->r_k12[bin_id+1] - data->r_k12[bin_id]);
+    data->drs_k12[i] = (data->r_k12[bin_id+1] - data->r_k12[bin_id])*Tfactor;
 
-    ddata->rs_k13[i] = ddata->r_k13[bin_id] +
-      Tdef * (ddata->r_k13[bin_id+1] - ddata->r_k13[bin_id]);
-    ddata->drs_k13[i] = (ddata->r_k13[bin_id+1] - ddata->r_k13[bin_id])*Tfactor;
+    data->rs_k13[i] = data->r_k13[bin_id] +
+      Tdef * (data->r_k13[bin_id+1] - data->r_k13[bin_id]);
+    data->drs_k13[i] = (data->r_k13[bin_id+1] - data->r_k13[bin_id])*Tfactor;
 
-    ddata->rs_k14[i] = ddata->r_k14[bin_id] +
-      Tdef * (ddata->r_k14[bin_id+1] - ddata->r_k14[bin_id]);
-    ddata->drs_k14[i] = (ddata->r_k14[bin_id+1] - ddata->r_k14[bin_id])*Tfactor;
+    data->rs_k14[i] = data->r_k14[bin_id] +
+      Tdef * (data->r_k14[bin_id+1] - data->r_k14[bin_id]);
+    data->drs_k14[i] = (data->r_k14[bin_id+1] - data->r_k14[bin_id])*Tfactor;
 
-    ddata->rs_k15[i] = ddata->r_k15[bin_id] +
-      Tdef * (ddata->r_k15[bin_id+1] - ddata->r_k15[bin_id]);
-    ddata->drs_k15[i] = (ddata->r_k15[bin_id+1] - ddata->r_k15[bin_id])*Tfactor;
+    data->rs_k15[i] = data->r_k15[bin_id] +
+      Tdef * (data->r_k15[bin_id+1] - data->r_k15[bin_id]);
+    data->drs_k15[i] = (data->r_k15[bin_id+1] - data->r_k15[bin_id])*Tfactor;
 
-    ddata->rs_k16[i] = ddata->r_k16[bin_id] +
-      Tdef * (ddata->r_k16[bin_id+1] - ddata->r_k16[bin_id]);
-    ddata->drs_k16[i] = (ddata->r_k16[bin_id+1] - ddata->r_k16[bin_id])*Tfactor;
+    data->rs_k16[i] = data->r_k16[bin_id] +
+      Tdef * (data->r_k16[bin_id+1] - data->r_k16[bin_id]);
+    data->drs_k16[i] = (data->r_k16[bin_id+1] - data->r_k16[bin_id])*Tfactor;
 
-    ddata->rs_k17[i] = ddata->r_k17[bin_id] +
-      Tdef * (ddata->r_k17[bin_id+1] - ddata->r_k17[bin_id]);
-    ddata->drs_k17[i] = (ddata->r_k17[bin_id+1] - ddata->r_k17[bin_id])*Tfactor;
+    data->rs_k17[i] = data->r_k17[bin_id] +
+      Tdef * (data->r_k17[bin_id+1] - data->r_k17[bin_id]);
+    data->drs_k17[i] = (data->r_k17[bin_id+1] - data->r_k17[bin_id])*Tfactor;
 
-    ddata->rs_k18[i] = ddata->r_k18[bin_id] +
-      Tdef * (ddata->r_k18[bin_id+1] - ddata->r_k18[bin_id]);
-    ddata->drs_k18[i] = (ddata->r_k18[bin_id+1] - ddata->r_k18[bin_id])*Tfactor;
+    data->rs_k18[i] = data->r_k18[bin_id] +
+      Tdef * (data->r_k18[bin_id+1] - data->r_k18[bin_id]);
+    data->drs_k18[i] = (data->r_k18[bin_id+1] - data->r_k18[bin_id])*Tfactor;
 
-    ddata->rs_k19[i] = ddata->r_k19[bin_id] +
-      Tdef * (ddata->r_k19[bin_id+1] - ddata->r_k19[bin_id]);
-    ddata->drs_k19[i] = (ddata->r_k19[bin_id+1] - ddata->r_k19[bin_id])*Tfactor;
+    data->rs_k19[i] = data->r_k19[bin_id] +
+      Tdef * (data->r_k19[bin_id+1] - data->r_k19[bin_id]);
+    data->drs_k19[i] = (data->r_k19[bin_id+1] - data->r_k19[bin_id])*Tfactor;
 
-    ddata->rs_k21[i] = ddata->r_k21[bin_id] +
-      Tdef * (ddata->r_k21[bin_id+1] - ddata->r_k21[bin_id]);
-    ddata->drs_k21[i] = (ddata->r_k21[bin_id+1] - ddata->r_k21[bin_id])*Tfactor;
+    data->rs_k21[i] = data->r_k21[bin_id] +
+      Tdef * (data->r_k21[bin_id+1] - data->r_k21[bin_id]);
+    data->drs_k21[i] = (data->r_k21[bin_id+1] - data->r_k21[bin_id])*Tfactor;
 
-    ddata->rs_k22[i] = ddata->r_k22[bin_id] +
-      Tdef * (ddata->r_k22[bin_id+1] - ddata->r_k22[bin_id]);
-    ddata->drs_k22[i] = (ddata->r_k22[bin_id+1] - ddata->r_k22[bin_id])*Tfactor;
+    data->rs_k22[i] = data->r_k22[bin_id] +
+      Tdef * (data->r_k22[bin_id+1] - data->r_k22[bin_id]);
+    data->drs_k22[i] = (data->r_k22[bin_id+1] - data->r_k22[bin_id])*Tfactor;
 
-    ddata->cs_brem_brem[i] = ddata->c_brem_brem[bin_id] +
-      Tdef * (ddata->c_brem_brem[bin_id+1] - ddata->c_brem_brem[bin_id]);
-    ddata->dcs_brem_brem[i] = (ddata->c_brem_brem[bin_id+1] - ddata->c_brem_brem[bin_id])*Tfactor;
+    data->cs_brem_brem[i] = data->c_brem_brem[bin_id] +
+      Tdef * (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id]);
+    data->dcs_brem_brem[i] = (data->c_brem_brem[bin_id+1] - data->c_brem_brem[bin_id])*Tfactor;
 
-    ddata->cs_ceHeI_ceHeI[i] = ddata->c_ceHeI_ceHeI[bin_id] +
-      Tdef * (ddata->c_ceHeI_ceHeI[bin_id+1] - ddata->c_ceHeI_ceHeI[bin_id]);
-    ddata->dcs_ceHeI_ceHeI[i] = (ddata->c_ceHeI_ceHeI[bin_id+1] - ddata->c_ceHeI_ceHeI[bin_id])*Tfactor;
+    data->cs_ceHeI_ceHeI[i] = data->c_ceHeI_ceHeI[bin_id] +
+      Tdef * (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id]);
+    data->dcs_ceHeI_ceHeI[i] = (data->c_ceHeI_ceHeI[bin_id+1] - data->c_ceHeI_ceHeI[bin_id])*Tfactor;
 
-    ddata->cs_ceHeII_ceHeII[i] = ddata->c_ceHeII_ceHeII[bin_id] +
-      Tdef * (ddata->c_ceHeII_ceHeII[bin_id+1] - ddata->c_ceHeII_ceHeII[bin_id]);
-    ddata->dcs_ceHeII_ceHeII[i] = (ddata->c_ceHeII_ceHeII[bin_id+1] - ddata->c_ceHeII_ceHeII[bin_id])*Tfactor;
+    data->cs_ceHeII_ceHeII[i] = data->c_ceHeII_ceHeII[bin_id] +
+      Tdef * (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id]);
+    data->dcs_ceHeII_ceHeII[i] = (data->c_ceHeII_ceHeII[bin_id+1] - data->c_ceHeII_ceHeII[bin_id])*Tfactor;
 
-    ddata->cs_ceHI_ceHI[i] = ddata->c_ceHI_ceHI[bin_id] +
-      Tdef * (ddata->c_ceHI_ceHI[bin_id+1] - ddata->c_ceHI_ceHI[bin_id]);
-    ddata->dcs_ceHI_ceHI[i] = (ddata->c_ceHI_ceHI[bin_id+1] - ddata->c_ceHI_ceHI[bin_id])*Tfactor;
+    data->cs_ceHI_ceHI[i] = data->c_ceHI_ceHI[bin_id] +
+      Tdef * (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id]);
+    data->dcs_ceHI_ceHI[i] = (data->c_ceHI_ceHI[bin_id+1] - data->c_ceHI_ceHI[bin_id])*Tfactor;
 
-    ddata->cs_cie_cooling_cieco[i] = ddata->c_cie_cooling_cieco[bin_id] +
-      Tdef * (ddata->c_cie_cooling_cieco[bin_id+1] - ddata->c_cie_cooling_cieco[bin_id]);
-    ddata->dcs_cie_cooling_cieco[i] = (ddata->c_cie_cooling_cieco[bin_id+1] - ddata->c_cie_cooling_cieco[bin_id])*Tfactor;
+    data->cs_cie_cooling_cieco[i] = data->c_cie_cooling_cieco[bin_id] +
+      Tdef * (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id]);
+    data->dcs_cie_cooling_cieco[i] = (data->c_cie_cooling_cieco[bin_id+1] - data->c_cie_cooling_cieco[bin_id])*Tfactor;
 
-    ddata->cs_ciHeI_ciHeI[i] = ddata->c_ciHeI_ciHeI[bin_id] +
-      Tdef * (ddata->c_ciHeI_ciHeI[bin_id+1] - ddata->c_ciHeI_ciHeI[bin_id]);
-    ddata->dcs_ciHeI_ciHeI[i] = (ddata->c_ciHeI_ciHeI[bin_id+1] - ddata->c_ciHeI_ciHeI[bin_id])*Tfactor;
+    data->cs_ciHeI_ciHeI[i] = data->c_ciHeI_ciHeI[bin_id] +
+      Tdef * (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id]);
+    data->dcs_ciHeI_ciHeI[i] = (data->c_ciHeI_ciHeI[bin_id+1] - data->c_ciHeI_ciHeI[bin_id])*Tfactor;
 
-    ddata->cs_ciHeII_ciHeII[i] = ddata->c_ciHeII_ciHeII[bin_id] +
-      Tdef * (ddata->c_ciHeII_ciHeII[bin_id+1] - ddata->c_ciHeII_ciHeII[bin_id]);
-    ddata->dcs_ciHeII_ciHeII[i] = (ddata->c_ciHeII_ciHeII[bin_id+1] - ddata->c_ciHeII_ciHeII[bin_id])*Tfactor;
+    data->cs_ciHeII_ciHeII[i] = data->c_ciHeII_ciHeII[bin_id] +
+      Tdef * (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id]);
+    data->dcs_ciHeII_ciHeII[i] = (data->c_ciHeII_ciHeII[bin_id+1] - data->c_ciHeII_ciHeII[bin_id])*Tfactor;
 
-    ddata->cs_ciHeIS_ciHeIS[i] = ddata->c_ciHeIS_ciHeIS[bin_id] +
-      Tdef * (ddata->c_ciHeIS_ciHeIS[bin_id+1] - ddata->c_ciHeIS_ciHeIS[bin_id]);
-    ddata->dcs_ciHeIS_ciHeIS[i] = (ddata->c_ciHeIS_ciHeIS[bin_id+1] - ddata->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
+    data->cs_ciHeIS_ciHeIS[i] = data->c_ciHeIS_ciHeIS[bin_id] +
+      Tdef * (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id]);
+    data->dcs_ciHeIS_ciHeIS[i] = (data->c_ciHeIS_ciHeIS[bin_id+1] - data->c_ciHeIS_ciHeIS[bin_id])*Tfactor;
 
-    ddata->cs_ciHI_ciHI[i] = ddata->c_ciHI_ciHI[bin_id] +
-      Tdef * (ddata->c_ciHI_ciHI[bin_id+1] - ddata->c_ciHI_ciHI[bin_id]);
-    ddata->dcs_ciHI_ciHI[i] = (ddata->c_ciHI_ciHI[bin_id+1] - ddata->c_ciHI_ciHI[bin_id])*Tfactor;
+    data->cs_ciHI_ciHI[i] = data->c_ciHI_ciHI[bin_id] +
+      Tdef * (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id]);
+    data->dcs_ciHI_ciHI[i] = (data->c_ciHI_ciHI[bin_id+1] - data->c_ciHI_ciHI[bin_id])*Tfactor;
 
-    ddata->cs_compton_comp_[i] = ddata->c_compton_comp_[bin_id] +
-      Tdef * (ddata->c_compton_comp_[bin_id+1] - ddata->c_compton_comp_[bin_id]);
-    ddata->dcs_compton_comp_[i] = (ddata->c_compton_comp_[bin_id+1] - ddata->c_compton_comp_[bin_id])*Tfactor;
+    data->cs_compton_comp_[i] = data->c_compton_comp_[bin_id] +
+      Tdef * (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id]);
+    data->dcs_compton_comp_[i] = (data->c_compton_comp_[bin_id+1] - data->c_compton_comp_[bin_id])*Tfactor;
 
-    ddata->cs_gloverabel08_gael[i] = ddata->c_gloverabel08_gael[bin_id] +
-      Tdef * (ddata->c_gloverabel08_gael[bin_id+1] - ddata->c_gloverabel08_gael[bin_id]);
-    ddata->dcs_gloverabel08_gael[i] = (ddata->c_gloverabel08_gael[bin_id+1] - ddata->c_gloverabel08_gael[bin_id])*Tfactor;
+    data->cs_gloverabel08_gael[i] = data->c_gloverabel08_gael[bin_id] +
+      Tdef * (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id]);
+    data->dcs_gloverabel08_gael[i] = (data->c_gloverabel08_gael[bin_id+1] - data->c_gloverabel08_gael[bin_id])*Tfactor;
 
-    ddata->cs_gloverabel08_gaH2[i] = ddata->c_gloverabel08_gaH2[bin_id] +
-      Tdef * (ddata->c_gloverabel08_gaH2[bin_id+1] - ddata->c_gloverabel08_gaH2[bin_id]);
-    ddata->dcs_gloverabel08_gaH2[i] = (ddata->c_gloverabel08_gaH2[bin_id+1] - ddata->c_gloverabel08_gaH2[bin_id])*Tfactor;
+    data->cs_gloverabel08_gaH2[i] = data->c_gloverabel08_gaH2[bin_id] +
+      Tdef * (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id]);
+    data->dcs_gloverabel08_gaH2[i] = (data->c_gloverabel08_gaH2[bin_id+1] - data->c_gloverabel08_gaH2[bin_id])*Tfactor;
 
-    ddata->cs_gloverabel08_gaHe[i] = ddata->c_gloverabel08_gaHe[bin_id] +
-      Tdef * (ddata->c_gloverabel08_gaHe[bin_id+1] - ddata->c_gloverabel08_gaHe[bin_id]);
-    ddata->dcs_gloverabel08_gaHe[i] = (ddata->c_gloverabel08_gaHe[bin_id+1] - ddata->c_gloverabel08_gaHe[bin_id])*Tfactor;
+    data->cs_gloverabel08_gaHe[i] = data->c_gloverabel08_gaHe[bin_id] +
+      Tdef * (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id]);
+    data->dcs_gloverabel08_gaHe[i] = (data->c_gloverabel08_gaHe[bin_id+1] - data->c_gloverabel08_gaHe[bin_id])*Tfactor;
 
-    ddata->cs_gloverabel08_gaHI[i] = ddata->c_gloverabel08_gaHI[bin_id] +
-      Tdef * (ddata->c_gloverabel08_gaHI[bin_id+1] - ddata->c_gloverabel08_gaHI[bin_id]);
-    ddata->dcs_gloverabel08_gaHI[i] = (ddata->c_gloverabel08_gaHI[bin_id+1] - ddata->c_gloverabel08_gaHI[bin_id])*Tfactor;
+    data->cs_gloverabel08_gaHI[i] = data->c_gloverabel08_gaHI[bin_id] +
+      Tdef * (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id]);
+    data->dcs_gloverabel08_gaHI[i] = (data->c_gloverabel08_gaHI[bin_id+1] - data->c_gloverabel08_gaHI[bin_id])*Tfactor;
 
-    ddata->cs_gloverabel08_gaHp[i] = ddata->c_gloverabel08_gaHp[bin_id] +
-      Tdef * (ddata->c_gloverabel08_gaHp[bin_id+1] - ddata->c_gloverabel08_gaHp[bin_id]);
-    ddata->dcs_gloverabel08_gaHp[i] = (ddata->c_gloverabel08_gaHp[bin_id+1] - ddata->c_gloverabel08_gaHp[bin_id])*Tfactor;
+    data->cs_gloverabel08_gaHp[i] = data->c_gloverabel08_gaHp[bin_id] +
+      Tdef * (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id]);
+    data->dcs_gloverabel08_gaHp[i] = (data->c_gloverabel08_gaHp[bin_id+1] - data->c_gloverabel08_gaHp[bin_id])*Tfactor;
 
-    ddata->cs_gloverabel08_h2lte[i] = ddata->c_gloverabel08_h2lte[bin_id] +
-      Tdef * (ddata->c_gloverabel08_h2lte[bin_id+1] - ddata->c_gloverabel08_h2lte[bin_id]);
-    ddata->dcs_gloverabel08_h2lte[i] = (ddata->c_gloverabel08_h2lte[bin_id+1] - ddata->c_gloverabel08_h2lte[bin_id])*Tfactor;
+    data->cs_gloverabel08_h2lte[i] = data->c_gloverabel08_h2lte[bin_id] +
+      Tdef * (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id]);
+    data->dcs_gloverabel08_h2lte[i] = (data->c_gloverabel08_h2lte[bin_id+1] - data->c_gloverabel08_h2lte[bin_id])*Tfactor;
 
-    ddata->cs_h2formation_h2mcool[i] = ddata->c_h2formation_h2mcool[bin_id] +
-      Tdef * (ddata->c_h2formation_h2mcool[bin_id+1] - ddata->c_h2formation_h2mcool[bin_id]);
-    ddata->dcs_h2formation_h2mcool[i] = (ddata->c_h2formation_h2mcool[bin_id+1] - ddata->c_h2formation_h2mcool[bin_id])*Tfactor;
+    data->cs_h2formation_h2mcool[i] = data->c_h2formation_h2mcool[bin_id] +
+      Tdef * (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id]);
+    data->dcs_h2formation_h2mcool[i] = (data->c_h2formation_h2mcool[bin_id+1] - data->c_h2formation_h2mcool[bin_id])*Tfactor;
 
-    ddata->cs_h2formation_h2mheat[i] = ddata->c_h2formation_h2mheat[bin_id] +
-      Tdef * (ddata->c_h2formation_h2mheat[bin_id+1] - ddata->c_h2formation_h2mheat[bin_id]);
-    ddata->dcs_h2formation_h2mheat[i] = (ddata->c_h2formation_h2mheat[bin_id+1] - ddata->c_h2formation_h2mheat[bin_id])*Tfactor;
+    data->cs_h2formation_h2mheat[i] = data->c_h2formation_h2mheat[bin_id] +
+      Tdef * (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id]);
+    data->dcs_h2formation_h2mheat[i] = (data->c_h2formation_h2mheat[bin_id+1] - data->c_h2formation_h2mheat[bin_id])*Tfactor;
 
-    ddata->cs_h2formation_ncrd1[i] = ddata->c_h2formation_ncrd1[bin_id] +
-      Tdef * (ddata->c_h2formation_ncrd1[bin_id+1] - ddata->c_h2formation_ncrd1[bin_id]);
-    ddata->dcs_h2formation_ncrd1[i] = (ddata->c_h2formation_ncrd1[bin_id+1] - ddata->c_h2formation_ncrd1[bin_id])*Tfactor;
+    data->cs_h2formation_ncrd1[i] = data->c_h2formation_ncrd1[bin_id] +
+      Tdef * (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id]);
+    data->dcs_h2formation_ncrd1[i] = (data->c_h2formation_ncrd1[bin_id+1] - data->c_h2formation_ncrd1[bin_id])*Tfactor;
 
-    ddata->cs_h2formation_ncrd2[i] = ddata->c_h2formation_ncrd2[bin_id] +
-      Tdef * (ddata->c_h2formation_ncrd2[bin_id+1] - ddata->c_h2formation_ncrd2[bin_id]);
-    ddata->dcs_h2formation_ncrd2[i] = (ddata->c_h2formation_ncrd2[bin_id+1] - ddata->c_h2formation_ncrd2[bin_id])*Tfactor;
+    data->cs_h2formation_ncrd2[i] = data->c_h2formation_ncrd2[bin_id] +
+      Tdef * (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id]);
+    data->dcs_h2formation_ncrd2[i] = (data->c_h2formation_ncrd2[bin_id+1] - data->c_h2formation_ncrd2[bin_id])*Tfactor;
 
-    ddata->cs_h2formation_ncrn[i] = ddata->c_h2formation_ncrn[bin_id] +
-      Tdef * (ddata->c_h2formation_ncrn[bin_id+1] - ddata->c_h2formation_ncrn[bin_id]);
-    ddata->dcs_h2formation_ncrn[i] = (ddata->c_h2formation_ncrn[bin_id+1] - ddata->c_h2formation_ncrn[bin_id])*Tfactor;
+    data->cs_h2formation_ncrn[i] = data->c_h2formation_ncrn[bin_id] +
+      Tdef * (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id]);
+    data->dcs_h2formation_ncrn[i] = (data->c_h2formation_ncrn[bin_id+1] - data->c_h2formation_ncrn[bin_id])*Tfactor;
 
-    ddata->cs_reHeII1_reHeII1[i] = ddata->c_reHeII1_reHeII1[bin_id] +
-      Tdef * (ddata->c_reHeII1_reHeII1[bin_id+1] - ddata->c_reHeII1_reHeII1[bin_id]);
-    ddata->dcs_reHeII1_reHeII1[i] = (ddata->c_reHeII1_reHeII1[bin_id+1] - ddata->c_reHeII1_reHeII1[bin_id])*Tfactor;
+    data->cs_reHeII1_reHeII1[i] = data->c_reHeII1_reHeII1[bin_id] +
+      Tdef * (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id]);
+    data->dcs_reHeII1_reHeII1[i] = (data->c_reHeII1_reHeII1[bin_id+1] - data->c_reHeII1_reHeII1[bin_id])*Tfactor;
 
-    ddata->cs_reHeII2_reHeII2[i] = ddata->c_reHeII2_reHeII2[bin_id] +
-      Tdef * (ddata->c_reHeII2_reHeII2[bin_id+1] - ddata->c_reHeII2_reHeII2[bin_id]);
-    ddata->dcs_reHeII2_reHeII2[i] = (ddata->c_reHeII2_reHeII2[bin_id+1] - ddata->c_reHeII2_reHeII2[bin_id])*Tfactor;
+    data->cs_reHeII2_reHeII2[i] = data->c_reHeII2_reHeII2[bin_id] +
+      Tdef * (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id]);
+    data->dcs_reHeII2_reHeII2[i] = (data->c_reHeII2_reHeII2[bin_id+1] - data->c_reHeII2_reHeII2[bin_id])*Tfactor;
 
-    ddata->cs_reHeIII_reHeIII[i] = ddata->c_reHeIII_reHeIII[bin_id] +
-      Tdef * (ddata->c_reHeIII_reHeIII[bin_id+1] - ddata->c_reHeIII_reHeIII[bin_id]);
-    ddata->dcs_reHeIII_reHeIII[i] = (ddata->c_reHeIII_reHeIII[bin_id+1] - ddata->c_reHeIII_reHeIII[bin_id])*Tfactor;
+    data->cs_reHeIII_reHeIII[i] = data->c_reHeIII_reHeIII[bin_id] +
+      Tdef * (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id]);
+    data->dcs_reHeIII_reHeIII[i] = (data->c_reHeIII_reHeIII[bin_id+1] - data->c_reHeIII_reHeIII[bin_id])*Tfactor;
 
-    ddata->cs_reHII_reHII[i] = ddata->c_reHII_reHII[bin_id] +
-      Tdef * (ddata->c_reHII_reHII[bin_id+1] - ddata->c_reHII_reHII[bin_id]);
-    ddata->dcs_reHII_reHII[i] = (ddata->c_reHII_reHII[bin_id+1] - ddata->c_reHII_reHII[bin_id])*Tfactor;
+    data->cs_reHII_reHII[i] = data->c_reHII_reHII[bin_id] +
+      Tdef * (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id]);
+    data->dcs_reHII_reHII[i] = (data->c_reHII_reHII[bin_id+1] - data->c_reHII_reHII[bin_id])*Tfactor;
     ////
 
     // Set up some temporaries
-    const double T = ddata->Ts[i];
-    const double z = ddata->current_z;
-    const double mdensity = ddata->mdensity[i];
-    const double inv_mdensity = ddata->inv_mdensity[i];
-    const double k01 = ddata->rs_k01[i];
-    const double k02 = ddata->rs_k02[i];
-    const double k03 = ddata->rs_k03[i];
-    const double k04 = ddata->rs_k04[i];
-    const double k05 = ddata->rs_k05[i];
-    const double k06 = ddata->rs_k06[i];
-    const double k07 = ddata->rs_k07[i];
-    const double k08 = ddata->rs_k08[i];
-    const double k09 = ddata->rs_k09[i];
-    const double k10 = ddata->rs_k10[i];
-    const double k11 = ddata->rs_k11[i];
-    const double k12 = ddata->rs_k12[i];
-    const double k13 = ddata->rs_k13[i];
-    const double k14 = ddata->rs_k14[i];
-    const double k15 = ddata->rs_k15[i];
-    const double k16 = ddata->rs_k16[i];
-    const double k17 = ddata->rs_k17[i];
-    const double k18 = ddata->rs_k18[i];
-    const double k19 = ddata->rs_k19[i];
-    const double k21 = ddata->rs_k21[i];
-    const double k22 = ddata->rs_k22[i];
-    const double brem_brem = ddata->cs_brem_brem[i];
-    const double ceHeI_ceHeI = ddata->cs_ceHeI_ceHeI[i];
-    const double ceHeII_ceHeII = ddata->cs_ceHeII_ceHeII[i];
-    const double ceHI_ceHI = ddata->cs_ceHI_ceHI[i];
-    const double cie_cooling_cieco = ddata->cs_cie_cooling_cieco[i];
-    const double ciHeI_ciHeI = ddata->cs_ciHeI_ciHeI[i];
-    const double ciHeII_ciHeII = ddata->cs_ciHeII_ciHeII[i];
-    const double ciHeIS_ciHeIS = ddata->cs_ciHeIS_ciHeIS[i];
-    const double ciHI_ciHI = ddata->cs_ciHI_ciHI[i];
-    const double compton_comp_ = ddata->cs_compton_comp_[i];
-    const double gloverabel08_gael = ddata->cs_gloverabel08_gael[i];
-    const double gloverabel08_gaH2 = ddata->cs_gloverabel08_gaH2[i];
-    const double gloverabel08_gaHe = ddata->cs_gloverabel08_gaHe[i];
-    const double gloverabel08_gaHI = ddata->cs_gloverabel08_gaHI[i];
-    const double gloverabel08_gaHp = ddata->cs_gloverabel08_gaHp[i];
-    const double gloverabel08_h2lte = ddata->cs_gloverabel08_h2lte[i];
-    const double h2formation_h2mcool = ddata->cs_h2formation_h2mcool[i];
-    const double h2formation_h2mheat = ddata->cs_h2formation_h2mheat[i];
-    const double h2formation_ncrd1 = ddata->cs_h2formation_ncrd1[i];
-    const double h2formation_ncrd2 = ddata->cs_h2formation_ncrd2[i];
-    const double h2formation_ncrn = ddata->cs_h2formation_ncrn[i];
-    const double reHeII1_reHeII1 = ddata->cs_reHeII1_reHeII1[i];
-    const double reHeII2_reHeII2 = ddata->cs_reHeII2_reHeII2[i];
-    const double reHeIII_reHeIII = ddata->cs_reHeIII_reHeIII[i];
-    const double reHII_reHII = ddata->cs_reHII_reHII[i];
-    const double h2_optical_depth_approx = ddata->h2_optical_depth_approx[i];
-    const double cie_optical_depth_approx = ddata->cie_optical_depth_approx[i];
+    const double T = data->Ts[i];
+    const double z = data->current_z;
+    const double mdensity = data->mdensity[i];
+    const double inv_mdensity = data->inv_mdensity[i];
+    const double k01 = data->rs_k01[i];
+    const double k02 = data->rs_k02[i];
+    const double k03 = data->rs_k03[i];
+    const double k04 = data->rs_k04[i];
+    const double k05 = data->rs_k05[i];
+    const double k06 = data->rs_k06[i];
+    const double k07 = data->rs_k07[i];
+    const double k08 = data->rs_k08[i];
+    const double k09 = data->rs_k09[i];
+    const double k10 = data->rs_k10[i];
+    const double k11 = data->rs_k11[i];
+    const double k12 = data->rs_k12[i];
+    const double k13 = data->rs_k13[i];
+    const double k14 = data->rs_k14[i];
+    const double k15 = data->rs_k15[i];
+    const double k16 = data->rs_k16[i];
+    const double k17 = data->rs_k17[i];
+    const double k18 = data->rs_k18[i];
+    const double k19 = data->rs_k19[i];
+    const double k21 = data->rs_k21[i];
+    const double k22 = data->rs_k22[i];
+    const double brem_brem = data->cs_brem_brem[i];
+    const double ceHeI_ceHeI = data->cs_ceHeI_ceHeI[i];
+    const double ceHeII_ceHeII = data->cs_ceHeII_ceHeII[i];
+    const double ceHI_ceHI = data->cs_ceHI_ceHI[i];
+    const double cie_cooling_cieco = data->cs_cie_cooling_cieco[i];
+    const double ciHeI_ciHeI = data->cs_ciHeI_ciHeI[i];
+    const double ciHeII_ciHeII = data->cs_ciHeII_ciHeII[i];
+    const double ciHeIS_ciHeIS = data->cs_ciHeIS_ciHeIS[i];
+    const double ciHI_ciHI = data->cs_ciHI_ciHI[i];
+    const double compton_comp_ = data->cs_compton_comp_[i];
+    const double gloverabel08_gael = data->cs_gloverabel08_gael[i];
+    const double gloverabel08_gaH2 = data->cs_gloverabel08_gaH2[i];
+    const double gloverabel08_gaHe = data->cs_gloverabel08_gaHe[i];
+    const double gloverabel08_gaHI = data->cs_gloverabel08_gaHI[i];
+    const double gloverabel08_gaHp = data->cs_gloverabel08_gaHp[i];
+    const double gloverabel08_h2lte = data->cs_gloverabel08_h2lte[i];
+    const double h2formation_h2mcool = data->cs_h2formation_h2mcool[i];
+    const double h2formation_h2mheat = data->cs_h2formation_h2mheat[i];
+    const double h2formation_ncrd1 = data->cs_h2formation_ncrd1[i];
+    const double h2formation_ncrd2 = data->cs_h2formation_ncrd2[i];
+    const double h2formation_ncrn = data->cs_h2formation_ncrn[i];
+    const double reHeII1_reHeII1 = data->cs_reHeII1_reHeII1[i];
+    const double reHeII2_reHeII2 = data->cs_reHeII2_reHeII2[i];
+    const double reHeIII_reHeIII = data->cs_reHeIII_reHeIII[i];
+    const double reHII_reHII = data->cs_reHII_reHII[i];
+    const double h2_optical_depth_approx = data->h2_optical_depth_approx[i];
+    const double cie_optical_depth_approx = data->cie_optical_depth_approx[i];
 
     j = i * NSPECIES;
     //
     // Species: H2_1
     //
     ydotdata[j] = k08*H_1*H_m0 + k10*H2_2*H_1 - k11*H2_1*H_2 - k12*H2_1*de - k13*H2_1*H_1 + k19*H2_2*H_m0 + k21*H2_1*H_1*H_1 + k22*H_1*H_1*H_1;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H2_2
     //
     ydotdata[j] = k09*H_1*H_2 - k10*H2_2*H_1 + k11*H2_1*H_2 + k17*H_2*H_m0 - k18*H2_2*de - k19*H2_2*H_m0;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H_1
     //
     ydotdata[j] = -k01*H_1*de + k02*H_2*de - k07*H_1*de - k08*H_1*H_m0 - k09*H_1*H_2 - k10*H2_2*H_1 + k11*H2_1*H_2 + 2*k12*H2_1*de + 2*k13*H2_1*H_1 + k14*H_m0*de + k15*H_1*H_m0 + 2*k16*H_2*H_m0 + 2*k18*H2_2*de + k19*H2_2*H_m0 - 2*k21*H2_1*H_1*H_1 - 2*k22*H_1*H_1*H_1;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H_2
     //
     ydotdata[j] = k01*H_1*de - k02*H_2*de - k09*H_1*H_2 + k10*H2_2*H_1 - k11*H2_1*H_2 - k16*H_2*H_m0 - k17*H_2*H_m0;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: H_m0
     //
     ydotdata[j] = k07*H_1*de - k08*H_1*H_m0 - k14*H_m0*de - k15*H_1*H_m0 - k16*H_2*H_m0 - k17*H_2*H_m0 - k19*H2_2*H_m0;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: He_1
     //
     ydotdata[j] = -k03*He_1*de + k04*He_2*de;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: He_2
     //
     ydotdata[j] = k03*He_1*de - k04*He_2*de - k05*He_2*de + k06*He_3*de;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: He_3
     //
     ydotdata[j] = k05*He_2*de - k06*He_3*de;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: de
     //
     ydotdata[j] = k01*H_1*de - k02*H_2*de + k03*He_1*de - k04*He_2*de + k05*He_2*de - k06*He_3*de - k07*H_1*de + k08*H_1*H_m0 + k14*H_m0*de + k15*H_1*H_m0 + k17*H_2*H_m0 - k18*H2_2*de;
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     j++;
 
     //
     // Species: ge
     //
     ydotdata[j] = -2.0158800000000001*H2_1*cie_cooling_cieco*cie_optical_depth_approx*mdensity - H2_1*cie_optical_depth_approx*gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) - H_1*ceHI_ceHI*cie_optical_depth_approx*de - H_1*ciHI_ciHI*cie_optical_depth_approx*de - H_2*cie_optical_depth_approx*de*reHII_reHII - He_1*ciHeI_ciHeI*cie_optical_depth_approx*de - He_2*ceHeII_ceHeII*cie_optical_depth_approx*de - He_2*ceHeI_ceHeI*cie_optical_depth_approx*pow(de, 2) - He_2*ciHeII_ciHeII*cie_optical_depth_approx*de - He_2*ciHeIS_ciHeIS*cie_optical_depth_approx*pow(de, 2) - He_2*cie_optical_depth_approx*de*reHeII1_reHeII1 - He_2*cie_optical_depth_approx*de*reHeII2_reHeII2 - He_3*cie_optical_depth_approx*de*reHeIII_reHeIII - brem_brem*cie_optical_depth_approx*de*(H_2 + He_2 + 4.0*He_3) - cie_optical_depth_approx*compton_comp_*de*pow(z + 1.0, 4)*(T - 2.73*z - 2.73) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat);
-    ydotdata[j] *= ddata->inv_scale[j];
+    ydotdata[j] *= data->inv_scale[j];
     ydotdata[j] *= inv_mdensity;
     j++;
 
   });
 
-#ifdef USE_DEVICE
-  // synchronize device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-    std::cerr << ">>> ERROR in calculate_rhs_cvklu: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return(-1);
-  }
-#endif
-
+  // synchronize device memory and return
+  if (copyFence() != 0)  return -1;
   return 0;
 }
 
@@ -1291,9 +1343,8 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                              void *user_data, N_Vector tmp1,
                              N_Vector tmp2, N_Vector tmp3)
 {
-  ReactionNetwork *data = (ReactionNetwork*) user_data;
-  cvklu_data *ddata = data->DPtr();
-  const double *ydata = N_VGetDeviceArrayPointer(y);
+  ReactionNetwork *rxdata = (ReactionNetwork*) user_data;
+  cvklu_data *data = rxdata->DPtr();
 
 #ifdef USE_DEVICE
   // Access vector data and dense matrix structures
@@ -1313,445 +1364,445 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     // Set up some temporaries
-    const double z   = ddata->current_z;
-    const double T   = ddata->Ts[i];
-    const double Tge = ddata->dTs_ge[i];
-    const double k01 = ddata->rs_k01[i];
-    const double rk01= ddata->drs_k01[i];
-    const double k02 = ddata->rs_k02[i];
-    const double rk02= ddata->drs_k02[i];
-    const double k03 = ddata->rs_k03[i];
-    const double rk03= ddata->drs_k03[i];
-    const double k04 = ddata->rs_k04[i];
-    const double rk04= ddata->drs_k04[i];
-    const double k05 = ddata->rs_k05[i];
-    const double rk05= ddata->drs_k05[i];
-    const double k06 = ddata->rs_k06[i];
-    const double rk06= ddata->drs_k06[i];
-    const double k07 = ddata->rs_k07[i];
-    const double rk07= ddata->drs_k07[i];
-    const double k08 = ddata->rs_k08[i];
-    const double rk08= ddata->drs_k08[i];
-    const double k09 = ddata->rs_k09[i];
-    const double rk09= ddata->drs_k09[i];
-    const double k10 = ddata->rs_k10[i];
-    const double rk10= ddata->drs_k10[i];
-    const double k11 = ddata->rs_k11[i];
-    const double rk11= ddata->drs_k11[i];
-    const double k12 = ddata->rs_k12[i];
-    const double rk12= ddata->drs_k12[i];
-    const double k13 = ddata->rs_k13[i];
-    const double rk13= ddata->drs_k13[i];
-    const double k14 = ddata->rs_k14[i];
-    const double rk14= ddata->drs_k14[i];
-    const double k15 = ddata->rs_k15[i];
-    const double rk15= ddata->drs_k15[i];
-    const double k16 = ddata->rs_k16[i];
-    const double rk16= ddata->drs_k16[i];
-    const double k17 = ddata->rs_k17[i];
-    const double rk17= ddata->drs_k17[i];
-    const double k18 = ddata->rs_k18[i];
-    const double rk18= ddata->drs_k18[i];
-    const double k19 = ddata->rs_k19[i];
-    const double rk19= ddata->drs_k19[i];
-    const double k21 = ddata->rs_k21[i];
-    const double rk21= ddata->drs_k21[i];
-    const double k22 = ddata->rs_k22[i];
-    const double rk22= ddata->drs_k22[i];
-    const double brem_brem = ddata->cs_brem_brem[i];
-    const double ceHeI_ceHeI = ddata->cs_ceHeI_ceHeI[i];
-    const double ceHeII_ceHeII = ddata->cs_ceHeII_ceHeII[i];
-    const double ceHI_ceHI = ddata->cs_ceHI_ceHI[i];
-    const double cie_cooling_cieco = ddata->cs_cie_cooling_cieco[i];
-    const double ciHeI_ciHeI = ddata->cs_ciHeI_ciHeI[i];
-    const double ciHeII_ciHeII = ddata->cs_ciHeII_ciHeII[i];
-    const double ciHeIS_ciHeIS = ddata->cs_ciHeIS_ciHeIS[i];
-    const double ciHI_ciHI = ddata->cs_ciHI_ciHI[i];
-    const double compton_comp_ = ddata->cs_compton_comp_[i];
-    const double gloverabel08_gael = ddata->cs_gloverabel08_gael[i];
-    const double rgloverabel08_gael = ddata->dcs_gloverabel08_gael[i];
-    const double gloverabel08_gaH2 = ddata->cs_gloverabel08_gaH2[i];
-    const double rgloverabel08_gaH2 = ddata->dcs_gloverabel08_gaH2[i];
-    const double gloverabel08_gaHe = ddata->cs_gloverabel08_gaHe[i];
-    const double rgloverabel08_gaHe = ddata->dcs_gloverabel08_gaHe[i];
-    const double gloverabel08_gaHI = ddata->cs_gloverabel08_gaHI[i];
-    const double rgloverabel08_gaHI = ddata->dcs_gloverabel08_gaHI[i];
-    const double gloverabel08_gaHp = ddata->cs_gloverabel08_gaHp[i];
-    const double rgloverabel08_gaHp = ddata->dcs_gloverabel08_gaHp[i];
-    const double gloverabel08_h2lte = ddata->cs_gloverabel08_h2lte[i];
-    const double rgloverabel08_h2lte = ddata->dcs_gloverabel08_h2lte[i];
-    const double h2formation_h2mcool = ddata->cs_h2formation_h2mcool[i];
-    const double rh2formation_h2mcool = ddata->dcs_h2formation_h2mcool[i];
-    const double h2formation_h2mheat = ddata->cs_h2formation_h2mheat[i];
-    const double rh2formation_h2mheat = ddata->dcs_h2formation_h2mheat[i];
-    const double h2formation_ncrd1 = ddata->cs_h2formation_ncrd1[i];
-    const double rh2formation_ncrd1 = ddata->dcs_h2formation_ncrd1[i];
-    const double h2formation_ncrd2 = ddata->cs_h2formation_ncrd2[i];
-    const double rh2formation_ncrd2 = ddata->dcs_h2formation_ncrd2[i];
-    const double h2formation_ncrn = ddata->cs_h2formation_ncrn[i];
-    const double rh2formation_ncrn = ddata->dcs_h2formation_ncrn[i];
-    const double reHeII1_reHeII1 = ddata->cs_reHeII1_reHeII1[i];
-    const double reHeII2_reHeII2 = ddata->cs_reHeII2_reHeII2[i];
-    const double reHeIII_reHeIII = ddata->cs_reHeIII_reHeIII[i];
-    const double reHII_reHII = ddata->cs_reHII_reHII[i];
+    const double z   = data->current_z;
+    const double T   = data->Ts[i];
+    const double Tge = data->dTs_ge[i];
+    const double k01 = data->rs_k01[i];
+    const double rk01= data->drs_k01[i];
+    const double k02 = data->rs_k02[i];
+    const double rk02= data->drs_k02[i];
+    const double k03 = data->rs_k03[i];
+    const double rk03= data->drs_k03[i];
+    const double k04 = data->rs_k04[i];
+    const double rk04= data->drs_k04[i];
+    const double k05 = data->rs_k05[i];
+    const double rk05= data->drs_k05[i];
+    const double k06 = data->rs_k06[i];
+    const double rk06= data->drs_k06[i];
+    const double k07 = data->rs_k07[i];
+    const double rk07= data->drs_k07[i];
+    const double k08 = data->rs_k08[i];
+    const double rk08= data->drs_k08[i];
+    const double k09 = data->rs_k09[i];
+    const double rk09= data->drs_k09[i];
+    const double k10 = data->rs_k10[i];
+    const double rk10= data->drs_k10[i];
+    const double k11 = data->rs_k11[i];
+    const double rk11= data->drs_k11[i];
+    const double k12 = data->rs_k12[i];
+    const double rk12= data->drs_k12[i];
+    const double k13 = data->rs_k13[i];
+    const double rk13= data->drs_k13[i];
+    const double k14 = data->rs_k14[i];
+    const double rk14= data->drs_k14[i];
+    const double k15 = data->rs_k15[i];
+    const double rk15= data->drs_k15[i];
+    const double k16 = data->rs_k16[i];
+    const double rk16= data->drs_k16[i];
+    const double k17 = data->rs_k17[i];
+    const double rk17= data->drs_k17[i];
+    const double k18 = data->rs_k18[i];
+    const double rk18= data->drs_k18[i];
+    const double k19 = data->rs_k19[i];
+    const double rk19= data->drs_k19[i];
+    const double k21 = data->rs_k21[i];
+    const double rk21= data->drs_k21[i];
+    const double k22 = data->rs_k22[i];
+    const double rk22= data->drs_k22[i];
+    const double brem_brem = data->cs_brem_brem[i];
+    const double ceHeI_ceHeI = data->cs_ceHeI_ceHeI[i];
+    const double ceHeII_ceHeII = data->cs_ceHeII_ceHeII[i];
+    const double ceHI_ceHI = data->cs_ceHI_ceHI[i];
+    const double cie_cooling_cieco = data->cs_cie_cooling_cieco[i];
+    const double ciHeI_ciHeI = data->cs_ciHeI_ciHeI[i];
+    const double ciHeII_ciHeII = data->cs_ciHeII_ciHeII[i];
+    const double ciHeIS_ciHeIS = data->cs_ciHeIS_ciHeIS[i];
+    const double ciHI_ciHI = data->cs_ciHI_ciHI[i];
+    const double compton_comp_ = data->cs_compton_comp_[i];
+    const double gloverabel08_gael = data->cs_gloverabel08_gael[i];
+    const double rgloverabel08_gael = data->dcs_gloverabel08_gael[i];
+    const double gloverabel08_gaH2 = data->cs_gloverabel08_gaH2[i];
+    const double rgloverabel08_gaH2 = data->dcs_gloverabel08_gaH2[i];
+    const double gloverabel08_gaHe = data->cs_gloverabel08_gaHe[i];
+    const double rgloverabel08_gaHe = data->dcs_gloverabel08_gaHe[i];
+    const double gloverabel08_gaHI = data->cs_gloverabel08_gaHI[i];
+    const double rgloverabel08_gaHI = data->dcs_gloverabel08_gaHI[i];
+    const double gloverabel08_gaHp = data->cs_gloverabel08_gaHp[i];
+    const double rgloverabel08_gaHp = data->dcs_gloverabel08_gaHp[i];
+    const double gloverabel08_h2lte = data->cs_gloverabel08_h2lte[i];
+    const double rgloverabel08_h2lte = data->dcs_gloverabel08_h2lte[i];
+    const double h2formation_h2mcool = data->cs_h2formation_h2mcool[i];
+    const double rh2formation_h2mcool = data->dcs_h2formation_h2mcool[i];
+    const double h2formation_h2mheat = data->cs_h2formation_h2mheat[i];
+    const double rh2formation_h2mheat = data->dcs_h2formation_h2mheat[i];
+    const double h2formation_ncrd1 = data->cs_h2formation_ncrd1[i];
+    const double rh2formation_ncrd1 = data->dcs_h2formation_ncrd1[i];
+    const double h2formation_ncrd2 = data->cs_h2formation_ncrd2[i];
+    const double rh2formation_ncrd2 = data->dcs_h2formation_ncrd2[i];
+    const double h2formation_ncrn = data->cs_h2formation_ncrn[i];
+    const double rh2formation_ncrn = data->dcs_h2formation_ncrn[i];
+    const double reHeII1_reHeII1 = data->cs_reHeII1_reHeII1[i];
+    const double reHeII2_reHeII2 = data->cs_reHeII2_reHeII2[i];
+    const double reHeIII_reHeIII = data->cs_reHeIII_reHeIII[i];
+    const double reHII_reHII = data->cs_reHII_reHII[i];
 
     const long int j = i * NSPECIES;
-    const double H2_1 = ydata[j]*ddata->scale[j];
-    const double H2_2 = ydata[j+1]*ddata->scale[j+1];
-    const double H_1  = ydata[j+2]*ddata->scale[j+2];
-    const double H_2  = ydata[j+3]*ddata->scale[j+3];
-    const double H_m0 = ydata[j+4]*ddata->scale[j+4];
-    const double He_1 = ydata[j+5]*ddata->scale[j+5];
-    const double He_2 = ydata[j+6]*ddata->scale[j+6];
-    const double He_3 = ydata[j+7]*ddata->scale[j+7];
-    const double de   = ydata[j+8]*ddata->scale[j+8];
-    const double ge   = ydata[j+9]*ddata->scale[j+9];
-    const double mdensity     = ddata->mdensity[i];
+    const double H2_1 = ydata[j]*data->scale[j];
+    const double H2_2 = ydata[j+1]*data->scale[j+1];
+    const double H_1  = ydata[j+2]*data->scale[j+2];
+    const double H_2  = ydata[j+3]*data->scale[j+3];
+    const double H_m0 = ydata[j+4]*data->scale[j+4];
+    const double He_1 = ydata[j+5]*data->scale[j+5];
+    const double He_2 = ydata[j+6]*data->scale[j+6];
+    const double He_3 = ydata[j+7]*data->scale[j+7];
+    const double de   = ydata[j+8]*data->scale[j+8];
+    const double ge   = ydata[j+9]*data->scale[j+9];
+    const double mdensity     = data->mdensity[i];
     const double inv_mdensity = 1.0 / mdensity;
-    const double h2_optical_depth_approx  = ddata->h2_optical_depth_approx[i];
-    const double cie_optical_depth_approx = ddata->cie_optical_depth_approx[i];
+    const double h2_optical_depth_approx  = data->h2_optical_depth_approx[i];
+    const double cie_optical_depth_approx = data->cie_optical_depth_approx[i];
 
     long int idx;
 
     // H2_1 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,0), DENSEIDX(i,0,0));
     matrix_data[ idx ] = -k11*H_2 - k12*de - k13*H_1 + k21*pow(H_1, 2);
-    matrix_data[ idx ] *=  (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 0 ]);
+    matrix_data[ idx ] *=  (data->inv_scale[ j + 0 ]*data->scale[ j + 0 ]);
 
     // H2_1 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,1), DENSEIDX(i,0,1));
     matrix_data[ idx ] = k10*H_1 + k19*H_m0;
-    matrix_data[ idx ] *=  (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 1 ]);
+    matrix_data[ idx ] *=  (data->inv_scale[ j + 0 ]*data->scale[ j + 1 ]);
 
     // H2_1 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,2), DENSEIDX(i,0,2));
     matrix_data[ idx ] = k08*H_m0 + k10*H2_2 - k13*H2_1 + 2*k21*H2_1*H_1 + 3*k22*pow(H_1, 2);
-    matrix_data[ idx ] *=  (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ] *=  (data->inv_scale[ j + 0 ]*data->scale[ j + 2 ]);
 
     // H2_1 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,3), DENSEIDX(i,0,3));
     matrix_data[ idx ] = -k11*H2_1;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 3 ]);
 
     // H2_1 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,4), DENSEIDX(i,0,4));
     matrix_data[ idx ] = k08*H_1 + k19*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 4 ]);
 
     // H2_1 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,5), DENSEIDX(i,0,8));
     matrix_data[ idx ] = -k12*H2_1;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 8 ]);
 
     // H2_1 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,6), DENSEIDX(i,0,9));
     matrix_data[ idx ] = rk08*H_1*H_m0 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk12*H2_1*de - rk13*H2_1*H_1 + rk19*H2_2*H_m0 + rk21*H2_1*H_1*H_1 + rk22*H_1*H_1*H_1;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 0 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 0 ]*data->scale[ j + 9 ]);
 
 
     // H2_2 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,7), DENSEIDX(i,1,0));
     matrix_data[ idx ] = k11*H_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 0 ]);
 
     // H2_2 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,8), DENSEIDX(i,1,1));
     matrix_data[ idx ] = -k10*H_1 - k18*de - k19*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 1 ]);
 
     // H2_2 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,9), DENSEIDX(i,1,2));
     matrix_data[ idx ] = k09*H_2 - k10*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 2 ]);
 
     // H2_2 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,10), DENSEIDX(i,1,3));
     matrix_data[ idx ] = k09*H_1 + k11*H2_1 + k17*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 3 ]);
 
     // H2_2 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,11), DENSEIDX(i,1,4));
     matrix_data[ idx ] = k17*H_2 - k19*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 4 ]);
 
     // H2_2 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,12), DENSEIDX(i,1,8));
     matrix_data[ idx ] = -k18*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 8 ]);
 
     // H2_2 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,13), DENSEIDX(i,1,9));
     matrix_data[ idx ] = rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + rk17*H_2*H_m0 - rk18*H2_2*de - rk19*H2_2*H_m0;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 1 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 1 ]*data->scale[ j + 9 ]);
 
 
     // H_1 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,14), DENSEIDX(i,2,0));
     matrix_data[ idx ] = k11*H_2 + 2*k12*de + 2*k13*H_1 - 2*k21*pow(H_1, 2);
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 0 ]);
 
     // H_1 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,15), DENSEIDX(i,2,1));
     matrix_data[ idx ] = -k10*H_1 + 2*k18*de + k19*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 1 ]);
 
     // H_1 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,16), DENSEIDX(i,2,2));
     matrix_data[ idx ] = -k01*de - k07*de - k08*H_m0 - k09*H_2 - k10*H2_2 + 2*k13*H2_1 + k15*H_m0 - 4*k21*H2_1*H_1 - 6*k22*pow(H_1, 2);
-    matrix_data[ idx ]  *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ]  *= (data->inv_scale[ j + 2 ]*data->scale[ j + 2 ]);
 
     // H_1 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,17), DENSEIDX(i,2,3));
     matrix_data[ idx ] = k02*de - k09*H_1 + k11*H2_1 + 2*k16*H_m0;
-    matrix_data[ idx ]  *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ]  *= (data->inv_scale[ j + 2 ]*data->scale[ j + 3 ]);
 
     // H_1 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,18), DENSEIDX(i,2,4));
     matrix_data[ idx ] = -k08*H_1 + k14*de + k15*H_1 + 2*k16*H_2 + k19*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 4 ]);
 
     // H_1 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,19), DENSEIDX(i,2,8));
     matrix_data[ idx ] = -k01*H_1 + k02*H_2 - k07*H_1 + 2*k12*H2_1 + k14*H_m0 + 2*k18*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 8 ]);
 
     // H_1 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,20), DENSEIDX(i,2,9));
     matrix_data[ idx ] = -rk01*H_1*de + rk02*H_2*de - rk07*H_1*de - rk08*H_1*H_m0 - rk09*H_1*H_2 - rk10*H2_2*H_1 + rk11*H2_1*H_2 + 2*rk12*H2_1*de + 2*rk13*H2_1*H_1 + rk14*H_m0*de + rk15*H_1*H_m0 + 2*rk16*H_2*H_m0 + 2*rk18*H2_2*de + rk19*H2_2*H_m0 - 2*rk21*H2_1*H_1*H_1 - 2*rk22*H_1*H_1*H_1;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 2 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 2 ]*data->scale[ j + 9 ]);
 
 
     // H_2 by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,21), DENSEIDX(i,3,0));
     matrix_data[ idx ] = -k11*H_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 0 ]);
 
     // H_2 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,22), DENSEIDX(i,3,1));
     matrix_data[ idx ] = k10*H_1;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 1 ]);
 
     // H_2 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,23), DENSEIDX(i,3,2));
     matrix_data[ idx ] = k01*de - k09*H_2 + k10*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 2 ]);
 
     // H_2 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,24), DENSEIDX(i,3,3));
     matrix_data[ idx ] = -k02*de - k09*H_1 - k11*H2_1 - k16*H_m0 - k17*H_m0;
-    matrix_data[ idx ]  *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ]  *= (data->inv_scale[ j + 3 ]*data->scale[ j + 3 ]);
 
     // H_2 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,25), DENSEIDX(i,3,4));
     matrix_data[ idx ] = -k16*H_2 - k17*H_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 4 ]);
 
     // H_2 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,26), DENSEIDX(i,3,8));
     matrix_data[ idx ] = k01*H_1 - k02*H_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 8 ]);
 
     // H_2 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,27), DENSEIDX(i,3,9));
     matrix_data[ idx ] = rk01*H_1*de - rk02*H_2*de - rk09*H_1*H_2 + rk10*H2_2*H_1 - rk11*H2_1*H_2 - rk16*H_2*H_m0 - rk17*H_2*H_m0;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 3 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 3 ]*data->scale[ j + 9 ]);
 
 
     // H_m0 by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,28), DENSEIDX(i,4,1));
     matrix_data[ idx ] = -k19*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 4 ]*ddata->scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 1 ]);
 
     // H_m0 by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,29), DENSEIDX(i,4,2));
     matrix_data[ idx ] = k07*de - k08*H_m0 - k15*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 4 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 2 ]);
 
     // H_m0 by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,30), DENSEIDX(i,4,3));
     matrix_data[ idx ] = -k16*H_m0 - k17*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 4 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 3 ]);
 
     // H_m0 by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,31), DENSEIDX(i,4,4));
     matrix_data[ idx ] = -k08*H_1 - k14*de - k15*H_1 - k16*H_2 - k17*H_2 - k19*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 4 ]*ddata->scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 4 ]);
 
     // H_m0 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,32), DENSEIDX(i,4,8));
     matrix_data[ idx ] = k07*H_1 - k14*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 4 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 8 ]);
 
     // H_m0 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,33), DENSEIDX(i,4,9));
     matrix_data[ idx ] = rk07*H_1*de - rk08*H_1*H_m0 - rk14*H_m0*de - rk15*H_1*H_m0 - rk16*H_2*H_m0 - rk17*H_2*H_m0 - rk19*H2_2*H_m0;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 4 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 4 ]*data->scale[ j + 9 ]);
 
 
     // He_1 by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,34), DENSEIDX(i,5,5));
     matrix_data[ idx ] = -k03*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 5 ]*ddata->scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 5 ]);
 
     // He_1 by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,35), DENSEIDX(i,5,6));
     matrix_data[ idx ] = k04*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 5 ]*ddata->scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 6 ]);
 
     // He_1 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,36), DENSEIDX(i,5,8));
     matrix_data[ idx ] = -k03*He_1 + k04*He_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 5 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 8 ]);
 
     // He_1 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,37), DENSEIDX(i,5,9));
     matrix_data[ idx ] = -rk03*He_1*de + rk04*He_2*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 5 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 5 ]*data->scale[ j + 9 ]);
 
 
     // He_2 by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,38), DENSEIDX(i,6,5));
     matrix_data[ idx ] = k03*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 6 ]*ddata->scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 5 ]);
 
     // He_2 by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,39), DENSEIDX(i,6,6));
     matrix_data[ idx ] = -k04*de - k05*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 6 ]*ddata->scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 6 ]);
 
     // He_2 by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,40), DENSEIDX(i,6,7));
     matrix_data[ idx ] = k06*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 6 ]*ddata->scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 7 ]);
 
     // He_2 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,41), DENSEIDX(i,6,8));
     matrix_data[ idx ] = k03*He_1 - k04*He_2 - k05*He_2 + k06*He_3;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 6 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 8 ]);
 
     // He_2 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,42), DENSEIDX(i,6,9));
     matrix_data[ idx ] = rk03*He_1*de - rk04*He_2*de - rk05*He_2*de + rk06*He_3*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 6 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 6 ]*data->scale[ j + 9 ]);
 
 
     // He_3 by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,43), DENSEIDX(i,7,6));
     matrix_data[ idx ] = k05*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 7 ]*ddata->scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 6 ]);
 
     // He_3 by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,44), DENSEIDX(i,7,7));
     matrix_data[ idx ] = -k06*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 7 ]*ddata->scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 7 ]);
 
     // He_3 by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,45), DENSEIDX(i,7,8));
     matrix_data[ idx ] = k05*He_2 - k06*He_3;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 7 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 8 ]);
 
     // He_3 by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,46), DENSEIDX(i,7,9));
     matrix_data[ idx ] = rk05*He_2*de - rk06*He_3*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 7 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 7 ]*data->scale[ j + 9 ]);
 
 
     // de by H2_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,47), DENSEIDX(i,8,1));
     matrix_data[ idx ] = -k18*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 1 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 1 ]);
 
     // de by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,48), DENSEIDX(i,8,2));
     matrix_data[ idx ] = k01*de - k07*de + k08*H_m0 + k15*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 2 ]);
 
     // de by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,49), DENSEIDX(i,8,3));
     matrix_data[ idx ] = -k02*de + k17*H_m0;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 3 ]);
 
     // de by H_m0
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,50), DENSEIDX(i,8,4));
     matrix_data[ idx ] = k08*H_1 + k14*de + k15*H_1 + k17*H_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 4 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 4 ]);
 
     // de by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,51), DENSEIDX(i,8,5));
     matrix_data[ idx ] = k03*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 5 ]);
 
     // de by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,52), DENSEIDX(i,8,6));
     matrix_data[ idx ] = -k04*de + k05*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 6 ]);
 
     // de by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,53), DENSEIDX(i,8,7));
     matrix_data[ idx ] = -k06*de;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 7 ]);
 
     // de by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,54), DENSEIDX(i,8,8));
     matrix_data[ idx ] = k01*H_1 - k02*H_2 + k03*He_1 - k04*He_2 + k05*He_2 - k06*He_3 - k07*H_1 + k14*H_m0 - k18*H2_2;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 8 ]);
 
     // de by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,55), DENSEIDX(i,8,9));
     matrix_data[ idx ] = rk01*H_1*de - rk02*H_2*de + rk03*He_1*de - rk04*He_2*de + rk05*He_2*de - rk06*He_3*de - rk07*H_1*de + rk08*H_1*H_m0 + rk14*H_m0*de + rk15*H_1*H_m0 + rk17*H_2*H_m0 - rk18*H2_2*de;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 8 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 8 ]*data->scale[ j + 9 ]);
 
 
     // ge by H2_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,56), DENSEIDX(i,9,0));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaH2*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - 0.5*H_1*h2formation_h2mcool*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0) - 2.0158800000000001*cie_cooling_cieco*mdensity - gloverabel08_h2lte*h2_optical_depth_approx/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*h2formation_ncrd2*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2);
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 0 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 0 ]);
 
     // ge by H_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,57), DENSEIDX(i,9,2));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaHI*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ceHI_ceHI*de - ciHI_ciHI*de + 0.5*h2formation_ncrd1*h2formation_ncrn*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) + 0.5*(-H2_1*h2formation_h2mcool + 3*pow(H_1, 2)*h2formation_h2mheat)*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0);
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 2 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 2 ]);
 
     // ge by H_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,58), DENSEIDX(i,9,3));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaHp*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - brem_brem*de - de*reHII_reHII;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 3 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 3 ]);
 
     // ge by He_1
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,59), DENSEIDX(i,9,5));
     matrix_data[ idx ] = -H2_1*gloverabel08_gaHe*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - ciHeI_ciHeI*de;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 5 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 5 ]);
 
     // ge by He_2
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,60), DENSEIDX(i,9,6));
     matrix_data[ idx ] = -brem_brem*de - ceHeII_ceHeII*de - ceHeI_ceHeI*pow(de, 2) - ciHeII_ciHeII*de - ciHeIS_ciHeIS*pow(de, 2) - de*reHeII1_reHeII1 - de*reHeII2_reHeII2;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 6 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 6 ]);
 
     // ge by He_3
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,61), DENSEIDX(i,9,7));
     matrix_data[ idx ] = -4.0*brem_brem*de - de*reHeIII_reHeIII;
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 7 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 7 ]);
 
     // ge by de
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,62), DENSEIDX(i,9,8));
     matrix_data[ idx ] = -H2_1*gloverabel08_gael*pow(gloverabel08_h2lte, 2)*h2_optical_depth_approx/(pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2)*pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2)) - H_1*ceHI_ceHI - H_1*ciHI_ciHI - H_2*reHII_reHII - He_1*ciHeI_ciHeI - He_2*ceHeII_ceHeII - 2*He_2*ceHeI_ceHeI*de - He_2*ciHeII_ciHeII - 2*He_2*ciHeIS_ciHeIS*de - He_2*reHeII1_reHeII1 - He_2*reHeII2_reHeII2 - He_3*reHeIII_reHeIII - brem_brem*(H_2 + He_2 + 4.0*He_3) - compton_comp_*pow(z + 1.0, 4)*(T - 2.73*z - 2.73);
     matrix_data[ idx ] *= inv_mdensity;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 8 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 8 ]);
 
     // ge by ge
     idx = SPARSE_OR_DENSE(SPARSEIDX(i,63), DENSEIDX(i,9,9));
@@ -1762,7 +1813,7 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
     matrix_data[ idx ] = -H2_1*gloverabel08_h2lte*h2_optical_depth_approx*(-gloverabel08_h2lte*(-H2_1*rgloverabel08_gaH2 - H_1*rgloverabel08_gaHI - H_2*rgloverabel08_gaHp - He_1*rgloverabel08_gaHe - de*rgloverabel08_gael)/pow(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael, 2) - rgloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael))/pow(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0, 2) - H2_1*h2_optical_depth_approx*rgloverabel08_h2lte/(gloverabel08_h2lte/(H2_1*gloverabel08_gaH2 + H_1*gloverabel08_gaHI + H_2*gloverabel08_gaHp + He_1*gloverabel08_gaHe + de*gloverabel08_gael) + 1.0) + 0.5*pow(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0, -2.0)*(-H2_1*H_1*h2formation_h2mcool + pow(H_1, 3)*h2formation_h2mheat)*(-1.0*h2formation_ncrn*(-H2_1*rh2formation_ncrd2 - H_1*rh2formation_ncrd1)/pow(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1, 2) - 1.0*rh2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1)) + 0.5*1.0/(h2formation_ncrn/(H2_1*h2formation_ncrd2 + H_1*h2formation_ncrd1) + 1.0)*(-H2_1*H_1*rh2formation_h2mcool + pow(H_1, 3)*rh2formation_h2mheat);
     matrix_data[ idx ] *= inv_mdensity;
     matrix_data[ idx ] *= Tge;
-    matrix_data[ idx ] *= (ddata->inv_scale[ j + 9 ]*ddata->scale[ j + 9 ]);
+    matrix_data[ idx ] *= (data->inv_scale[ j + 9 ]*data->scale[ j + 9 ]);
 
 #ifndef USE_DEVICE
     colvals[i * NSPARSE + 0] = i * NSPECIES + 0 ;
@@ -1847,18 +1898,8 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   });
 
-#ifdef USE_DEVICE
-  // synchronize device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-    std::cerr << ">>> ERROR in calculate_jacobian_cvklu: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return(-1);
-  }
-#endif
-
+  // synchronize device memory and return
+  if (copyFence() != 0)  return -1;
   return 0;
 }
 

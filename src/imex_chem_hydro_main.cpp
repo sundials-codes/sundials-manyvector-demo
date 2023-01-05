@@ -144,8 +144,8 @@ int main(int argc, char* argv[]) {
   SUNLinearSolver LS = NULL;
   SUNLinearSolver BLS = NULL;
   void *arkode_mem = NULL;       // empty ARKStep memory structure
+  EulerData udata;               // solver data structures
   ARKODEParameters opts;
-  EulerData udata;
 
   //--- General Initialization ---//
 
@@ -946,11 +946,11 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // fill dimensionless total fluid energy field (internal energy + kinetic energy)
   realtype EUnitScale = ONE/udata->EnergyUnits;
-  for (int k=0; k<udata->nzl; k++)
-    for (int j=0; j<udata->nyl; j++)
-      for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+  for (long int k=0; k<udata->nzl; k++)
+    for (long int j=0; j<udata->nyl; j++)
+      for (long int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         et[fidx] =  chem[cidx] * EUnitScale
           + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
@@ -972,11 +972,11 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
 //  realtype TUnitScale = ONE/udata->TimeUnits;
   realtype TUnitScale = ONE;
-  for (int k=0; k<udata->nzl; k++)
-    for (int j=0; j<udata->nyl; j++)
-      for (int i=0; i<udata->nxl; i++) {
-        const long int cidx = BUFIDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        const long int fidx = IDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+  for (long int k=0; k<udata->nzl; k++)
+    for (long int j=0; j<udata->nyl; j++)
+      for (long int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }

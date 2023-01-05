@@ -143,7 +143,7 @@ macro(sundemo_add_executable target)
   endif()
 
   # set source properties
-  if (ENABLE_RAJA AND (RAJA_BACKEND MATCHES "HIP"))
+  if (RAJA_BACKEND MATCHES "HIP")
     foreach(file ${sundemo_add_executable_SOURCES})
       set_source_files_properties(${file} PROPERTIES LANGUAGE HIP)
     endforeach()
