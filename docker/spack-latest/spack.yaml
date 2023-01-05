@@ -10,8 +10,6 @@ spack:
         - openblas
         mpi:
         - openmpi
-      compiler:
-      - gcc@9.5.0
   specs:
   - sundials@6.2.0 +openmp +mpi +klu ^suite-sparse@5.8.1
   - raja@0.13.0

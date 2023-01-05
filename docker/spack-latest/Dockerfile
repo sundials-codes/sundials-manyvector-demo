@@ -1,4 +1,4 @@
-FROM spack/ubuntu-jammy:latest as bootstrap
+FROM spack/ubuntu-jammy:v0.19.0 as bootstrap
 
 # Input spack environment file
 ARG spack_yaml
@@ -11,9 +11,9 @@ RUN apt-get -yqq update \
         curl \
         file \
         fonts-texgyre \
-        g++-9 \
-        gcc-9 \
-        gfortran-9 \
+        g++ \
+        gcc \
+        gfortran \
         git \
         gnupg2 \
         iproute2 \
