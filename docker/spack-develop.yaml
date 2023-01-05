@@ -12,7 +12,7 @@ spack:
         - openmpi
   specs:
   - sundials +openmp +mpi +klu
-  - raja
+  - raja@0.13.0
   - hdf5 +hl +mpi
   view: /opt/view
   concretizer:
