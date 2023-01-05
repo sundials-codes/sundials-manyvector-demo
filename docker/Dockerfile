@@ -1,7 +1,8 @@
-FROM spack/ubuntu-jammy:v0.19.0 as bootstrap
+ARG tag=latest
+FROM spack/ubuntu-jammy:${tag} as bootstrap
 
 # Input spack environment file
-ARG spack_yaml
+ARG spack_yaml=spack-latest.yaml
 
 # Install ubuntu packages
 RUN apt-get -yqq update \

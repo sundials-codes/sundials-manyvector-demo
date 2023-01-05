@@ -11,9 +11,9 @@ spack:
         mpi:
         - openmpi
   specs:
-  - sundials@6.2.0 +openmp +mpi +klu ^suite-sparse@5.8.1
-  - raja@0.13.0
-  - hdf5@1.10.7 +hl +mpi
+  - sundials +openmp +mpi +klu
+  - raja
+  - hdf5 +hl +mpi
   view: /opt/view
   concretizer:
     unify: true
