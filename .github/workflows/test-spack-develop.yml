@@ -18,8 +18,8 @@ jobs:
         run: |
           cmake \
           -B build \
-          -D CMAKE_C_COMPILER=$(which gcc) \
-          -D CMAKE_CXX_COMPILER=$(which g++) \
+          -D CMAKE_C_COMPILER=mpicc \
+          -D CMAKE_CXX_COMPILER=mpicxx \
           -D RAJA_ROOT=/opt/view \
           -D RAJA_BACKEND=SERIAL \
           -D SUNDIALS_ROOT=/opt/view \
