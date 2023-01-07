@@ -421,3 +421,9 @@ sundemo_add_executable(magma_scaling.exe
     NTHREADS=1
     NVAR=15)
 endif()
+
+sundemo_add_executable(context_test.exe
+  SOURCES
+    context_test.cpp
+  LINK_LIBRARIES
+    shared_obj_nvar_5)
