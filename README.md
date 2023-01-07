@@ -205,7 +205,7 @@ with the required dependencies e.g., on a system with Pascal GPUs and CUDA
 11.4.2 installed:
 
 ```bash
-spack env create sundials-demo
+spack env create --with-view ~/views/sundials-demo sundials-demo
 spack env activate sundials-demo
 spack add sundials@6.2.0 +openmp +mpi +logging-mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
 spack add hdf5@1.10.7 +hl +mpi
@@ -290,7 +290,10 @@ built from a separate build directory e.g.,
   cmake ../. \
     -DCMAKE_INSTALL_PREFIX="my/install/path/sundials-demo" \
     -DRAJA_BACKEND="SERIAL" \
-    -DENABLE_HDF5="ON"
+    -DENABLE_HDF5="ON" \
+    -DHDF5_ROOT="~/views/sundials-demo" \
+    -DRAJA_ROOT="~/views/sundials-demo" \
+    -DSUNDIALS_ROOT="~/views/sundials-demo"
   make
   make install
 ```
