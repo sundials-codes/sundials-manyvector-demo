@@ -286,7 +286,7 @@ sundemo_add_executable(rayleigh_taylor.exe
   LINK_LIBRARIES
     shared_obj_nvar_5)
 
-# Need to reduce test time for CI (>1,500s)
+# Need to reduce test time for CI (>1,500s with 1 proc)
 # add_test(rayleigh_taylor
 #   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./rayleigh_taylor.exe -f ${CMAKE_SOURCE_DIR}/tests/rayleigh_taylor/input_rayleigh_taylor.txt)
 
@@ -337,7 +337,7 @@ sundemo_add_executable(hurricane_xy.exe
   COMPILE_DEFINITIONS
     TEST_XZ)
 
-# Need to reduce test test time for CI (~1,000s)
+# Need to reduce test test time for CI (~1,000s with 1 proc)
 # add_test(hurricane_xy
 #   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./hurricane_xy.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_xy/input_hurricane.txt)
 
@@ -409,7 +409,7 @@ sundemo_add_executable(primordial_static_imex.exe
     NTHREADS=1
     NVAR=15)
 
-# Need to reduce test size for CI (~600s)
+# Need to reduce test size for CI (~600s with 1 proc)
 add_test(primordial_static_imex
   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./primordial_static_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt)
 
