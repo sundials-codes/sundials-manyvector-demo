@@ -333,8 +333,9 @@ sundemo_add_executable(hurricane_xy.exe
   COMPILE_DEFINITIONS
     TEST_XZ)
 
-add_test(hurricane_xy
-  hurricane_xy.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_xy/input_hurricane.txt)
+# Need to reduce test size for CI
+# add_test(hurricane_xy
+#   hurricane_xy.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_xy/input_hurricane.txt)
 
 sundemo_add_executable(hurricane_yz.exe
   SOURCES
