@@ -409,6 +409,9 @@ sundemo_add_executable(primordial_static_imex.exe
     NTHREADS=1
     NVAR=15)
 
+add_test(primordial_static_imex
+  primordial_static_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt)
+
 sundemo_add_executable(primordial_static_mr.exe
   SOURCES
     primordial_static.cpp
@@ -422,6 +425,9 @@ sundemo_add_executable(primordial_static_mr.exe
     MAX_NCELLS=1000000
     NTHREADS=1
     NVAR=15)
+
+add_test(primordial_static_mr
+  primordial_static_mr.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt)
 
 # primordial blast tests
 sundemo_add_executable(primordial_blast_imex.exe
@@ -438,6 +444,9 @@ sundemo_add_executable(primordial_blast_imex.exe
     NTHREADS=1
     NVAR=15)
 
+add_test(primordial_blast_imex
+  primordial_blast_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_blast/input_primordial_blast_imex.txt)
+
 sundemo_add_executable(primordial_blast_mr.exe
   SOURCES
     primordial_blast.cpp
@@ -451,6 +460,9 @@ sundemo_add_executable(primordial_blast_mr.exe
     MAX_NCELLS=1000000
     NTHREADS=1
     NVAR=15)
+
+add_test(primordial_blast_mr
+  primordial_blast_mr.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_blast/input_primordial_blast_mr.txt)
 
 # fluid blast test
 sundemo_add_executable(fluid_blast.exe
