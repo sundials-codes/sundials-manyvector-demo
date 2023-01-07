@@ -16,6 +16,10 @@
 # it must be supplied to the compilation of all object files.
 # ------------------------------------------------------------------------------
 
+# copy file needed for testing
+file(COPY ${CMAKE_SOURCE_DIR}/tests/primordial_ode/primordial_tables.h5
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
 # ------------------------------------------------------------------------------
 # create object library of common sources
 # ------------------------------------------------------------------------------
@@ -386,6 +390,9 @@ sundemo_add_executable(primordial_ode.exe
     CVKLU
     MAX_NCELLS=1000000
     NTHREADS=1)
+
+add_test(primordial_ode
+  primordial_ode.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_ode/input_primordial_ode.txt)
 
 # primordial static tests
 sundemo_add_executable(primordial_static_imex.exe
