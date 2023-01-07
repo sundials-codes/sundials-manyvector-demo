@@ -11,9 +11,9 @@ spack:
         mpi:
         - openmpi
   specs:
-  - sundials +openmp +mpi +klu
-  - raja@0.13.0
-  - hdf5 +hl +mpi
+  - sundials +openmp +mpi +klu arch=x86_64
+  - raja@0.13.0 arch=x86_64
+  - hdf5 +hl +mpi arch=x86_64
   view: /opt/view
   concretizer:
     unify: true
