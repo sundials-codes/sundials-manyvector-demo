@@ -169,7 +169,7 @@ To obtain the code, clone this repository with Git:
 
 To compile the code you will need:
 
-* [CMake](https://cmake.org) 3.18 or newer
+* [CMake](https://cmake.org) 3.20 or newer
 
 * modern C and C++ compilers
 
@@ -207,7 +207,7 @@ with the required dependencies e.g., on a system with Pascal GPUs and CUDA
 ```bash
 spack env create sundials-demo
 spack env activate sundials-demo
-spack add sundials@6.2.0 +openmp +mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
+spack add sundials@6.2.0 +openmp +mpi +logging-mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
 spack add hdf5@1.10.7 +hl +mpi
 spack install
 ```
