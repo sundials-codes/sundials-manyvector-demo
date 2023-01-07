@@ -235,6 +235,9 @@ sundemo_add_executable(linear_advection_x.exe
   COMPILE_DEFINITIONS
     ADVECTION_X)
 
+add_test(linear_advection_x
+  linear_advection_x.exe -f ${CMAKE_SOURCE_DIR}/tests/linear_advection_x/input_linear_advection.txt)
+
 sundemo_add_executable(linear_advection_y.exe
   SOURCES
     linear_advection.cpp
@@ -244,6 +247,9 @@ sundemo_add_executable(linear_advection_y.exe
   COMPILE_DEFINITIONS
     ADVECTION_Y)
 
+add_test(linear_advection_y
+  linear_advection_y.exe -f ${CMAKE_SOURCE_DIR}/tests/linear_advection_y/input_linear_advection.txt)
+
 sundemo_add_executable(linear_advection_z.exe
   SOURCES
     linear_advection.cpp
@@ -252,6 +258,9 @@ sundemo_add_executable(linear_advection_z.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     ADVECTION_Z)
+
+add_test(linear_advection_z
+  linear_advection_z.exe -f ${CMAKE_SOURCE_DIR}/tests/linear_advection_z/input_linear_advection.txt)
 
 # Rayleigh Taylor test
 sundemo_add_executable(rayleigh_taylor.exe

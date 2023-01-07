@@ -126,12 +126,11 @@ if(ENABLE_HDF5)
   find_package(HDF5 REQUIRED COMPONENTS C HL)
 endif()
 
-# -------------------
-# add subdirectories
-# -------------------
+# ---------------------
+# add source directory
+# ---------------------
 
 add_subdirectory(src)
-add_subdirectory(tests)
 
 # -------------------
 # install test files
