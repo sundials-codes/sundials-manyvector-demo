@@ -195,6 +195,9 @@ sundemo_add_executable(communication_test_fluid.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
+add_test(communication_test_fluid
+  communication_test_fluid.exe)
+
 # tracers communication test
 sundemo_add_executable(communication_test_tracers.exe
   SOURCES
@@ -204,6 +207,9 @@ sundemo_add_executable(communication_test_tracers.exe
     shared_obj_nvar_9
   COMPILE_DEFINITIONS
     NVAR=9)
+
+add_test(communication_test_tracers
+  communication_test_tracers.exe)
 
 # fluid I/O test
 sundemo_add_executable(io_test_fluid.exe
@@ -215,6 +221,9 @@ sundemo_add_executable(io_test_fluid.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
+add_test(io_test_fluid
+  io_test_fluid.exe)
+
 # tracers I/O test
 sundemo_add_executable(io_test_tracers.exe
   SOURCES
@@ -224,6 +233,9 @@ sundemo_add_executable(io_test_tracers.exe
     shared_obj_nvar_9
   COMPILE_DEFINITIONS
     NVAR=9)
+
+add_test(io_test_tracers
+  io_test_tracers.exe)
 
 # linear advection tests
 sundemo_add_executable(linear_advection_x.exe
@@ -270,6 +282,9 @@ sundemo_add_executable(rayleigh_taylor.exe
   LINK_LIBRARIES
     shared_obj_nvar_5)
 
+add_test(rayleigh_taylor
+  rayleigh_taylor.exe -f ${CMAKE_SOURCE_DIR}/tests/rayleigh_taylor/input_rayleigh_taylor.txt)
+
 # sod tests
 sundemo_add_executable(sod_x.exe
   SOURCES
@@ -280,6 +295,9 @@ sundemo_add_executable(sod_x.exe
   COMPILE_DEFINITIONS
     ADVECTION_X)
 
+add_test(sod_x
+  sod_x.exe -f ${CMAKE_SOURCE_DIR}/tests/sod_x/input_sod.txt)
+
 sundemo_add_executable(sod_y.exe
   SOURCES
     sod.cpp
@@ -289,6 +307,9 @@ sundemo_add_executable(sod_y.exe
   COMPILE_DEFINITIONS
     ADVECTION_Y)
 
+add_test(sod_y
+  sod_y.exe -f ${CMAKE_SOURCE_DIR}/tests/sod_y/input_sod.txt)
+
 sundemo_add_executable(sod_z.exe
   SOURCES
     sod.cpp
@@ -297,6 +318,9 @@ sundemo_add_executable(sod_z.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     ADVECTION_Z)
+
+add_test(sod_z
+  sod_z.exe -f ${CMAKE_SOURCE_DIR}/tests/sod_z/input_sod.txt)
 
 # hurricane tests
 sundemo_add_executable(hurricane_xy.exe
@@ -308,6 +332,9 @@ sundemo_add_executable(hurricane_xy.exe
   COMPILE_DEFINITIONS
     TEST_XZ)
 
+add_test(hurricane_xy
+  hurricane_xy.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_xy/input_hurricane.txt)
+
 sundemo_add_executable(hurricane_yz.exe
   SOURCES
     hurricane.cpp
@@ -316,6 +343,9 @@ sundemo_add_executable(hurricane_yz.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     TEST_YZ)
+
+add_test(hurricane_yz
+  hurricane_yz.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_yz/input_hurricane.txt)
 
 sundemo_add_executable(hurricane_zx.exe
   SOURCES
@@ -326,6 +356,9 @@ sundemo_add_executable(hurricane_zx.exe
   COMPILE_DEFINITIONS
     TEST_ZX)
 
+add_test(hurricane_zx
+  hurricane_zx.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_zx/input_hurricane.txt)
+
 sundemo_add_executable(hurricane_zx_color.exe
   SOURCES
     hurricane.cpp
@@ -335,6 +368,9 @@ sundemo_add_executable(hurricane_zx_color.exe
   COMPILE_DEFINITIONS
     TEST_ZX
     NVAR=11)
+
+add_test(hurricane_zx_color
+  hurricane_zx_color.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_zx_color/input_hurricane.txt)
 
 # primordial ode tests
 sundemo_add_executable(primordial_ode.exe
@@ -416,6 +452,9 @@ sundemo_add_executable(fluid_blast.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     NVAR=5)
+
+add_test(fluid_blast
+  fluid_blast.exe -f ${CMAKE_SOURCE_DIR}/tests/fluid_blast/input_fluid_blast.txt)
 
 # magma scaling test
 if(RAJA_BACKEND MATCHES "CUDA|HIP")
