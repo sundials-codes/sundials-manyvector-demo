@@ -199,9 +199,9 @@ sundemo_add_executable(communication_test_fluid.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
-# TODO(DJG): MPI_Dims_create fails with 2 procs (MPI_ERR_DIMS: invalid topology dimension)
 add_test(communication_test_fluid
-  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ./communication_test_fluid.exe)
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./communication_test_fluid.exe --nx 12 --ny 12 --nz 12)
 
 # tracers communication test
 sundemo_add_executable(communication_test_tracers.exe
@@ -213,9 +213,9 @@ sundemo_add_executable(communication_test_tracers.exe
   COMPILE_DEFINITIONS
     NVAR=9)
 
-# TODO(DJG): MPI_Dims_create fails with 2 procs (MPI_ERR_DIMS: invalid topology dimension)
 add_test(communication_test_tracers
-  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ./communication_test_tracers.exe)
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./communication_test_tracers.exe --nx 12 --ny 12 --nz 12)
 
 # fluid I/O test
 sundemo_add_executable(io_test_fluid.exe
@@ -227,9 +227,9 @@ sundemo_add_executable(io_test_fluid.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
-# TODO(DJG): MPI_Dims_create fails with 2 procs (MPI_ERR_DIMS: invalid topology dimension)
 add_test(io_test_fluid
-  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ./io_test_fluid.exe)
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./io_test_fluid.exe --nx 12 --ny 12 --nz 12)
 
 # tracers I/O test
 sundemo_add_executable(io_test_tracers.exe
@@ -241,9 +241,9 @@ sundemo_add_executable(io_test_tracers.exe
   COMPILE_DEFINITIONS
     NVAR=9)
 
-# TODO(DJG): MPI_Dims_create fails with 2 procs (MPI_ERR_DIMS: invalid topology dimension)
 add_test(io_test_tracers
-  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ./io_test_tracers.exe)
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./io_test_tracers.exe --nx 12 --ny 12 --nz 12)
 
 # linear advection tests
 sundemo_add_executable(linear_advection_x.exe
@@ -415,9 +415,10 @@ sundemo_add_executable(primordial_static_imex.exe
     NVAR=15)
 
 # Need to reduce test size for CI (~600s with 1 proc)
-# TODO(DJG): MPI_Dims_create fails with 2 procs (MPI_ERR_DIMS: invalid topology dimension)
-# add_test(primordial_static_imex
-#   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./primordial_static_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt)
+add_test(primordial_static_imex
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./primordial_static_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt
+  --nx 12 --ny 12 --nz 12)
 
 sundemo_add_executable(primordial_static_mr.exe
   SOURCES
@@ -433,9 +434,10 @@ sundemo_add_executable(primordial_static_mr.exe
     NTHREADS=1
     NVAR=15)
 
-# TODO(DJG): MPI_Dims_create fails with 2 procs (MPI_ERR_DIMS: invalid topology dimension)
 add_test(primordial_static_mr
-  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ./primordial_static_mr.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt)
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./primordial_static_mr.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt
+  --nx 12 --ny 12 --nz 12)
 
 # primordial blast tests
 sundemo_add_executable(primordial_blast_imex.exe
