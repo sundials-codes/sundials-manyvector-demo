@@ -20,6 +20,7 @@ jobs:
           -B build \
           -D CMAKE_C_COMPILER=mpicc \
           -D CMAKE_CXX_COMPILER=mpicxx \
+          -D CMAKE_CXX_STANDARD=14 \
           -D RAJA_ROOT=/opt/view \
           -D RAJA_BACKEND=SERIAL \
           -D SUNDIALS_ROOT=/opt/view \
