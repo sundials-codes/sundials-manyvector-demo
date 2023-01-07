@@ -11,6 +11,7 @@ spack:
         mpi:
         - openmpi
   specs:
+  - cmake arch=x86_64
   - sundials +openmp +mpi +klu arch=x86_64
   - raja@0.13.0 arch=x86_64
   - hdf5 +hl +mpi arch=x86_64
