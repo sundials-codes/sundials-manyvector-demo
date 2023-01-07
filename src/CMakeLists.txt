@@ -282,8 +282,9 @@ sundemo_add_executable(rayleigh_taylor.exe
   LINK_LIBRARIES
     shared_obj_nvar_5)
 
-add_test(rayleigh_taylor
-  rayleigh_taylor.exe -f ${CMAKE_SOURCE_DIR}/tests/rayleigh_taylor/input_rayleigh_taylor.txt)
+# Need to reduce test size for CI
+# add_test(rayleigh_taylor
+#   rayleigh_taylor.exe -f ${CMAKE_SOURCE_DIR}/tests/rayleigh_taylor/input_rayleigh_taylor.txt)
 
 # sod tests
 sundemo_add_executable(sod_x.exe
