@@ -341,7 +341,7 @@ sundemo_add_executable(hurricane_xy.exe
   COMPILE_DEFINITIONS
     TEST_XZ)
 
-# Need to reduce test test time for CI (~1,000s with 1 proc)
+# Need to reduce test time for CI (~1,000s with 1 proc)
 # add_test(hurricane_xy
 #   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./hurricane_xy.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_xy/input_hurricane.txt)
 
