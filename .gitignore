@@ -56,3 +56,6 @@ scripts/sundials
 
 # VSCode project configuration
 .vscode
+
+# OS generated files
+.DS_Store

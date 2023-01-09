@@ -16,6 +16,10 @@
 # it must be supplied to the compilation of all object files.
 # ------------------------------------------------------------------------------
 
+# copy file needed for testing
+file(COPY ${CMAKE_SOURCE_DIR}/tests/primordial_ode/primordial_tables.h5
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
 # ------------------------------------------------------------------------------
 # create object library of common sources
 # ------------------------------------------------------------------------------
@@ -195,6 +199,10 @@ sundemo_add_executable(communication_test_fluid.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
+add_test(communication_test_fluid
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./communication_test_fluid.exe --nx 12 --ny 12 --nz 12)
+
 # tracers communication test
 sundemo_add_executable(communication_test_tracers.exe
   SOURCES
@@ -204,6 +212,10 @@ sundemo_add_executable(communication_test_tracers.exe
     shared_obj_nvar_9
   COMPILE_DEFINITIONS
     NVAR=9)
+
+add_test(communication_test_tracers
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./communication_test_tracers.exe --nx 12 --ny 12 --nz 12)
 
 # fluid I/O test
 sundemo_add_executable(io_test_fluid.exe
@@ -215,6 +227,10 @@ sundemo_add_executable(io_test_fluid.exe
   COMPILE_DEFINITIONS
     NVAR=5)
 
+add_test(io_test_fluid
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./io_test_fluid.exe --nx 12 --ny 12 --nz 12)
+
 # tracers I/O test
 sundemo_add_executable(io_test_tracers.exe
   SOURCES
@@ -224,6 +240,10 @@ sundemo_add_executable(io_test_tracers.exe
     shared_obj_nvar_9
   COMPILE_DEFINITIONS
     NVAR=9)
+
+add_test(io_test_tracers
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./io_test_tracers.exe --nx 12 --ny 12 --nz 12)
 
 # linear advection tests
 sundemo_add_executable(linear_advection_x.exe
@@ -235,6 +255,9 @@ sundemo_add_executable(linear_advection_x.exe
   COMPILE_DEFINITIONS
     ADVECTION_X)
 
+add_test(linear_advection_x
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./linear_advection_x.exe -f ${CMAKE_SOURCE_DIR}/tests/linear_advection_x/input_linear_advection.txt)
+
 sundemo_add_executable(linear_advection_y.exe
   SOURCES
     linear_advection.cpp
@@ -243,6 +266,9 @@ sundemo_add_executable(linear_advection_y.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     ADVECTION_Y)
+
+add_test(linear_advection_y
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./linear_advection_y.exe -f ${CMAKE_SOURCE_DIR}/tests/linear_advection_y/input_linear_advection.txt)
 
 sundemo_add_executable(linear_advection_z.exe
   SOURCES
@@ -253,6 +279,9 @@ sundemo_add_executable(linear_advection_z.exe
   COMPILE_DEFINITIONS
     ADVECTION_Z)
 
+add_test(linear_advection_z
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./linear_advection_z.exe -f ${CMAKE_SOURCE_DIR}/tests/linear_advection_z/input_linear_advection.txt)
+
 # Rayleigh Taylor test
 sundemo_add_executable(rayleigh_taylor.exe
   SOURCES
@@ -260,6 +289,10 @@ sundemo_add_executable(rayleigh_taylor.exe
     euler3D_main.cpp
   LINK_LIBRARIES
     shared_obj_nvar_5)
+
+# Need to reduce test time for CI (>1,500s with 1 proc)
+# add_test(rayleigh_taylor
+#   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./rayleigh_taylor.exe -f ${CMAKE_SOURCE_DIR}/tests/rayleigh_taylor/input_rayleigh_taylor.txt)
 
 # sod tests
 sundemo_add_executable(sod_x.exe
@@ -271,6 +304,9 @@ sundemo_add_executable(sod_x.exe
   COMPILE_DEFINITIONS
     ADVECTION_X)
 
+add_test(sod_x
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./sod_x.exe -f ${CMAKE_SOURCE_DIR}/tests/sod_x/input_sod.txt)
+
 sundemo_add_executable(sod_y.exe
   SOURCES
     sod.cpp
@@ -280,6 +316,9 @@ sundemo_add_executable(sod_y.exe
   COMPILE_DEFINITIONS
     ADVECTION_Y)
 
+add_test(sod_y
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./sod_y.exe -f ${CMAKE_SOURCE_DIR}/tests/sod_y/input_sod.txt)
+
 sundemo_add_executable(sod_z.exe
   SOURCES
     sod.cpp
@@ -288,6 +327,9 @@ sundemo_add_executable(sod_z.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     ADVECTION_Z)
+
+add_test(sod_z
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./sod_z.exe -f ${CMAKE_SOURCE_DIR}/tests/sod_z/input_sod.txt)
 
 # hurricane tests
 sundemo_add_executable(hurricane_xy.exe
@@ -299,6 +341,10 @@ sundemo_add_executable(hurricane_xy.exe
   COMPILE_DEFINITIONS
     TEST_XZ)
 
+# Need to reduce test time for CI (~1,000s with 1 proc)
+# add_test(hurricane_xy
+#   ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./hurricane_xy.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_xy/input_hurricane.txt)
+
 sundemo_add_executable(hurricane_yz.exe
   SOURCES
     hurricane.cpp
@@ -307,6 +353,9 @@ sundemo_add_executable(hurricane_yz.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     TEST_YZ)
+
+add_test(hurricane_yz
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./hurricane_yz.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_yz/input_hurricane.txt)
 
 sundemo_add_executable(hurricane_zx.exe
   SOURCES
@@ -317,6 +366,9 @@ sundemo_add_executable(hurricane_zx.exe
   COMPILE_DEFINITIONS
     TEST_ZX)
 
+add_test(hurricane_zx
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./hurricane_zx.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_zx/input_hurricane.txt)
+
 sundemo_add_executable(hurricane_zx_color.exe
   SOURCES
     hurricane.cpp
@@ -326,6 +378,9 @@ sundemo_add_executable(hurricane_zx_color.exe
   COMPILE_DEFINITIONS
     TEST_ZX
     NVAR=11)
+
+add_test(hurricane_zx_color
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./hurricane_zx_color.exe -f ${CMAKE_SOURCE_DIR}/tests/hurricane_zx_color/input_hurricane.txt)
 
 # primordial ode tests
 sundemo_add_executable(primordial_ode.exe
@@ -339,6 +394,10 @@ sundemo_add_executable(primordial_ode.exe
     CVKLU
     MAX_NCELLS=1000000
     NTHREADS=1)
+
+# Test can only be run with 1 MPI rank
+add_test(primordial_ode
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ./primordial_ode.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_ode/input_primordial_ode.txt)
 
 # primordial static tests
 sundemo_add_executable(primordial_static_imex.exe
@@ -355,6 +414,12 @@ sundemo_add_executable(primordial_static_imex.exe
     NTHREADS=1
     NVAR=15)
 
+# Need to reduce test size for CI (~600s with 1 proc)
+add_test(primordial_static_imex
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./primordial_static_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt
+  --nx 12 --ny 12 --nz 12)
+
 sundemo_add_executable(primordial_static_mr.exe
   SOURCES
     primordial_static.cpp
@@ -368,6 +433,11 @@ sundemo_add_executable(primordial_static_mr.exe
     MAX_NCELLS=1000000
     NTHREADS=1
     NVAR=15)
+
+add_test(primordial_static_mr
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS}
+  ./primordial_static_mr.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_static/input_primordial_static.txt
+  --nx 12 --ny 12 --nz 12)
 
 # primordial blast tests
 sundemo_add_executable(primordial_blast_imex.exe
@@ -384,6 +454,9 @@ sundemo_add_executable(primordial_blast_imex.exe
     NTHREADS=1
     NVAR=15)
 
+add_test(primordial_blast_imex
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./primordial_blast_imex.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_blast/input_primordial_blast_imex.txt)
+
 sundemo_add_executable(primordial_blast_mr.exe
   SOURCES
     primordial_blast.cpp
@@ -398,6 +471,9 @@ sundemo_add_executable(primordial_blast_mr.exe
     NTHREADS=1
     NVAR=15)
 
+add_test(primordial_blast_mr
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./primordial_blast_mr.exe -f ${CMAKE_SOURCE_DIR}/tests/primordial_blast/input_primordial_blast_mr.txt)
+
 # fluid blast test
 sundemo_add_executable(fluid_blast.exe
   SOURCES
@@ -407,6 +483,9 @@ sundemo_add_executable(fluid_blast.exe
     shared_obj_nvar_5
   COMPILE_DEFINITIONS
     NVAR=5)
+
+add_test(fluid_blast
+  ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_MAX_NUMPROCS} ./fluid_blast.exe -f ${CMAKE_SOURCE_DIR}/tests/fluid_blast/input_fluid_blast.txt)
 
 # magma scaling test
 if(RAJA_BACKEND MATCHES "CUDA|HIP")

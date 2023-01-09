@@ -9,7 +9,7 @@
 # Top level CMakeLists.txt for the SUNDIALS demonstration application
 # ------------------------------------------------------------------------------
 
-cmake_minimum_required(VERSION 3.18.0)
+cmake_minimum_required(VERSION 3.20)
 
 # prohibit in-source build
 if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
@@ -20,6 +20,9 @@ endif()
 set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type")
 
 project(SUNDIALS-DEMO C CXX)
+
+# Enable testing
+include(CTest)
 
 # -------
 # Macros
