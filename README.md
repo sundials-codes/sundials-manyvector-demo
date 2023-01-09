@@ -237,7 +237,9 @@ are provided:
 * sundials-demo-spack-develop -- based on the Spack develop branch and updated
   monthly
 
-Pull the image(s) using [Docker](https://www.docker.com/) e.g.,
+Pull the image(s) using [Docker](https://www.docker.com/) (or [Podman](https://podman.io)).
+For example, the `run` command below will pull the image and start the container
+and the `exec` command will start a bash shell inside the container.
 ```
 docker run -t -d --name sundialsci-demo-spack-latest ghcr.io/sundials-codes/sundials-demo-spack-latest:spack-latest
 docker exec -it sundials-demo-spack-lateset bash
