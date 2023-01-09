@@ -156,7 +156,6 @@ above for linear systems that arise within the modified Newton iteration.
 The following steps describe how to build the demonstration code in a Linux or
 OS X environment.
 
-
 ### Gettting the Code
 
 To obtain the code, clone this repository with Git:
@@ -193,7 +192,7 @@ To compile the code you will need:
 * the [MAGMA](https://icl.utk.edu/magma/) dense linear solver library (when
   using a GPU backend)
 
-### Installing Dependencies
+#### Installing Dependencies with Spack
 
 Many of the above dependencies can be installed using the
 [Spack](https://spack.io/) package manager. For information on using Spack see
@@ -225,6 +224,27 @@ spack env create sundials-demo spack-summit.yaml
 spack env activate sundials-demo
 spack install
 ```
+
+#### Using Docker Containers
+
+It also possible to use the Docker containers from the [GitHub Container Registry](https://github.com/orgs/sundials-codes/packages?repo_name=sundials-manyvector-demo)
+with the necessary dependencies preinstalled for CPU-only testing. Two images
+are provided:
+
+* sundials-demo-spack-latest -- based on the latest Spack release (currently
+  v0.19.0)
+
+* sundials-demo-spack-develop -- based on the Spack develop branch and updated
+  monthly
+
+Pull the image(s) using [Docker](https://www.docker.com/) e.g.,
+```
+docker run -t -d --name sundialsci-demo-spack-latest ghcr.io/sundials-codes/sundials-demo-spack-latest:spack-latest
+docker exec -it sundials-demo-spack-lateset bash
+```
+Then clone this repository with Git and configure/build the code as described
+below. The Spack installed dependencies are available from the `/opt/view`
+directory.
 
 ### Configuration Options
 
