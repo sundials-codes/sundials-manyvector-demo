@@ -302,21 +302,24 @@ variables may also be set:
 
 In-source builds are not permitted, as such the code should be configured and
 built from a separate build directory e.g.,
-
 ```bash
   cd sundials-manyvector-demo
   mkdir build
   cd build
   cmake ../. \
-    -DCMAKE_INSTALL_PREFIX="my/install/path/sundials-demo" \
+    -DCMAKE_INSTALL_PREFIX="[install-path]" \
     -DRAJA_BACKEND="SERIAL" \
     -DENABLE_HDF5="ON" \
-    -DHDF5_ROOT="~/views/sundials-demo" \
-    -DRAJA_ROOT="~/views/sundials-demo" \
-    -DSUNDIALS_ROOT="~/views/sundials-demo"
+    -DHDF5_ROOT="[spack-view-path]" \
+    -DRAJA_ROOT="[spack-view-path]" \
+    -DSUNDIALS_ROOT="[spack-view-path]"
   make
   make install
 ```
+where `[install-path]` is the path to where the binary and test input files
+should be installed and `[spack-view-path]` is the path to the Spack environment
+view, `~/views/sundials-demo` when following the Spack instructions above or
+`/opt/view` when using the Docker containers.
 
 ## Running
 
