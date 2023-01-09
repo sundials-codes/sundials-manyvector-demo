@@ -216,9 +216,7 @@ directory contains environment files leveraging software already available on
 the system. For example, on the OLCF Summit system:
 
 ```bash
-module load gcc/10.2.0
-module load cuda/11.4.2
-module load cmake/3.21.3
+module load gcc/10.2.0 cuda/11.4.2 cmake/3.21.3
 cd spack
 spack env create sundials-demo spack-summit.yaml
 spack env activate sundials-demo
