@@ -86,6 +86,13 @@ if(RAJA_BACKEND MATCHES "CUDA")
   set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 endif()
 
+if(RAJA_BACKEND MATCHES "HIP")
+  enable_language(HIP)
+  show_language_flags(HIP)
+  set(CMAKE_HIP_ARCHITECTURES "gfx90a" CACHE STRING "HIP Architecture")
+  set(CMAKE_HIP_STANDARD ${CMAKE_CXX_STANDARD})
+endif()
+
 # ----
 # MPI
 # ----
