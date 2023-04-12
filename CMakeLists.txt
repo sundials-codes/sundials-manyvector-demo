@@ -63,6 +63,15 @@ set(RAJA_BACKEND "SERIAL"
   CACHE STRING "RAJA Backend to use: SERIAL, OPENMP, CUDA, HIP")
 set_property(CACHE RAJA_BACKEND PROPERTY STRINGS "SERIAL;OPENMP;CUDA;HIP")
 
+if(RAJA_BACKEND MATCHES "HIP")
+  find_package(HIP)
+  enable_language(HIP)
+  show_language_flags(HIP)
+  set(AMDGPU_TARGETS "gfx90a" CACHE STRING "HIP Architecture")
+  set(CMAKE_HIP_STANDARD ${CMAKE_CXX_STANDARD})
+endif()
+
+
 set(RAJA_ROOT "$ENV{RAJA_ROOT}"
   CACHE PATH "Root directory of RAJA install")
 
@@ -80,17 +89,10 @@ message(STATUS "Found RAJA: ${RAJA_DIR}")
 mark_as_advanced(FORCE RAJA_DIR)
 
 if(RAJA_BACKEND MATCHES "CUDA")
-  enable_language(CUDA)
-  show_language_flags(CUDA)
+enable_language(CUDA)
+show_language_flags(CUDA)
   set(CMAKE_CUDA_ARCHITECTURES "70" CACHE STRING "CUDA Architecture")
   set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
-endif()
-
-if(RAJA_BACKEND MATCHES "HIP")
-  enable_language(HIP)
-  show_language_flags(HIP)
-  set(CMAKE_HIP_ARCHITECTURES "gfx90a" CACHE STRING "HIP Architecture")
-  set(CMAKE_HIP_STANDARD ${CMAKE_CXX_STANDARD})
 endif()
 
 # ----
