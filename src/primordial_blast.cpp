@@ -80,11 +80,11 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // output test problem information
   if (udata.myid == 0)
-    cout << "\nPrimordial blast test problem\n";
+    cout << endl << "Primordial blast test problem" << endl;
 
   // ensure that this is compiled with 10 chemical species
   if (udata.nchem != 10) {
-    cerr << "\nIncorrect number of chemical fields, exiting\n\n";
+    cerr << endl << "Incorrect number of chemical fields, exiting" << endl << endl;
     return -1;
   }
   realtype *chem = NULL;
@@ -164,7 +164,7 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
   // output clump information
   if (udata.myid == 0)
-    cout << "\nInitializing problem with " << CLUMPS_PER_PROC*udata.nprocs << " clumps\n";
+    cout << endl << "Initializing problem with " << CLUMPS_PER_PROC*udata.nprocs << " clumps" << endl;
 
   // initial condition values -- essentially-neutral primordial gas
   realtype tiny = 1e-40;
@@ -300,10 +300,10 @@ int initial_conditions(const realtype& t, N_Vector w, const EulerData& udata)
 
 #ifdef USE_DEVICE
   // ensure that chemistry values are synchronized to device
+  if (udata.myid == 0)
+    cout << endl << "Copying chemistry data to device memory" << endl;
   N_VCopyToDevice_Raja(N_VGetSubvector_MPIManyVector(w,5));
 #endif
-
-  //free(clump_data);
 
   return 0;
 }
@@ -323,31 +323,22 @@ int initialize_Dengo_structures(EulerData& udata) {
   int retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
 
-  // initialize primordial rate tables, etc
-  cvklu_data *network_data = NULL;
-  network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
-                                  udata.nxl * udata.nyl * udata.nzl,
-                                  udata.memhelper, -1.0);
-  if (network_data == NULL)  return(1);
+  // Initialize ReactionNetwork for host/device reaction rate structure.
+  ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                                   udata.nxl * udata.nyl * udata.nzl, -1.0);
+  if (network_data == nullptr)  return(1);
 
-
-  // initialize 'scale' and 'inv_scale' to valid values
-  double *sc = network_data->scale;
-  double *isc = network_data->inv_scale;
+  // Initialize "scale" and "inv_scale" on device (but in host cvklu_data structure).
+  cvklu_data *hdata = network_data->HPtr();
+  double *sc = hdata->scale;
+  double *isc = hdata->inv_scale;
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,udata.nxl * udata.nyl * udata.nzl * udata.nchem),
                            [=] RAJA_DEVICE (long int i) {
     sc[i] = ONE;
     isc[i] = ONE;
   });
 
-  // ensure that newtork_data structure is synchronized between host/device device memory
-#ifdef RAJA_CUDA
-  cudaDeviceSynchronize();
-#elif RAJA_HIP
-  hipDeviceSynchronize();
-#endif
-
-  // store pointer to network_data in udata, stop profiler, and return
+  // Store pointer to network_data in udata, stop profiler, and return.
   udata.RxNetData = (void*) network_data;
   retval = udata.profile[PR_CHEMSETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -357,8 +348,8 @@ int initialize_Dengo_structures(EulerData& udata) {
 
 // Utility routine to free Dengo data structures
 void free_Dengo_structures(EulerData& udata) {
-  // call utility routine to free contents of Dengo_data structure
-  cvklu_free_data(udata.RxNetData, udata.memhelper);
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
+  delete data;
   udata.RxNetData = NULL;
 }
 
@@ -367,10 +358,12 @@ void free_Dengo_structures(EulerData& udata) {
 // for subsequent chemical evolution
 int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 {
-  // access Dengo data structure
-  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
 
-  // move current chemical solution values into 'network_data->scale' structure
+  // Access ReactionNetwork for Dengo data structure, and extract host cvklu_data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
+  cvklu_data *network_data = data->HPtr();
+
+  // Move current chemical solution values into "network_data->scale" structure.
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
@@ -395,7 +388,7 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
    });
 
   // compute auxiliary values within network_data structure
-  setting_up_extra_variables( network_data, udata.nxl*udata.nyl*udata.nzl );
+  setting_up_extra_variables( data, udata.nxl*udata.nyl*udata.nzl );
   return(0);
 }
 
@@ -403,10 +396,11 @@ int prepare_Dengo_structures(realtype& t, N_Vector w, EulerData& udata)
 // into overall N_Vector solution (does not change 'scale')
 int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  // access Dengo data structure
-  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+  // Access ReactionNetwork for Dengo data structure, and extract host cvklu_data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
+  cvklu_data *network_data = data->HPtr();
 
-  // update current overall solution using 'network_data->scale' structure
+  // Update current overall solution using "network_data->scale" structure.
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);
@@ -432,10 +426,11 @@ int apply_Dengo_scaling(N_Vector w, EulerData& udata)
 // Utility routine to undo a previous call to apply_Dengo_scaling (does not change 'scale')
 int unapply_Dengo_scaling(N_Vector w, EulerData& udata)
 {
-  // access Dengo data structure
-  cvklu_data *network_data = (cvklu_data*) udata.RxNetData;
+  // Access ReactionNetwork for Dengo data structure, and extract host cvklu_data structure.
+  ReactionNetwork *data = (ReactionNetwork*) udata.RxNetData;
+  cvklu_data *network_data = data->HPtr();
 
-  // update current overall solution using 'network_data->scale' structure
+  // Update current overall solution using "network_data->scale" structure.
   int nchem = udata.nchem;
   RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale,
                                               udata.nzl, udata.nyl, udata.nxl, udata.nchem);

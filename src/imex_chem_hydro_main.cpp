@@ -909,8 +909,6 @@ static int Jimpl(realtype t, N_Vector w, N_Vector fw, SUNMatrix Jac,
 
 static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 {
-  long int i, j, k, cidx, fidx;
-
   // start timer
   EulerData *udata = (EulerData*) user_data;
   int retval = udata->profile[PR_RHSSLOW].start();
@@ -948,14 +946,13 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // fill dimensionless total fluid energy field (internal energy + kinetic energy)
   realtype EUnitScale = ONE/udata->EnergyUnits;
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        realtype ge = chem[cidx];
-        ge *= EUnitScale;   // convert from physical units to code units
-        fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
-        et[fidx] = ge + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
+  for (long int k=0; k<udata->nzl; k++)
+    for (long int j=0; j<udata->nyl; j++)
+      for (long int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+        et[fidx] =  chem[cidx] * EUnitScale
+          + 0.5/rho[fidx]*(mx[fidx]*mx[fidx] + my[fidx]*my[fidx] + mz[fidx]*mz[fidx]);
       }
 
 #ifndef DISABLE_HYDRO
@@ -975,11 +972,11 @@ static int fexpl(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   // RHS should compute dy/dt = dy/dtau * dtau/dt = dy/dtau * 1/TimeUnits
 //  realtype TUnitScale = ONE/udata->TimeUnits;
   realtype TUnitScale = ONE;
-  for (k=0; k<udata->nzl; k++)
-    for (j=0; j<udata->nyl; j++)
-      for (i=0; i<udata->nxl; i++) {
-        cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
-        fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
+  for (long int k=0; k<udata->nzl; k++)
+    for (long int j=0; j<udata->nyl; j++)
+      for (long int i=0; i<udata->nxl; i++) {
+        const long int cidx = BUFINDX(udata->nchem-1,i,j,k,udata->nchem,udata->nxl,udata->nyl,udata->nzl);
+        const long int fidx = INDX(i,j,k,udata->nxl,udata->nyl,udata->nzl);
         chemdot[cidx] = etdot[fidx]*TUnitScale;
         etdot[fidx] = ZERO;
       }

@@ -155,10 +155,13 @@ int main(int argc, char* argv[]) {
   // initialize primordial rate tables, etc
   retval = udata.profile[PR_CHEMSETUP].start();
   if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(udata.comm, 1);
-  cvklu_data *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
-                                              nstrip, udata.memhelper, -1.0);
 
-  //    store pointer to network_data in udata
+  // Initialize ReactionNetwork for host/device reaction rate structure.
+  ReactionNetwork *network_data = cvklu_setup_data(udata.comm, "primordial_tables.h5",
+                                                   nstrip, -1.0);
+  if (network_data == nullptr)  return(1);
+
+  //    store pointer to network_data in udata, and stop chemistry setup profiler.
   udata.RxNetData = (void*) network_data;
   retval = udata.profile[PR_CHEMSETUP].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(udata.comm, 1);
@@ -166,10 +169,10 @@ int main(int argc, char* argv[]) {
   // initialize N_Vector data structures
   N = (udata.nchem)*nstrip;
 #ifdef USE_DEVICE
-  w = N_VNewManaged_Raja(N, udata.ctx);
-  if (check_flag((void *) w, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
-  atols = N_VNewManaged_Raja(N, udata.ctx);
-  if (check_flag((void *) atols, "N_VNewManaged_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+  w = N_VNew_Raja(N, udata.ctx);
+  if (check_flag((void *) w, "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
+  atols = N_VNew_Raja(N, udata.ctx);
+  if (check_flag((void *) atols, "N_VNew_Raja (main)", 0)) MPI_Abort(udata.comm, 1);
 #else
   w = N_VNew_Serial(N, udata.ctx);
   if (check_flag((void *) w, "N_VNew_Serial (main)", 0)) MPI_Abort(udata.comm, 1);
@@ -400,9 +403,10 @@ int main(int argc, char* argv[]) {
 
   // move input solution values into 'scale' components of network_data structure
   int nchem = udata.nchem;
-  RAJA::View<double, RAJA::Layout<4> > scview(network_data->scale, udata.nzl,
+  cvklu_data *h_data = network_data->HPtr();
+  RAJA::View<double, RAJA::Layout<4> > scview(h_data->scale, udata.nzl,
                                               udata.nyl, udata.nxl, udata.nchem);
-  RAJA::View<double, RAJA::Layout<4> > iscview(network_data->inv_scale, udata.nzl,
+  RAJA::View<double, RAJA::Layout<4> > iscview(h_data->inv_scale, udata.nzl,
                                                udata.nyl, udata.nxl, udata.nchem);
   RAJA::kernel<XYZ_KERNEL_POL>(RAJA::make_tuple(RAJA::RangeSegment(0, udata.nzl),
                                                 RAJA::RangeSegment(0, udata.nyl),
@@ -541,7 +545,7 @@ int main(int argc, char* argv[]) {
   //    Output initial conditions to disk (IMPLEMENT LATER, IF DESIRED)
 
   //    Output problem-specific diagnostic information
-  print_info(arkode_mem, udata.t0, w, network_data, udata);
+  print_info(arkode_mem, udata.t0, w, network_data->HPtr(), udata);
   retval = udata.profile[PR_IO].stop();
   if (check_flag(&retval, "Profile::stop (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
@@ -579,7 +583,7 @@ int main(int argc, char* argv[]) {
     if (check_flag(&retval, "Profile::start (main)", 1)) MPI_Abort(MPI_COMM_WORLD, 1);
 
     //    output statistics to stdout
-    print_info(arkode_mem, t, w, network_data, udata);
+    print_info(arkode_mem, t, w, network_data->HPtr(), udata);
 
     //    output results to disk
     //    TODO
@@ -656,7 +660,7 @@ int main(int argc, char* argv[]) {
   }
 
   // Clean up and return with successful completion
-  cvklu_free_data(network_data, udata.memhelper);  // Free Dengo data structure
+  delete network_data;            // Free ReactionNetwork data structure
   udata.RxNetData = NULL;
 #ifdef RAJA_CUDA
   cudaFree(clump_data);
@@ -725,7 +729,11 @@ void print_info(void *arkode_mem, realtype &t, N_Vector w,
                 cvklu_data *network_data, EulerData &udata)
 {
   // access N_Vector data
+#ifdef USE_DEVICE
+  realtype *wdata = N_VGetDeviceArrayPointer(w);
+#else
   realtype *wdata = N_VGetArrayPointer(w);
+#endif
   if (wdata == NULL)  return;
 
   // set some constants

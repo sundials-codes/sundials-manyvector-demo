@@ -907,9 +907,11 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
   N_VConst(ZERO, wdot);
 
   // call Dengo RHS routine on chemistry subvectors
-  N_Vector wchem = N_VGetSubvector_ManyVector(w, 5);
+  N_Vector wchem = NULL;
+  wchem = N_VGetSubvector_ManyVector(w, 5);
   if (check_flag((void *) wchem, "N_VGetSubvector_ManyVector (ffast)", 0))  return(-1);
-  N_Vector wchemdot = N_VGetSubvector_ManyVector(wdot, 5);
+  N_Vector wchemdot = NULL;
+  wchemdot = N_VGetSubvector_ManyVector(wdot, 5);
   if (check_flag((void *) wchemdot, "N_VGetSubvector_ManyVector (ffast)", 0))  return(-1);
   retval = calculate_rhs_cvklu(t, wchem, wchemdot,
                                (udata->nxl)*(udata->nyl)*(udata->nzl),
@@ -921,6 +923,7 @@ static int ffast(realtype t, N_Vector w, N_Vector wdot, void *user_data)
 
   // update wdot with forcing terms from slow time scale (if applicable)
   if (!inner_content->disable_forcing) {
+
     int nforcing;
     realtype tshift, tscale;
     N_Vector *forcing;   // Note: this is an array of MPIManyVectors

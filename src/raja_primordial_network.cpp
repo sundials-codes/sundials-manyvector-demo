@@ -11,24 +11,6 @@
 
 #include <raja_primordial_network.hpp>
 
-// HIP vs RAJA vs serial/OpenMP
-#if defined(RAJA_CUDA)
-#define HIP_OR_CUDA(a,b) b
-#define dmalloc(ptr, len) cudaMallocManaged((void**)&ptr, len*sizeof(double))
-#define dcopy(dst, src, len) cudaMemcpy(dst, src, (len)*sizeof(double), cudaMemcpyHostToDevice)
-#define dfree(ptr)   cudaFree(ptr)
-#elif defined(RAJA_HIP)
-#define HIP_OR_CUDA(a,b) a
-#define dmalloc(ptr, len) hipMallocManaged((void**)&ptr, len*sizeof(double))
-#define dcopy(dst, src, len) hipMemcpy(dst, src, (len)*sizeof(double), hipMemcpyHostToDevice)
-#define dfree(ptr)   hipFree(ptr)
-#else
-#define HIP_OR_CUDA(a,b) ((void)0);
-#define dmalloc(ptr, len) ptr = (double *) malloc(len*sizeof(double))
-#define dcopy(dst, src, len) memcpy(dst, src, (len)*sizeof(double))
-#define dfree(ptr)   free(ptr)
-#endif
-
 // sparse vs dense
 #define NSPARSE 64
 #ifdef USE_DEVICE
@@ -39,428 +21,529 @@
 #define SPARSEIDX(blk,off) (blk*NSPARSE + off)
 #define DENSEIDX(blk,row,col) (blk*NSPECIES*NSPECIES + col*NSPECIES + row)
 
+// device memory space utility routine implementations
+#if defined(RAJA_CUDA)
+void devFree(void** ptr) {
+  if (*ptr != nullptr) {
+    cudaFree(*ptr);
+    *ptr = nullptr;
+  }
+}
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize) {
+  cudaMemcpy(devPtr, hostPtr, memSize, cudaMemcpyHostToDevice);
+  cudaDeviceSynchronize();
+  cudaError_t retval = cudaGetLastError();
+  if (retval != cudaSuccess) {
+    std::cerr << ">>> ERROR in copying host-to-device memory: cudaGetLastError returned %s\n"
+              << cudaGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize) {
+  cudaMemcpy(hostPtr, devPtr, memSize, cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+  cudaError_t retval = cudaGetLastError();
+  if (retval != cudaSuccess) {
+    std::cerr << ">>> ERROR in copying device-to-host memory: cudaGetLastError returned %s\n"
+              << cudaGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyFence() {
+  cudaDeviceSynchronize();
+  cudaError_t retval = cudaGetLastError();
+  if (retval != cudaSuccess) {
+    std::cerr << ">>> ERROR in synchronizing device memory: cudaGetLastError returned %s\n"
+              << cudaGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+#elif defined(RAJA_HIP)
+void devFree(void** ptr) {
+  if (*ptr != nullptr) {
+    hipFree(*ptr);
+    *ptr = nullptr;
+  }
+}
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize) {
+  hipMemcpy(devPtr, hostPtr, memSize, hipMemcpyHostToDevice);
+  hipDeviceSynchronize();
+  hipError_t retval = hipGetLastError();
+  if (retval != hipSuccess) {
+    std::cerr << ">>> ERROR in copying host-to-device memory: hipGetLastError returned %s\n"
+              << hipGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize) {
+  hipMemcpy(hostPtr, devPtr, memSize, hipMemcpyDeviceToHost);
+  hipDeviceSynchronize();
+  hipError_t retval = hipGetLastError();
+  if (retval != hipSuccess) {
+    std::cerr << ">>> ERROR in copying device-to-host memory: hipGetLastError returned %s\n"
+              << hipGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+int copyFence() {
+  hipDeviceSynchronize();
+  hipError_t retval = hipGetLastError();
+  if (retval != hipSuccess) {
+    std::cerr << ">>> ERROR in synchronizing device memory: hipGetLastError returned %s\n"
+              << hipGetErrorName(retval);
+    return 1;
+  } else {
+    return 0;
+  }
+}
+#else
+void devFree(void** ptr) {
+  if (*ptr != nullptr) {
+    free(*ptr);
+    *ptr = nullptr;
+  }
+}
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize) {
+  memcpy(devPtr, hostPtr, memSize);
+  return 0;
+}
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize) {
+  memcpy(hostPtr, devPtr, memSize);
+  return 0;
+}
+int copyFence() {
+  return 0;
+}
+#endif
+
+
 // HDF5 table lookup size
 #define TSIZE 1024
 
-cvklu_data *cvklu_setup_data(MPI_Comm comm, const char *FileLocation, long int ncells,
-                             SUNMemoryHelper memhelper, double current_z)
+ReactionNetwork* cvklu_setup_data(MPI_Comm comm, const char *FileLocation,
+                                  long int ncells, double current_z)
 {
 
   //-----------------------------------------------------
   // Function : cvklu_setup_data
-  // Description: Initialize a data object that stores the reaction/ cooling rate data
-  //
-  //*** To-Do ***
-  // Move the entire structure into device memory, through the steps:
-  // (1) use malloc to create a 'helper' structure in host memory; fill relevant scalars there
-  // (2) use cudaMalloc to create the device structure
-  // (3) use cudaMalloc to create device arrays, while storing device array pointers in the
-  //     *host* structure.
-  // (4) use cudaMemcpy to copy the entire host structure (i.e., scalar values and device
-  //     array pointers) to the device structure
-  //***
+  // Description: Initializes a "ReactionNetwork" data
+  //    object that stores the reaction/ cooling rate
+  //    data in both host and device memory.
   //-----------------------------------------------------
 
-  cvklu_data *data = NULL;
-#ifdef RAJA_CUDA
-  cudaMallocManaged((void**)&(data), sizeof(cvklu_data));
-#elif RAJA_HIP
-  hipMallocManaged((void**)&(data), sizeof(cvklu_data));
-#else
-  data = (cvklu_data *) malloc(sizeof(cvklu_data));
-#endif
+  // Allocate both host and device cvklu_data structures (return on failure)
+  ReactionNetwork *data = new ReactionNetwork(true);
+  if (data == nullptr)  return nullptr;
 
-  // point the module to look for cvklu_tables.h5
-  data->dengo_data_file = FileLocation;
+  // Access host and device cvklu_data structures
+  cvklu_data *hdata = data->HPtr();
+  cvklu_data *ddata = data->DPtr();
 
-  // Number of cells to be solved in a batch
-  data->nstrip = ncells;
+  // Number of cells to be solved in a batch; set the current redshift
+  hdata->nstrip = ncells;
+  hdata->current_z = current_z;
 
-  // allocate reaction rate arrays
-  dmalloc(data->Ts, ncells);
-  dmalloc(data->dTs_ge, ncells);
-  dmalloc(data->mdensity, ncells);
-  dmalloc(data->inv_mdensity, ncells);
-  dmalloc(data->rs_k01, ncells);
-  dmalloc(data->drs_k01, ncells);
-  dmalloc(data->rs_k02, ncells);
-  dmalloc(data->drs_k02, ncells);
-  dmalloc(data->rs_k03, ncells);
-  dmalloc(data->drs_k03, ncells);
-  dmalloc(data->rs_k04, ncells);
-  dmalloc(data->drs_k04, ncells);
-  dmalloc(data->rs_k05, ncells);
-  dmalloc(data->drs_k05, ncells);
-  dmalloc(data->rs_k06, ncells);
-  dmalloc(data->drs_k06, ncells);
-  dmalloc(data->rs_k07, ncells);
-  dmalloc(data->drs_k07, ncells);
-  dmalloc(data->rs_k08, ncells);
-  dmalloc(data->drs_k08, ncells);
-  dmalloc(data->rs_k09, ncells);
-  dmalloc(data->drs_k09, ncells);
-  dmalloc(data->rs_k10, ncells);
-  dmalloc(data->drs_k10, ncells);
-  dmalloc(data->rs_k11, ncells);
-  dmalloc(data->drs_k11, ncells);
-  dmalloc(data->rs_k12, ncells);
-  dmalloc(data->drs_k12, ncells);
-  dmalloc(data->rs_k13, ncells);
-  dmalloc(data->drs_k13, ncells);
-  dmalloc(data->rs_k14, ncells);
-  dmalloc(data->drs_k14, ncells);
-  dmalloc(data->rs_k15, ncells);
-  dmalloc(data->drs_k15, ncells);
-  dmalloc(data->rs_k16, ncells);
-  dmalloc(data->drs_k16, ncells);
-  dmalloc(data->rs_k17, ncells);
-  dmalloc(data->drs_k17, ncells);
-  dmalloc(data->rs_k18, ncells);
-  dmalloc(data->drs_k18, ncells);
-  dmalloc(data->rs_k19, ncells);
-  dmalloc(data->drs_k19, ncells);
-  dmalloc(data->rs_k21, ncells);
-  dmalloc(data->drs_k21, ncells);
-  dmalloc(data->rs_k22, ncells);
-  dmalloc(data->drs_k22, ncells);
-  dmalloc(data->cs_brem_brem, ncells);
-  dmalloc(data->dcs_brem_brem, ncells);
-  dmalloc(data->cs_ceHeI_ceHeI, ncells);
-  dmalloc(data->dcs_ceHeI_ceHeI, ncells);
-  dmalloc(data->cs_ceHeII_ceHeII, ncells);
-  dmalloc(data->dcs_ceHeII_ceHeII, ncells);
-  dmalloc(data->cs_ceHI_ceHI, ncells);
-  dmalloc(data->dcs_ceHI_ceHI, ncells);
-  dmalloc(data->cs_cie_cooling_cieco, ncells);
-  dmalloc(data->dcs_cie_cooling_cieco, ncells);
-  dmalloc(data->cs_ciHeI_ciHeI, ncells);
-  dmalloc(data->dcs_ciHeI_ciHeI, ncells);
-  dmalloc(data->cs_ciHeII_ciHeII, ncells);
-  dmalloc(data->dcs_ciHeII_ciHeII, ncells);
-  dmalloc(data->cs_ciHeIS_ciHeIS, ncells);
-  dmalloc(data->dcs_ciHeIS_ciHeIS, ncells);
-  dmalloc(data->cs_ciHI_ciHI, ncells);
-  dmalloc(data->dcs_ciHI_ciHI, ncells);
-  dmalloc(data->cs_compton_comp_, ncells);
-  dmalloc(data->dcs_compton_comp_, ncells);
-  dmalloc(data->cs_gloverabel08_gael, ncells);
-  dmalloc(data->dcs_gloverabel08_gael, ncells);
-  dmalloc(data->cs_gloverabel08_gaH2, ncells);
-  dmalloc(data->dcs_gloverabel08_gaH2, ncells);
-  dmalloc(data->cs_gloverabel08_gaHe, ncells);
-  dmalloc(data->dcs_gloverabel08_gaHe, ncells);
-  dmalloc(data->cs_gloverabel08_gaHI, ncells);
-  dmalloc(data->dcs_gloverabel08_gaHI, ncells);
-  dmalloc(data->cs_gloverabel08_gaHp, ncells);
-  dmalloc(data->dcs_gloverabel08_gaHp, ncells);
-  dmalloc(data->cs_gloverabel08_h2lte, ncells);
-  dmalloc(data->dcs_gloverabel08_h2lte, ncells);
-  dmalloc(data->cs_h2formation_h2mcool, ncells);
-  dmalloc(data->dcs_h2formation_h2mcool, ncells);
-  dmalloc(data->cs_h2formation_h2mheat, ncells);
-  dmalloc(data->dcs_h2formation_h2mheat, ncells);
-  dmalloc(data->cs_h2formation_ncrd1, ncells);
-  dmalloc(data->dcs_h2formation_ncrd1, ncells);
-  dmalloc(data->cs_h2formation_ncrd2, ncells);
-  dmalloc(data->dcs_h2formation_ncrd2, ncells);
-  dmalloc(data->cs_h2formation_ncrn, ncells);
-  dmalloc(data->dcs_h2formation_ncrn, ncells);
-  dmalloc(data->cs_reHeII1_reHeII1, ncells);
-  dmalloc(data->dcs_reHeII1_reHeII1, ncells);
-  dmalloc(data->cs_reHeII2_reHeII2, ncells);
-  dmalloc(data->dcs_reHeII2_reHeII2, ncells);
-  dmalloc(data->cs_reHeIII_reHeIII, ncells);
-  dmalloc(data->dcs_reHeIII_reHeIII, ncells);
-  dmalloc(data->cs_reHII_reHII, ncells);
-  dmalloc(data->dcs_reHII_reHII, ncells);
-  dmalloc(data->cie_optical_depth_approx, ncells);
-  dmalloc(data->h2_optical_depth_approx, ncells);
+  //
+  // Perform initialization in host cvklu_data structure (but filling data
+  // directly on the device).
+  //
 
-  // allocate scaling arrays
-  dmalloc(data->scale, NSPECIES*ncells);
-  dmalloc(data->inv_scale, NSPECIES*ncells);
-  data->current_z = current_z;
+  // Allocate reaction rate arrays.
+  devMalloc(hdata->Ts, double, sizeof(double)*ncells);
+  devMalloc(hdata->dTs_ge, double, sizeof(double)*ncells);
+  devMalloc(hdata->mdensity, double, sizeof(double)*ncells);
+  devMalloc(hdata->inv_mdensity, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k01, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k01, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k02, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k02, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k03, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k03, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k04, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k04, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k05, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k05, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k06, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k06, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k07, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k07, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k08, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k08, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k09, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k09, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k10, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k10, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k11, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k11, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k12, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k12, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k13, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k13, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k14, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k14, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k15, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k15, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k16, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k16, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k17, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k17, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k18, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k18, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k19, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k19, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k21, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k21, double, sizeof(double)*ncells);
+  devMalloc(hdata->rs_k22, double, sizeof(double)*ncells);
+  devMalloc(hdata->drs_k22, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_brem_brem, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_brem_brem, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ceHeI_ceHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ceHeI_ceHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ceHeII_ceHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ceHeII_ceHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ceHI_ceHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ceHI_ceHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_cie_cooling_cieco, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_cie_cooling_cieco, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHeI_ciHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHeI_ciHeI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHeII_ciHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHeII_ciHeII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHeIS_ciHeIS, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHeIS_ciHeIS, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_ciHI_ciHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_ciHI_ciHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_compton_comp_, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_compton_comp_, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gael, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gael, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaH2, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaH2, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaHe, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaHe, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaHI, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_gaHp, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_gaHp, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_gloverabel08_h2lte, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_gloverabel08_h2lte, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_h2mcool, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_h2mcool, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_h2mheat, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_h2mheat, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_ncrd1, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_ncrd1, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_ncrd2, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_ncrd2, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_h2formation_ncrn, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_h2formation_ncrn, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHeII1_reHeII1, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHeII1_reHeII1, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHeII2_reHeII2, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHeII2_reHeII2, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHeIII_reHeIII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHeIII_reHeIII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cs_reHII_reHII, double, sizeof(double)*ncells);
+  devMalloc(hdata->dcs_reHII_reHII, double, sizeof(double)*ncells);
+  devMalloc(hdata->cie_optical_depth_approx, double, sizeof(double)*ncells);
+  devMalloc(hdata->h2_optical_depth_approx, double, sizeof(double)*ncells);
 
-  // initialize temperature so it wont crash
-  double *Ts_dev = data->Ts;
+  // Allocate scaling arrays.
+  devMalloc(hdata->scale, double, sizeof(double)*NSPECIES*ncells);
+  devMalloc(hdata->inv_scale, double, sizeof(double)*NSPECIES*ncells);
+
+  // Initialize temperature.
+  double *Ts_dev = hdata->Ts;
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,ncells), [=] RAJA_DEVICE (long int i) {
     Ts_dev[i] = 1000.0;
   });
 
-  // Temperature-related pieces
-  data->bounds[0] = 1.0;
-  data->bounds[1] = 100000.0;
-  data->nbins = TSIZE - 1;
-  data->dbin = (log(data->bounds[1]) - log(data->bounds[0])) / data->nbins;
-  data->idbin = 1.0L / data->dbin;
+  // Set temperature-related pieces.
+  hdata->bounds[0] = 1.0;
+  hdata->bounds[1] = 100000.0;
+  hdata->nbins = TSIZE - 1;
+  hdata->dbin = (log(hdata->bounds[1]) - log(hdata->bounds[0])) / hdata->nbins;
+  hdata->idbin = 1.0L / hdata->dbin;
 
-  // allocate Temperature-dependent rate tables
-  dmalloc(data->r_k01, TSIZE);
-  dmalloc(data->r_k02, TSIZE);
-  dmalloc(data->r_k03, TSIZE);
-  dmalloc(data->r_k04, TSIZE);
-  dmalloc(data->r_k05, TSIZE);
-  dmalloc(data->r_k06, TSIZE);
-  dmalloc(data->r_k07, TSIZE);
-  dmalloc(data->r_k08, TSIZE);
-  dmalloc(data->r_k09, TSIZE);
-  dmalloc(data->r_k10, TSIZE);
-  dmalloc(data->r_k11, TSIZE);
-  dmalloc(data->r_k12, TSIZE);
-  dmalloc(data->r_k13, TSIZE);
-  dmalloc(data->r_k14, TSIZE);
-  dmalloc(data->r_k15, TSIZE);
-  dmalloc(data->r_k16, TSIZE);
-  dmalloc(data->r_k17, TSIZE);
-  dmalloc(data->r_k18, TSIZE);
-  dmalloc(data->r_k19, TSIZE);
-  dmalloc(data->r_k21, TSIZE);
-  dmalloc(data->r_k22, TSIZE);
-  dmalloc(data->c_brem_brem, TSIZE);
-  dmalloc(data->c_ceHeI_ceHeI, TSIZE);
-  dmalloc(data->c_ceHeII_ceHeII, TSIZE);
-  dmalloc(data->c_ceHI_ceHI, TSIZE);
-  dmalloc(data->c_cie_cooling_cieco, TSIZE);
-  dmalloc(data->c_ciHeI_ciHeI, TSIZE);
-  dmalloc(data->c_ciHeII_ciHeII, TSIZE);
-  dmalloc(data->c_ciHeIS_ciHeIS, TSIZE);
-  dmalloc(data->c_ciHI_ciHI, TSIZE);
-  dmalloc(data->c_compton_comp_, TSIZE);
-  dmalloc(data->c_gloverabel08_gael, TSIZE);
-  dmalloc(data->c_gloverabel08_gaH2, TSIZE);
-  dmalloc(data->c_gloverabel08_gaHe, TSIZE);
-  dmalloc(data->c_gloverabel08_gaHI, TSIZE);
-  dmalloc(data->c_gloverabel08_gaHp, TSIZE);
-  dmalloc(data->c_gloverabel08_h2lte, TSIZE);
-  dmalloc(data->c_h2formation_h2mcool, TSIZE);
-  dmalloc(data->c_h2formation_h2mheat, TSIZE);
-  dmalloc(data->c_h2formation_ncrd1, TSIZE);
-  dmalloc(data->c_h2formation_ncrd2, TSIZE);
-  dmalloc(data->c_h2formation_ncrn, TSIZE);
-  dmalloc(data->c_reHeII1_reHeII1, TSIZE);
-  dmalloc(data->c_reHeII2_reHeII2, TSIZE);
-  dmalloc(data->c_reHeIII_reHeIII, TSIZE);
-  dmalloc(data->c_reHII_reHII, TSIZE);
-  dmalloc(data->g_gammaH2_1, TSIZE);
-  dmalloc(data->g_dgammaH2_1_dT, TSIZE);
-  dmalloc(data->g_gammaH2_2, TSIZE);
-  dmalloc(data->g_dgammaH2_2_dT, TSIZE);
+  // Allocate Temperature-dependent rate tables.
+  devMalloc(hdata->r_k01, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k02, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k03, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k04, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k05, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k06, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k07, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k08, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k09, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k10, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k11, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k12, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k13, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k14, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k15, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k16, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k17, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k18, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k19, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k21, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->r_k22, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_brem_brem, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ceHeI_ceHeI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ceHeII_ceHeII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ceHI_ceHI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_cie_cooling_cieco, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHeI_ciHeI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHeII_ciHeII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHeIS_ciHeIS, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_ciHI_ciHI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_compton_comp_, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gael, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaH2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaHe, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaHI, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_gaHp, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_gloverabel08_h2lte, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_h2mcool, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_h2mheat, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_ncrd1, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_ncrd2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_h2formation_ncrn, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHeII1_reHeII1, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHeII2_reHeII2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHeIII_reHeIII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->c_reHII_reHII, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_gammaH2_1, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_dgammaH2_1_dT, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_gammaH2_2, double, sizeof(double)*TSIZE);
+  devMalloc(hdata->g_dgammaH2_2_dT, double, sizeof(double)*TSIZE);
 
-  // Input rate tables from HDF5
-  cvklu_read_rate_tables(data, FileLocation, data->nbins+1, comm);
-  cvklu_read_cooling_tables(data, FileLocation, data->nbins+1, comm);
-  cvklu_read_gamma(data, FileLocation, data->nbins+1, comm);
-  return data;
+  // Input rate tables from HDF5 file into device memory.
+  int passfail = 0;
+  if (cvklu_read_rate_tables(hdata, FileLocation, comm) != 0)     passfail += 1;
+  if (cvklu_read_cooling_tables(hdata, FileLocation, comm) != 0)  passfail += 1;
+  if (cvklu_read_gamma(hdata, FileLocation, comm) != 0)           passfail += 1;
+
+  // Copy the host cvklu_data structure contents to the device cvklu_data structure.
+  if (data->HostToDevice() != 0)  passfail += 1;
+
+  // Determine overall success/failure of this routine; if any failure occurred on
+  // any MPI rank then return an invalid object.
+  int allpass = 0;
+  if (MPI_Allreduce(&passfail, &allpass, 1, MPI_INT, MPI_SUM, comm) != MPI_SUCCESS)
+    allpass = 1;
+
+  if (allpass == 0) {
+    return data;
+  } else {
+    return nullptr;
+  }
 }
 
 
-void cvklu_free_data(void *data, SUNMemoryHelper memhelper)
+void cvklu_free_data(cvklu_data *data)
 {
 
   //-----------------------------------------------------
   // Function : cvklu_free_data
   // Description: Frees reaction/ cooling rate data
-  //
-  //*** To-Do ***
-  // Move the entire structure into device memory, through the steps:
-  // (1) use malloc to create a 'helper' structure in host memory
-  // (2) use cudaMemcpy to copy the entire device structure to the host structure
-  // (3) use cudaFree to free device arrays, then structure itself
-  // (3) use free to free the host structure
-  //***
+  //   structures from within the cvklu_data structure
   //-----------------------------------------------------
-  cvklu_data *rxdata = (cvklu_data *) data;
 
-  // Free data from within the cvklu_data structure
-  if (rxdata->scale != NULL) { dfree(rxdata->scale); rxdata->scale=NULL; }
-  if (rxdata->inv_scale != NULL) { dfree(rxdata->inv_scale); rxdata->inv_scale=NULL; }
-  if (rxdata->Ts != NULL) { dfree(rxdata->Ts); rxdata->Ts=NULL; }
-  if (rxdata->dTs_ge != NULL) { dfree(rxdata->dTs_ge); rxdata->dTs_ge=NULL; }
-  if (rxdata->mdensity != NULL) { dfree(rxdata->mdensity); rxdata->mdensity=NULL; }
-  if (rxdata->inv_mdensity != NULL) { dfree(rxdata->inv_mdensity); rxdata->inv_mdensity=NULL; }
-  if (rxdata->rs_k01 != NULL) { dfree(rxdata->rs_k01); rxdata->rs_k01=NULL; }
-  if (rxdata->drs_k01 != NULL) { dfree(rxdata->drs_k01); rxdata->drs_k01=NULL; }
-  if (rxdata->rs_k02 != NULL) { dfree(rxdata->rs_k02); rxdata->rs_k02=NULL; }
-  if (rxdata->drs_k02 != NULL) { dfree(rxdata->drs_k02); rxdata->drs_k02=NULL; }
-  if (rxdata->rs_k03 != NULL) { dfree(rxdata->rs_k03); rxdata->rs_k03=NULL; }
-  if (rxdata->drs_k03 != NULL) { dfree(rxdata->drs_k03); rxdata->drs_k03=NULL; }
-  if (rxdata->rs_k04 != NULL) { dfree(rxdata->rs_k04); rxdata->rs_k04=NULL; }
-  if (rxdata->drs_k04 != NULL) { dfree(rxdata->drs_k04); rxdata->drs_k04=NULL; }
-  if (rxdata->rs_k05 != NULL) { dfree(rxdata->rs_k05); rxdata->rs_k05=NULL; }
-  if (rxdata->drs_k05 != NULL) { dfree(rxdata->drs_k05); rxdata->drs_k05=NULL; }
-  if (rxdata->rs_k06 != NULL) { dfree(rxdata->rs_k06); rxdata->rs_k06=NULL; }
-  if (rxdata->drs_k06 != NULL) { dfree(rxdata->drs_k06); rxdata->drs_k06=NULL; }
-  if (rxdata->rs_k07 != NULL) { dfree(rxdata->rs_k07); rxdata->rs_k07=NULL; }
-  if (rxdata->drs_k07 != NULL) { dfree(rxdata->drs_k07); rxdata->drs_k07=NULL; }
-  if (rxdata->rs_k08 != NULL) { dfree(rxdata->rs_k08); rxdata->rs_k08=NULL; }
-  if (rxdata->drs_k08 != NULL) { dfree(rxdata->drs_k08); rxdata->drs_k08=NULL; }
-  if (rxdata->rs_k09 != NULL) { dfree(rxdata->rs_k09); rxdata->rs_k09=NULL; }
-  if (rxdata->drs_k09 != NULL) { dfree(rxdata->drs_k09); rxdata->drs_k09=NULL; }
-  if (rxdata->rs_k10 != NULL) { dfree(rxdata->rs_k10); rxdata->rs_k10=NULL; }
-  if (rxdata->drs_k10 != NULL) { dfree(rxdata->drs_k10); rxdata->drs_k10=NULL; }
-  if (rxdata->rs_k11 != NULL) { dfree(rxdata->rs_k11); rxdata->rs_k11=NULL; }
-  if (rxdata->drs_k11 != NULL) { dfree(rxdata->drs_k11); rxdata->drs_k11=NULL; }
-  if (rxdata->rs_k12 != NULL) { dfree(rxdata->rs_k12); rxdata->rs_k12=NULL; }
-  if (rxdata->drs_k12 != NULL) { dfree(rxdata->drs_k12); rxdata->drs_k12=NULL; }
-  if (rxdata->rs_k13 != NULL) { dfree(rxdata->rs_k13); rxdata->rs_k13=NULL; }
-  if (rxdata->drs_k13 != NULL) { dfree(rxdata->drs_k13); rxdata->drs_k13=NULL; }
-  if (rxdata->rs_k14 != NULL) { dfree(rxdata->rs_k14); rxdata->rs_k14=NULL; }
-  if (rxdata->drs_k14 != NULL) { dfree(rxdata->drs_k14); rxdata->drs_k14=NULL; }
-  if (rxdata->rs_k15 != NULL) { dfree(rxdata->rs_k15); rxdata->rs_k15=NULL; }
-  if (rxdata->drs_k15 != NULL) { dfree(rxdata->drs_k15); rxdata->drs_k15=NULL; }
-  if (rxdata->rs_k16 != NULL) { dfree(rxdata->rs_k16); rxdata->rs_k16=NULL; }
-  if (rxdata->drs_k16 != NULL) { dfree(rxdata->drs_k16); rxdata->drs_k16=NULL; }
-  if (rxdata->rs_k17 != NULL) { dfree(rxdata->rs_k17); rxdata->rs_k17=NULL; }
-  if (rxdata->drs_k17 != NULL) { dfree(rxdata->drs_k17); rxdata->drs_k17=NULL; }
-  if (rxdata->rs_k18 != NULL) { dfree(rxdata->rs_k18); rxdata->rs_k18=NULL; }
-  if (rxdata->drs_k18 != NULL) { dfree(rxdata->drs_k18); rxdata->drs_k18=NULL; }
-  if (rxdata->rs_k19 != NULL) { dfree(rxdata->rs_k19); rxdata->rs_k19=NULL; }
-  if (rxdata->drs_k19 != NULL) { dfree(rxdata->drs_k19); rxdata->drs_k19=NULL; }
-  if (rxdata->rs_k21 != NULL) { dfree(rxdata->rs_k21); rxdata->rs_k21=NULL; }
-  if (rxdata->drs_k21 != NULL) { dfree(rxdata->drs_k21); rxdata->drs_k21=NULL; }
-  if (rxdata->rs_k22 != NULL) { dfree(rxdata->rs_k22); rxdata->rs_k22=NULL; }
-  if (rxdata->drs_k22 != NULL) { dfree(rxdata->drs_k22); rxdata->drs_k22=NULL; }
-  if (rxdata->cs_brem_brem != NULL) { dfree(rxdata->cs_brem_brem); rxdata->cs_brem_brem=NULL; }
-  if (rxdata->dcs_brem_brem != NULL) { dfree(rxdata->dcs_brem_brem); rxdata->dcs_brem_brem=NULL; }
-  if (rxdata->cs_ceHeI_ceHeI != NULL) { dfree(rxdata->cs_ceHeI_ceHeI); rxdata->cs_ceHeI_ceHeI=NULL; }
-  if (rxdata->dcs_ceHeI_ceHeI != NULL) { dfree(rxdata->dcs_ceHeI_ceHeI); rxdata->dcs_ceHeI_ceHeI=NULL; }
-  if (rxdata->cs_ceHeII_ceHeII != NULL) { dfree(rxdata->cs_ceHeII_ceHeII); rxdata->cs_ceHeII_ceHeII=NULL; }
-  if (rxdata->dcs_ceHeII_ceHeII != NULL) { dfree(rxdata->dcs_ceHeII_ceHeII); rxdata->dcs_ceHeII_ceHeII=NULL; }
-  if (rxdata->cs_ceHI_ceHI != NULL) { dfree(rxdata->cs_ceHI_ceHI); rxdata->cs_ceHI_ceHI=NULL; }
-  if (rxdata->dcs_ceHI_ceHI != NULL) { dfree(rxdata->dcs_ceHI_ceHI); rxdata->dcs_ceHI_ceHI=NULL; }
-  if (rxdata->cs_cie_cooling_cieco != NULL) { dfree(rxdata->cs_cie_cooling_cieco); rxdata->cs_cie_cooling_cieco=NULL; }
-  if (rxdata->dcs_cie_cooling_cieco != NULL) { dfree(rxdata->dcs_cie_cooling_cieco); rxdata->dcs_cie_cooling_cieco=NULL; }
-  if (rxdata->cs_ciHeI_ciHeI != NULL) { dfree(rxdata->cs_ciHeI_ciHeI); rxdata->cs_ciHeI_ciHeI=NULL; }
-  if (rxdata->dcs_ciHeI_ciHeI != NULL) { dfree(rxdata->dcs_ciHeI_ciHeI); rxdata->dcs_ciHeI_ciHeI=NULL; }
-  if (rxdata->cs_ciHeII_ciHeII != NULL) { dfree(rxdata->cs_ciHeII_ciHeII); rxdata->cs_ciHeII_ciHeII=NULL; }
-  if (rxdata->dcs_ciHeII_ciHeII != NULL) { dfree(rxdata->dcs_ciHeII_ciHeII); rxdata->dcs_ciHeII_ciHeII=NULL; }
-  if (rxdata->cs_ciHeIS_ciHeIS != NULL) { dfree(rxdata->cs_ciHeIS_ciHeIS); rxdata->cs_ciHeIS_ciHeIS=NULL; }
-  if (rxdata->dcs_ciHeIS_ciHeIS != NULL) { dfree(rxdata->dcs_ciHeIS_ciHeIS); rxdata->dcs_ciHeIS_ciHeIS=NULL; }
-  if (rxdata->cs_ciHI_ciHI != NULL) { dfree(rxdata->cs_ciHI_ciHI); rxdata->cs_ciHI_ciHI=NULL; }
-  if (rxdata->dcs_ciHI_ciHI != NULL) { dfree(rxdata->dcs_ciHI_ciHI); rxdata->dcs_ciHI_ciHI=NULL; }
-  if (rxdata->cs_compton_comp_ != NULL) { dfree(rxdata->cs_compton_comp_); rxdata->cs_compton_comp_=NULL; }
-  if (rxdata->dcs_compton_comp_ != NULL) { dfree(rxdata->dcs_compton_comp_); rxdata->dcs_compton_comp_=NULL; }
-  if (rxdata->cs_gloverabel08_gael != NULL) { dfree(rxdata->cs_gloverabel08_gael); rxdata->cs_gloverabel08_gael=NULL; }
-  if (rxdata->dcs_gloverabel08_gael != NULL) { dfree(rxdata->dcs_gloverabel08_gael); rxdata->dcs_gloverabel08_gael=NULL; }
-  if (rxdata->cs_gloverabel08_gaH2 != NULL) { dfree(rxdata->cs_gloverabel08_gaH2); rxdata->cs_gloverabel08_gaH2=NULL; }
-  if (rxdata->dcs_gloverabel08_gaH2 != NULL) { dfree(rxdata->dcs_gloverabel08_gaH2); rxdata->dcs_gloverabel08_gaH2=NULL; }
-  if (rxdata->cs_gloverabel08_gaHe != NULL) { dfree(rxdata->cs_gloverabel08_gaHe); rxdata->cs_gloverabel08_gaHe=NULL; }
-  if (rxdata->dcs_gloverabel08_gaHe != NULL) { dfree(rxdata->dcs_gloverabel08_gaHe); rxdata->dcs_gloverabel08_gaHe=NULL; }
-  if (rxdata->cs_gloverabel08_gaHI != NULL) { dfree(rxdata->cs_gloverabel08_gaHI); rxdata->cs_gloverabel08_gaHI=NULL; }
-  if (rxdata->dcs_gloverabel08_gaHI != NULL) { dfree(rxdata->dcs_gloverabel08_gaHI); rxdata->dcs_gloverabel08_gaHI=NULL; }
-  if (rxdata->cs_gloverabel08_gaHp != NULL) { dfree(rxdata->cs_gloverabel08_gaHp); rxdata->cs_gloverabel08_gaHp=NULL; }
-  if (rxdata->dcs_gloverabel08_gaHp != NULL) { dfree(rxdata->dcs_gloverabel08_gaHp); rxdata->dcs_gloverabel08_gaHp=NULL; }
-  if (rxdata->cs_gloverabel08_h2lte != NULL) { dfree(rxdata->cs_gloverabel08_h2lte); rxdata->cs_gloverabel08_h2lte=NULL; }
-  if (rxdata->dcs_gloverabel08_h2lte != NULL) { dfree(rxdata->dcs_gloverabel08_h2lte); rxdata->dcs_gloverabel08_h2lte=NULL; }
-  if (rxdata->cs_h2formation_h2mcool != NULL) { dfree(rxdata->cs_h2formation_h2mcool); rxdata->cs_h2formation_h2mcool=NULL; }
-  if (rxdata->dcs_h2formation_h2mcool != NULL) { dfree(rxdata->dcs_h2formation_h2mcool); rxdata->dcs_h2formation_h2mcool=NULL; }
-  if (rxdata->cs_h2formation_h2mheat != NULL) { dfree(rxdata->cs_h2formation_h2mheat); rxdata->cs_h2formation_h2mheat=NULL; }
-  if (rxdata->dcs_h2formation_h2mheat != NULL) { dfree(rxdata->dcs_h2formation_h2mheat); rxdata->dcs_h2formation_h2mheat=NULL; }
-  if (rxdata->cs_h2formation_ncrd1 != NULL) { dfree(rxdata->cs_h2formation_ncrd1); rxdata->cs_h2formation_ncrd1=NULL; }
-  if (rxdata->dcs_h2formation_ncrd1 != NULL) { dfree(rxdata->dcs_h2formation_ncrd1); rxdata->dcs_h2formation_ncrd1=NULL; }
-  if (rxdata->cs_h2formation_ncrd2 != NULL) { dfree(rxdata->cs_h2formation_ncrd2); rxdata->cs_h2formation_ncrd2=NULL; }
-  if (rxdata->dcs_h2formation_ncrd2 != NULL) { dfree(rxdata->dcs_h2formation_ncrd2); rxdata->dcs_h2formation_ncrd2=NULL; }
-  if (rxdata->cs_h2formation_ncrn != NULL) { dfree(rxdata->cs_h2formation_ncrn); rxdata->cs_h2formation_ncrn=NULL; }
-  if (rxdata->dcs_h2formation_ncrn != NULL) { dfree(rxdata->dcs_h2formation_ncrn); rxdata->dcs_h2formation_ncrn=NULL; }
-  if (rxdata->cs_reHeII1_reHeII1 != NULL) { dfree(rxdata->cs_reHeII1_reHeII1); rxdata->cs_reHeII1_reHeII1=NULL; }
-  if (rxdata->dcs_reHeII1_reHeII1 != NULL) { dfree(rxdata->dcs_reHeII1_reHeII1); rxdata->dcs_reHeII1_reHeII1=NULL; }
-  if (rxdata->cs_reHeII2_reHeII2 != NULL) { dfree(rxdata->cs_reHeII2_reHeII2); rxdata->cs_reHeII2_reHeII2=NULL; }
-  if (rxdata->dcs_reHeII2_reHeII2 != NULL) { dfree(rxdata->dcs_reHeII2_reHeII2); rxdata->dcs_reHeII2_reHeII2=NULL; }
-  if (rxdata->cs_reHeIII_reHeIII != NULL) { dfree(rxdata->cs_reHeIII_reHeIII); rxdata->cs_reHeIII_reHeIII=NULL; }
-  if (rxdata->dcs_reHeIII_reHeIII != NULL) { dfree(rxdata->dcs_reHeIII_reHeIII); rxdata->dcs_reHeIII_reHeIII=NULL; }
-  if (rxdata->cs_reHII_reHII != NULL) { dfree(rxdata->cs_reHII_reHII); rxdata->cs_reHII_reHII=NULL; }
-  if (rxdata->dcs_reHII_reHII != NULL) { dfree(rxdata->dcs_reHII_reHII); rxdata->dcs_reHII_reHII=NULL; }
-  if (rxdata->cie_optical_depth_approx != NULL) { dfree(rxdata->cie_optical_depth_approx); rxdata->cie_optical_depth_approx=NULL; }
-  if (rxdata->h2_optical_depth_approx != NULL) { dfree(rxdata->h2_optical_depth_approx); rxdata->h2_optical_depth_approx=NULL; }
-  if (rxdata->r_k01 != NULL) { dfree(rxdata->r_k01); rxdata->r_k01=NULL; }
-  if (rxdata->r_k02 != NULL) { dfree(rxdata->r_k02); rxdata->r_k02=NULL; }
-  if (rxdata->r_k03 != NULL) { dfree(rxdata->r_k03); rxdata->r_k03=NULL; }
-  if (rxdata->r_k04 != NULL) { dfree(rxdata->r_k04); rxdata->r_k04=NULL; }
-  if (rxdata->r_k05 != NULL) { dfree(rxdata->r_k05); rxdata->r_k05=NULL; }
-  if (rxdata->r_k06 != NULL) { dfree(rxdata->r_k06); rxdata->r_k06=NULL; }
-  if (rxdata->r_k07 != NULL) { dfree(rxdata->r_k07); rxdata->r_k07=NULL; }
-  if (rxdata->r_k08 != NULL) { dfree(rxdata->r_k08); rxdata->r_k08=NULL; }
-  if (rxdata->r_k09 != NULL) { dfree(rxdata->r_k09); rxdata->r_k09=NULL; }
-  if (rxdata->r_k10 != NULL) { dfree(rxdata->r_k10); rxdata->r_k10=NULL; }
-  if (rxdata->r_k11 != NULL) { dfree(rxdata->r_k11); rxdata->r_k11=NULL; }
-  if (rxdata->r_k12 != NULL) { dfree(rxdata->r_k12); rxdata->r_k12=NULL; }
-  if (rxdata->r_k13 != NULL) { dfree(rxdata->r_k13); rxdata->r_k13=NULL; }
-  if (rxdata->r_k14 != NULL) { dfree(rxdata->r_k14); rxdata->r_k14=NULL; }
-  if (rxdata->r_k15 != NULL) { dfree(rxdata->r_k15); rxdata->r_k15=NULL; }
-  if (rxdata->r_k16 != NULL) { dfree(rxdata->r_k16); rxdata->r_k16=NULL; }
-  if (rxdata->r_k17 != NULL) { dfree(rxdata->r_k17); rxdata->r_k17=NULL; }
-  if (rxdata->r_k18 != NULL) { dfree(rxdata->r_k18); rxdata->r_k18=NULL; }
-  if (rxdata->r_k19 != NULL) { dfree(rxdata->r_k19); rxdata->r_k19=NULL; }
-  if (rxdata->r_k21 != NULL) { dfree(rxdata->r_k21); rxdata->r_k21=NULL; }
-  if (rxdata->r_k22 != NULL) { dfree(rxdata->r_k22); rxdata->r_k22=NULL; }
-  if (rxdata->c_brem_brem != NULL) { dfree(rxdata->c_brem_brem); rxdata->c_brem_brem=NULL; }
-  if (rxdata->c_ceHeI_ceHeI != NULL) { dfree(rxdata->c_ceHeI_ceHeI); rxdata->c_ceHeI_ceHeI=NULL; }
-  if (rxdata->c_ceHeII_ceHeII != NULL) { dfree(rxdata->c_ceHeII_ceHeII); rxdata->c_ceHeII_ceHeII=NULL; }
-  if (rxdata->c_ceHI_ceHI != NULL) { dfree(rxdata->c_ceHI_ceHI); rxdata->c_ceHI_ceHI=NULL; }
-  if (rxdata->c_cie_cooling_cieco != NULL) { dfree(rxdata->c_cie_cooling_cieco); rxdata->c_cie_cooling_cieco=NULL; }
-  if (rxdata->c_ciHeI_ciHeI != NULL) { dfree(rxdata->c_ciHeI_ciHeI); rxdata->c_ciHeI_ciHeI=NULL; }
-  if (rxdata->c_ciHeII_ciHeII != NULL) { dfree(rxdata->c_ciHeII_ciHeII); rxdata->c_ciHeII_ciHeII=NULL; }
-  if (rxdata->c_ciHeIS_ciHeIS != NULL) { dfree(rxdata->c_ciHeIS_ciHeIS); rxdata->c_ciHeIS_ciHeIS=NULL; }
-  if (rxdata->c_ciHI_ciHI != NULL) { dfree(rxdata->c_ciHI_ciHI); rxdata->c_ciHI_ciHI=NULL; }
-  if (rxdata->c_compton_comp_ != NULL) { dfree(rxdata->c_compton_comp_); rxdata->c_compton_comp_=NULL; }
-  if (rxdata->c_gloverabel08_gael != NULL) { dfree(rxdata->c_gloverabel08_gael); rxdata->c_gloverabel08_gael=NULL; }
-  if (rxdata->c_gloverabel08_gaH2 != NULL) { dfree(rxdata->c_gloverabel08_gaH2); rxdata->c_gloverabel08_gaH2=NULL; }
-  if (rxdata->c_gloverabel08_gaHe != NULL) { dfree(rxdata->c_gloverabel08_gaHe); rxdata->c_gloverabel08_gaHe=NULL; }
-  if (rxdata->c_gloverabel08_gaHI != NULL) { dfree(rxdata->c_gloverabel08_gaHI); rxdata->c_gloverabel08_gaHI=NULL; }
-  if (rxdata->c_gloverabel08_gaHp != NULL) { dfree(rxdata->c_gloverabel08_gaHp); rxdata->c_gloverabel08_gaHp=NULL; }
-  if (rxdata->c_gloverabel08_h2lte != NULL) { dfree(rxdata->c_gloverabel08_h2lte); rxdata->c_gloverabel08_h2lte=NULL; }
-  if (rxdata->c_h2formation_h2mcool != NULL) { dfree(rxdata->c_h2formation_h2mcool); rxdata->c_h2formation_h2mcool=NULL; }
-  if (rxdata->c_h2formation_h2mheat != NULL) { dfree(rxdata->c_h2formation_h2mheat); rxdata->c_h2formation_h2mheat=NULL; }
-  if (rxdata->c_h2formation_ncrd1 != NULL) { dfree(rxdata->c_h2formation_ncrd1); rxdata->c_h2formation_ncrd1=NULL; }
-  if (rxdata->c_h2formation_ncrd2 != NULL) { dfree(rxdata->c_h2formation_ncrd2); rxdata->c_h2formation_ncrd2=NULL; }
-  if (rxdata->c_h2formation_ncrn != NULL) { dfree(rxdata->c_h2formation_ncrn); rxdata->c_h2formation_ncrn=NULL; }
-  if (rxdata->c_reHeII1_reHeII1 != NULL) { dfree(rxdata->c_reHeII1_reHeII1); rxdata->c_reHeII1_reHeII1=NULL; }
-  if (rxdata->c_reHeII2_reHeII2 != NULL) { dfree(rxdata->c_reHeII2_reHeII2); rxdata->c_reHeII2_reHeII2=NULL; }
-  if (rxdata->c_reHeIII_reHeIII != NULL) { dfree(rxdata->c_reHeIII_reHeIII); rxdata->c_reHeIII_reHeIII=NULL; }
-  if (rxdata->c_reHII_reHII != NULL) { dfree(rxdata->c_reHII_reHII); rxdata->c_reHII_reHII=NULL; }
-  if (rxdata->g_gammaH2_1 != NULL) { dfree(rxdata->g_gammaH2_1); rxdata->g_gammaH2_1=NULL; }
-  if (rxdata->g_dgammaH2_1_dT != NULL) { dfree(rxdata->g_dgammaH2_1_dT); rxdata->g_dgammaH2_1_dT=NULL; }
-  if (rxdata->g_gammaH2_2 != NULL) { dfree(rxdata->g_gammaH2_2); rxdata->g_gammaH2_2=NULL; }
-  if (rxdata->g_dgammaH2_2_dT != NULL) { dfree(rxdata->g_dgammaH2_2_dT); rxdata->g_dgammaH2_2_dT=NULL; }
-
-  // free cvklu_data structure itself
-  if (rxdata != NULL) { dfree(rxdata); rxdata=NULL; }
-
+  // Free device arrays from within the cvklu_data structure.
+  devFree((void **) &data->scale);
+  devFree((void **) &data->inv_scale);
+  devFree((void **) &data->Ts);
+  devFree((void **) &data->dTs_ge);
+  devFree((void **) &data->mdensity);
+  devFree((void **) &data->inv_mdensity);
+  devFree((void **) &data->rs_k01);
+  devFree((void **) &data->drs_k01);
+  devFree((void **) &data->rs_k02);
+  devFree((void **) &data->drs_k02);
+  devFree((void **) &data->rs_k03);
+  devFree((void **) &data->drs_k03);
+  devFree((void **) &data->rs_k04);
+  devFree((void **) &data->drs_k04);
+  devFree((void **) &data->rs_k05);
+  devFree((void **) &data->drs_k05);
+  devFree((void **) &data->rs_k06);
+  devFree((void **) &data->drs_k06);
+  devFree((void **) &data->rs_k07);
+  devFree((void **) &data->drs_k07);
+  devFree((void **) &data->rs_k08);
+  devFree((void **) &data->drs_k08);
+  devFree((void **) &data->rs_k09);
+  devFree((void **) &data->drs_k09);
+  devFree((void **) &data->rs_k10);
+  devFree((void **) &data->drs_k10);
+  devFree((void **) &data->rs_k11);
+  devFree((void **) &data->drs_k11);
+  devFree((void **) &data->rs_k12);
+  devFree((void **) &data->drs_k12);
+  devFree((void **) &data->rs_k13);
+  devFree((void **) &data->drs_k13);
+  devFree((void **) &data->rs_k14);
+  devFree((void **) &data->drs_k14);
+  devFree((void **) &data->rs_k15);
+  devFree((void **) &data->drs_k15);
+  devFree((void **) &data->rs_k16);
+  devFree((void **) &data->drs_k16);
+  devFree((void **) &data->rs_k17);
+  devFree((void **) &data->drs_k17);
+  devFree((void **) &data->rs_k18);
+  devFree((void **) &data->drs_k18);
+  devFree((void **) &data->rs_k19);
+  devFree((void **) &data->drs_k19);
+  devFree((void **) &data->rs_k21);
+  devFree((void **) &data->drs_k21);
+  devFree((void **) &data->rs_k22);
+  devFree((void **) &data->drs_k22);
+  devFree((void **) &data->cs_brem_brem);
+  devFree((void **) &data->dcs_brem_brem);
+  devFree((void **) &data->cs_ceHeI_ceHeI);
+  devFree((void **) &data->dcs_ceHeI_ceHeI);
+  devFree((void **) &data->cs_ceHeII_ceHeII);
+  devFree((void **) &data->dcs_ceHeII_ceHeII);
+  devFree((void **) &data->cs_ceHI_ceHI);
+  devFree((void **) &data->dcs_ceHI_ceHI);
+  devFree((void **) &data->cs_cie_cooling_cieco);
+  devFree((void **) &data->dcs_cie_cooling_cieco);
+  devFree((void **) &data->cs_ciHeI_ciHeI);
+  devFree((void **) &data->dcs_ciHeI_ciHeI);
+  devFree((void **) &data->cs_ciHeII_ciHeII);
+  devFree((void **) &data->dcs_ciHeII_ciHeII);
+  devFree((void **) &data->cs_ciHeIS_ciHeIS);
+  devFree((void **) &data->dcs_ciHeIS_ciHeIS);
+  devFree((void **) &data->cs_ciHI_ciHI);
+  devFree((void **) &data->dcs_ciHI_ciHI);
+  devFree((void **) &data->cs_compton_comp_);
+  devFree((void **) &data->dcs_compton_comp_);
+  devFree((void **) &data->cs_gloverabel08_gael);
+  devFree((void **) &data->dcs_gloverabel08_gael);
+  devFree((void **) &data->cs_gloverabel08_gaH2);
+  devFree((void **) &data->dcs_gloverabel08_gaH2);
+  devFree((void **) &data->cs_gloverabel08_gaHe);
+  devFree((void **) &data->dcs_gloverabel08_gaHe);
+  devFree((void **) &data->cs_gloverabel08_gaHI);
+  devFree((void **) &data->dcs_gloverabel08_gaHI);
+  devFree((void **) &data->cs_gloverabel08_gaHp);
+  devFree((void **) &data->dcs_gloverabel08_gaHp);
+  devFree((void **) &data->cs_gloverabel08_h2lte);
+  devFree((void **) &data->dcs_gloverabel08_h2lte);
+  devFree((void **) &data->cs_h2formation_h2mcool);
+  devFree((void **) &data->dcs_h2formation_h2mcool);
+  devFree((void **) &data->cs_h2formation_h2mheat);
+  devFree((void **) &data->dcs_h2formation_h2mheat);
+  devFree((void **) &data->cs_h2formation_ncrd1);
+  devFree((void **) &data->dcs_h2formation_ncrd1);
+  devFree((void **) &data->cs_h2formation_ncrd2);
+  devFree((void **) &data->dcs_h2formation_ncrd2);
+  devFree((void **) &data->cs_h2formation_ncrn);
+  devFree((void **) &data->dcs_h2formation_ncrn);
+  devFree((void **) &data->cs_reHeII1_reHeII1);
+  devFree((void **) &data->dcs_reHeII1_reHeII1);
+  devFree((void **) &data->cs_reHeII2_reHeII2);
+  devFree((void **) &data->dcs_reHeII2_reHeII2);
+  devFree((void **) &data->cs_reHeIII_reHeIII);
+  devFree((void **) &data->dcs_reHeIII_reHeIII);
+  devFree((void **) &data->cs_reHII_reHII);
+  devFree((void **) &data->dcs_reHII_reHII);
+  devFree((void **) &data->cie_optical_depth_approx);
+  devFree((void **) &data->h2_optical_depth_approx);
+  devFree((void **) &data->r_k01);
+  devFree((void **) &data->r_k02);
+  devFree((void **) &data->r_k03);
+  devFree((void **) &data->r_k04);
+  devFree((void **) &data->r_k05);
+  devFree((void **) &data->r_k06);
+  devFree((void **) &data->r_k07);
+  devFree((void **) &data->r_k08);
+  devFree((void **) &data->r_k09);
+  devFree((void **) &data->r_k10);
+  devFree((void **) &data->r_k11);
+  devFree((void **) &data->r_k12);
+  devFree((void **) &data->r_k13);
+  devFree((void **) &data->r_k14);
+  devFree((void **) &data->r_k15);
+  devFree((void **) &data->r_k16);
+  devFree((void **) &data->r_k17);
+  devFree((void **) &data->r_k18);
+  devFree((void **) &data->r_k19);
+  devFree((void **) &data->r_k21);
+  devFree((void **) &data->r_k22);
+  devFree((void **) &data->c_brem_brem);
+  devFree((void **) &data->c_ceHeI_ceHeI);
+  devFree((void **) &data->c_ceHeII_ceHeII);
+  devFree((void **) &data->c_ceHI_ceHI);
+  devFree((void **) &data->c_cie_cooling_cieco);
+  devFree((void **) &data->c_ciHeI_ciHeI);
+  devFree((void **) &data->c_ciHeII_ciHeII);
+  devFree((void **) &data->c_ciHeIS_ciHeIS);
+  devFree((void **) &data->c_ciHI_ciHI);
+  devFree((void **) &data->c_compton_comp_);
+  devFree((void **) &data->c_gloverabel08_gael);
+  devFree((void **) &data->c_gloverabel08_gaH2);
+  devFree((void **) &data->c_gloverabel08_gaHe);
+  devFree((void **) &data->c_gloverabel08_gaHI);
+  devFree((void **) &data->c_gloverabel08_gaHp);
+  devFree((void **) &data->c_gloverabel08_h2lte);
+  devFree((void **) &data->c_h2formation_h2mcool);
+  devFree((void **) &data->c_h2formation_h2mheat);
+  devFree((void **) &data->c_h2formation_ncrd1);
+  devFree((void **) &data->c_h2formation_ncrd2);
+  devFree((void **) &data->c_h2formation_ncrn);
+  devFree((void **) &data->c_reHeII1_reHeII1);
+  devFree((void **) &data->c_reHeII2_reHeII2);
+  devFree((void **) &data->c_reHeIII_reHeIII);
+  devFree((void **) &data->c_reHII_reHII);
+  devFree((void **) &data->g_gammaH2_1);
+  devFree((void **) &data->g_dgammaH2_1_dT);
+  devFree((void **) &data->g_gammaH2_2);
+  devFree((void **) &data->g_dgammaH2_2_dT);
 }
 
 
-void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation,
-                            int table_len, MPI_Comm comm)
+int cvklu_read_rate_tables(cvklu_data *hdata, const char *FileLocation, MPI_Comm comm)
 {
   // determine process rank
-  int myid;
-  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
+  int myid, passfail;
+  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)  return 1;
 
   // Allocate temporary memory on host for file input
-  double *k01 = (double*) malloc(table_len*sizeof(double));
-  double *k02 = (double*) malloc(table_len*sizeof(double));
-  double *k03 = (double*) malloc(table_len*sizeof(double));
-  double *k04 = (double*) malloc(table_len*sizeof(double));
-  double *k05 = (double*) malloc(table_len*sizeof(double));
-  double *k06 = (double*) malloc(table_len*sizeof(double));
-  double *k07 = (double*) malloc(table_len*sizeof(double));
-  double *k08 = (double*) malloc(table_len*sizeof(double));
-  double *k09 = (double*) malloc(table_len*sizeof(double));
-  double *k10 = (double*) malloc(table_len*sizeof(double));
-  double *k11 = (double*) malloc(table_len*sizeof(double));
-  double *k12 = (double*) malloc(table_len*sizeof(double));
-  double *k13 = (double*) malloc(table_len*sizeof(double));
-  double *k14 = (double*) malloc(table_len*sizeof(double));
-  double *k15 = (double*) malloc(table_len*sizeof(double));
-  double *k16 = (double*) malloc(table_len*sizeof(double));
-  double *k17 = (double*) malloc(table_len*sizeof(double));
-  double *k18 = (double*) malloc(table_len*sizeof(double));
-  double *k19 = (double*) malloc(table_len*sizeof(double));
-  double *k21 = (double*) malloc(table_len*sizeof(double));
-  double *k22 = (double*) malloc(table_len*sizeof(double));
+  double *k01 = (double*) malloc(TSIZE*sizeof(double));
+  double *k02 = (double*) malloc(TSIZE*sizeof(double));
+  double *k03 = (double*) malloc(TSIZE*sizeof(double));
+  double *k04 = (double*) malloc(TSIZE*sizeof(double));
+  double *k05 = (double*) malloc(TSIZE*sizeof(double));
+  double *k06 = (double*) malloc(TSIZE*sizeof(double));
+  double *k07 = (double*) malloc(TSIZE*sizeof(double));
+  double *k08 = (double*) malloc(TSIZE*sizeof(double));
+  double *k09 = (double*) malloc(TSIZE*sizeof(double));
+  double *k10 = (double*) malloc(TSIZE*sizeof(double));
+  double *k11 = (double*) malloc(TSIZE*sizeof(double));
+  double *k12 = (double*) malloc(TSIZE*sizeof(double));
+  double *k13 = (double*) malloc(TSIZE*sizeof(double));
+  double *k14 = (double*) malloc(TSIZE*sizeof(double));
+  double *k15 = (double*) malloc(TSIZE*sizeof(double));
+  double *k16 = (double*) malloc(TSIZE*sizeof(double));
+  double *k17 = (double*) malloc(TSIZE*sizeof(double));
+  double *k18 = (double*) malloc(TSIZE*sizeof(double));
+  double *k19 = (double*) malloc(TSIZE*sizeof(double));
+  double *k21 = (double*) malloc(TSIZE*sizeof(double));
+  double *k22 = (double*) malloc(TSIZE*sizeof(double));
 
   // Read the rate tables to temporaries (root process only)
+  passfail = 0;
   if (myid == 0) {
     const char * filedir;
     if (FileLocation != NULL){
@@ -469,131 +552,80 @@ void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation,
       filedir = "cvklu_tables.h5";
     }
     hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (H5LTread_dataset_double(file_id, "/k01", k01) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k02", k02) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k03", k03) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k04", k04) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k05", k05) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k06", k06) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k07", k07) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k08", k08) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k09", k09) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k10", k10) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k11", k11) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k12", k12) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k13", k13) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k14", k14) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k15", k15) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k16", k16) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k17", k17) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k18", k18) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k19", k19) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k21", k21) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/k22", k22) < 0)
-      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/k01", k01) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k02", k02) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k03", k03) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k04", k04) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k05", k05) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k06", k06) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k07", k07) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k08", k08) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k09", k09) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k10", k10) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k11", k11) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k12", k12) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k13", k13) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k14", k14) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k15", k15) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k16", k16) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k17", k17) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k18", k18) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k19", k19) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k21", k21) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/k22", k22) < 0)  passfail += 1;
     H5Fclose(file_id);
   }
 
   // broadcast tables to remaining procs
-  if (MPI_Bcast(k01, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k02, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k03, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k04, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k05, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k06, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k07, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k08, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k09, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k10, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k11, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k12, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k13, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k14, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k15, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k16, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k17, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k18, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k19, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k21, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(k22, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
+  if (MPI_Bcast(k01, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k02, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k03, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k04, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k05, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k06, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k07, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k08, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k09, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k10, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k11, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k12, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k13, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k14, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k15, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k16, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k17, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k18, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k19, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k21, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(k22, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
 
   // Copy tables into rate data structure
-  dcopy(data->r_k01, k01, table_len);
-  dcopy(data->r_k02, k02, table_len);
-  dcopy(data->r_k03, k03, table_len);
-  dcopy(data->r_k04, k04, table_len);
-  dcopy(data->r_k05, k05, table_len);
-  dcopy(data->r_k06, k06, table_len);
-  dcopy(data->r_k07, k07, table_len);
-  dcopy(data->r_k08, k08, table_len);
-  dcopy(data->r_k09, k09, table_len);
-  dcopy(data->r_k10, k10, table_len);
-  dcopy(data->r_k11, k11, table_len);
-  dcopy(data->r_k12, k12, table_len);
-  dcopy(data->r_k13, k13, table_len);
-  dcopy(data->r_k14, k14, table_len);
-  dcopy(data->r_k15, k15, table_len);
-  dcopy(data->r_k16, k16, table_len);
-  dcopy(data->r_k17, k17, table_len);
-  dcopy(data->r_k18, k18, table_len);
-  dcopy(data->r_k19, k19, table_len);
-  dcopy(data->r_k21, k21, table_len);
-  dcopy(data->r_k22, k22, table_len);
+  passfail += copyHostToDevice(hdata->r_k01, k01, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k02, k02, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k03, k03, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k04, k04, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k05, k05, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k06, k06, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k07, k07, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k08, k08, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k09, k09, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k10, k10, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k11, k11, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k12, k12, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k13, k13, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k14, k14, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k15, k15, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k16, k16, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k17, k17, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k18, k18, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k19, k19, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k21, k21, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->r_k22, k22, sizeof(double)*TSIZE);
 
-  // ensure that table data is synchronized between host/device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-    HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-                 cudaError_t cuerr = cudaGetLastError(); )
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-      MPI_Abort(comm, 1);
-    }
-#endif
+  // ensure that copies have completed
+  passfail += copyFence();
 
-  // Free temporary arrays
+  // Free temporary arrays and return
   free(k01);
   free(k02);
   free(k03);
@@ -615,45 +647,45 @@ void cvklu_read_rate_tables(cvklu_data *data, const char *FileLocation,
   free(k19);
   free(k21);
   free(k22);
+  return passfail;
 }
 
 
-void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation,
-                               int table_len, MPI_Comm comm)
+int cvklu_read_cooling_tables(cvklu_data *hdata, const char *FileLocation, MPI_Comm comm)
 {
   // determine process rank
-  int myid;
-  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
+  int myid, passfail;
+  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)  return 1;
 
   // Allocate temporary memory on host for file input
-  double *c_brem_brem = (double*) malloc(table_len*sizeof(double));
-  double *c_ceHeI_ceHeI = (double*) malloc(table_len*sizeof(double));
-  double *c_ceHeII_ceHeII = (double*) malloc(table_len*sizeof(double));
-  double *c_ceHI_ceHI = (double*) malloc(table_len*sizeof(double));
-  double *c_cie_cooling_cieco = (double*) malloc(table_len*sizeof(double));
-  double *c_ciHeI_ciHeI = (double*) malloc(table_len*sizeof(double));
-  double *c_ciHeII_ciHeII = (double*) malloc(table_len*sizeof(double));
-  double *c_ciHeIS_ciHeIS = (double*) malloc(table_len*sizeof(double));
-  double *c_ciHI_ciHI = (double*) malloc(table_len*sizeof(double));
-  double *c_compton_comp_ = (double*) malloc(table_len*sizeof(double));
-  double *c_gloverabel08_gael = (double*) malloc(table_len*sizeof(double));
-  double *c_gloverabel08_gaH2 = (double*) malloc(table_len*sizeof(double));
-  double *c_gloverabel08_gaHe = (double*) malloc(table_len*sizeof(double));
-  double *c_gloverabel08_gaHI = (double*) malloc(table_len*sizeof(double));
-  double *c_gloverabel08_gaHp = (double*) malloc(table_len*sizeof(double));
-  double *c_gloverabel08_h2lte = (double*) malloc(table_len*sizeof(double));
-  double *c_h2formation_h2mcool = (double*) malloc(table_len*sizeof(double));
-  double *c_h2formation_h2mheat = (double*) malloc(table_len*sizeof(double));
-  double *c_h2formation_ncrd1 = (double*) malloc(table_len*sizeof(double));
-  double *c_h2formation_ncrd2 = (double*) malloc(table_len*sizeof(double));
-  double *c_h2formation_ncrn = (double*) malloc(table_len*sizeof(double));
-  double *c_reHeII1_reHeII1 = (double*) malloc(table_len*sizeof(double));
-  double *c_reHeII2_reHeII2 = (double*) malloc(table_len*sizeof(double));
-  double *c_reHeIII_reHeIII = (double*) malloc(table_len*sizeof(double));
-  double *c_reHII_reHII = (double*) malloc(table_len*sizeof(double));
+  double *c_brem_brem = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ceHeI_ceHeI = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ceHeII_ceHeII = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ceHI_ceHI = (double*) malloc(TSIZE*sizeof(double));
+  double *c_cie_cooling_cieco = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ciHeI_ciHeI = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ciHeII_ciHeII = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ciHeIS_ciHeIS = (double*) malloc(TSIZE*sizeof(double));
+  double *c_ciHI_ciHI = (double*) malloc(TSIZE*sizeof(double));
+  double *c_compton_comp_ = (double*) malloc(TSIZE*sizeof(double));
+  double *c_gloverabel08_gael = (double*) malloc(TSIZE*sizeof(double));
+  double *c_gloverabel08_gaH2 = (double*) malloc(TSIZE*sizeof(double));
+  double *c_gloverabel08_gaHe = (double*) malloc(TSIZE*sizeof(double));
+  double *c_gloverabel08_gaHI = (double*) malloc(TSIZE*sizeof(double));
+  double *c_gloverabel08_gaHp = (double*) malloc(TSIZE*sizeof(double));
+  double *c_gloverabel08_h2lte = (double*) malloc(TSIZE*sizeof(double));
+  double *c_h2formation_h2mcool = (double*) malloc(TSIZE*sizeof(double));
+  double *c_h2formation_h2mheat = (double*) malloc(TSIZE*sizeof(double));
+  double *c_h2formation_ncrd1 = (double*) malloc(TSIZE*sizeof(double));
+  double *c_h2formation_ncrd2 = (double*) malloc(TSIZE*sizeof(double));
+  double *c_h2formation_ncrn = (double*) malloc(TSIZE*sizeof(double));
+  double *c_reHeII1_reHeII1 = (double*) malloc(TSIZE*sizeof(double));
+  double *c_reHeII2_reHeII2 = (double*) malloc(TSIZE*sizeof(double));
+  double *c_reHeIII_reHeIII = (double*) malloc(TSIZE*sizeof(double));
+  double *c_reHII_reHII = (double*) malloc(TSIZE*sizeof(double));
 
   // Read the cooling tables to temporaries (root only)
+  passfail = 0;
   if (myid == 0) {
     const char * filedir;
     if (FileLocation != NULL){
@@ -662,151 +694,92 @@ void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation,
       filedir = "cvklu_tables.h5";
     }
     hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (H5LTread_dataset_double(file_id, "/brem_brem",           c_brem_brem) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ceHeI_ceHeI",         c_ceHeI_ceHeI) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ceHeII_ceHeII",       c_ceHeII_ceHeII) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ceHI_ceHI",           c_ceHI_ceHI) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/cie_cooling_cieco",   c_cie_cooling_cieco) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ciHeI_ciHeI",         c_ciHeI_ciHeI) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ciHeII_ciHeII",       c_ciHeII_ciHeII) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ciHeIS_ciHeIS",       c_ciHeIS_ciHeIS) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/ciHI_ciHI",           c_ciHI_ciHI) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/compton_comp_",       c_compton_comp_) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gloverabel08_gael",   c_gloverabel08_gael) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",   c_gloverabel08_gaH2) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHe",   c_gloverabel08_gaHe) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHI",   c_gloverabel08_gaHI) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",   c_gloverabel08_gaHp) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",  c_gloverabel08_h2lte) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/h2formation_h2mcool", c_h2formation_h2mcool) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/h2formation_h2mheat", c_h2formation_h2mheat) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/h2formation_ncrd1",   c_h2formation_ncrd1) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/h2formation_ncrd2",   c_h2formation_ncrd2) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/h2formation_ncrn",    c_h2formation_ncrn) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/reHeII1_reHeII1",     c_reHeII1_reHeII1) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/reHeII2_reHeII2",     c_reHeII2_reHeII2) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/reHeIII_reHeIII",     c_reHeIII_reHeIII) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/reHII_reHII",         c_reHII_reHII) < 0)
-      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/brem_brem",           c_brem_brem) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ceHeI_ceHeI",         c_ceHeI_ceHeI) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ceHeII_ceHeII",       c_ceHeII_ceHeII) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ceHI_ceHI",           c_ceHI_ceHI) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/cie_cooling_cieco",   c_cie_cooling_cieco) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ciHeI_ciHeI",         c_ciHeI_ciHeI) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ciHeII_ciHeII",       c_ciHeII_ciHeII) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ciHeIS_ciHeIS",       c_ciHeIS_ciHeIS) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/ciHI_ciHI",           c_ciHI_ciHI) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/compton_comp_",       c_compton_comp_) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gael",   c_gloverabel08_gael) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaH2",   c_gloverabel08_gaH2) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHe",   c_gloverabel08_gaHe) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHI",   c_gloverabel08_gaHI) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_gaHp",   c_gloverabel08_gaHp) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gloverabel08_h2lte",  c_gloverabel08_h2lte) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/h2formation_h2mcool", c_h2formation_h2mcool) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/h2formation_h2mheat", c_h2formation_h2mheat) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/h2formation_ncrd1",   c_h2formation_ncrd1) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/h2formation_ncrd2",   c_h2formation_ncrd2) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/h2formation_ncrn",    c_h2formation_ncrn) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/reHeII1_reHeII1",     c_reHeII1_reHeII1) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/reHeII2_reHeII2",     c_reHeII2_reHeII2) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/reHeIII_reHeIII",     c_reHeIII_reHeIII) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/reHII_reHII",         c_reHII_reHII) < 0)  passfail += 1;
     H5Fclose(file_id);
   }
 
   // broadcast tables to remaining procs
-  if (MPI_Bcast(c_brem_brem, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ceHeI_ceHeI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ceHeII_ceHeII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ceHI_ceHI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_cie_cooling_cieco, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ciHeI_ciHeI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ciHeII_ciHeII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ciHeIS_ciHeIS, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_ciHI_ciHI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_compton_comp_, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_gloverabel08_gael, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_gloverabel08_gaH2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_gloverabel08_gaHe, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_gloverabel08_gaHI, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_gloverabel08_gaHp, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_gloverabel08_h2lte, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_h2formation_h2mcool, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_h2formation_h2mheat, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_h2formation_ncrd1, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_h2formation_ncrd2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_h2formation_ncrn, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_reHeII1_reHeII1, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_reHeII2_reHeII2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_reHeIII_reHeIII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(c_reHII_reHII, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
+  if (MPI_Bcast(c_brem_brem, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ceHeI_ceHeI, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ceHeII_ceHeII, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ceHI_ceHI, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_cie_cooling_cieco, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ciHeI_ciHeI, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ciHeII_ciHeII, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ciHeIS_ciHeIS, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_ciHI_ciHI, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_compton_comp_, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_gloverabel08_gael, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_gloverabel08_gaH2, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_gloverabel08_gaHe, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_gloverabel08_gaHI, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_gloverabel08_gaHp, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_gloverabel08_h2lte, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_h2formation_h2mcool, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_h2formation_h2mheat, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_h2formation_ncrd1, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_h2formation_ncrd2, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_h2formation_ncrn, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_reHeII1_reHeII1, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_reHeII2_reHeII2, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_reHeIII_reHeIII, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(c_reHII_reHII, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
 
   // Copy tables into rate data structure
-  dcopy(data->c_brem_brem, c_brem_brem, table_len);
-  dcopy(data->c_ceHeI_ceHeI, c_ceHeI_ceHeI, table_len);
-  dcopy(data->c_ceHeII_ceHeII, c_ceHeII_ceHeII, table_len);
-  dcopy(data->c_ceHI_ceHI, c_ceHI_ceHI, table_len);
-  dcopy(data->c_cie_cooling_cieco, c_cie_cooling_cieco, table_len);
-  dcopy(data->c_ciHeI_ciHeI, c_ciHeI_ciHeI, table_len);
-  dcopy(data->c_ciHeII_ciHeII, c_ciHeII_ciHeII, table_len);
-  dcopy(data->c_ciHeIS_ciHeIS, c_ciHeIS_ciHeIS, table_len);
-  dcopy(data->c_ciHI_ciHI, c_ciHI_ciHI, table_len);
-  dcopy(data->c_compton_comp_, c_compton_comp_, table_len);
-  dcopy(data->c_gloverabel08_gael, c_gloverabel08_gael, table_len);
-  dcopy(data->c_gloverabel08_gaH2, c_gloverabel08_gaH2, table_len);
-  dcopy(data->c_gloverabel08_gaHe, c_gloverabel08_gaHe, table_len);
-  dcopy(data->c_gloverabel08_gaHI, c_gloverabel08_gaHI, table_len);
-  dcopy(data->c_gloverabel08_gaHp, c_gloverabel08_gaHp, table_len);
-  dcopy(data->c_gloverabel08_h2lte, c_gloverabel08_h2lte, table_len);
-  dcopy(data->c_h2formation_h2mcool, c_h2formation_h2mcool, table_len);
-  dcopy(data->c_h2formation_h2mheat, c_h2formation_h2mheat, table_len);
-  dcopy(data->c_h2formation_ncrd1, c_h2formation_ncrd1, table_len);
-  dcopy(data->c_h2formation_ncrd2, c_h2formation_ncrd2, table_len);
-  dcopy(data->c_h2formation_ncrn, c_h2formation_ncrn, table_len);
-  dcopy(data->c_reHeII1_reHeII1, c_reHeII1_reHeII1, table_len);
-  dcopy(data->c_reHeII2_reHeII2, c_reHeII2_reHeII2, table_len);
-  dcopy(data->c_reHeIII_reHeIII, c_reHeIII_reHeIII, table_len);
-  dcopy(data->c_reHII_reHII, c_reHII_reHII, table_len);
+  passfail += copyHostToDevice(hdata->c_brem_brem, c_brem_brem, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ceHeI_ceHeI, c_ceHeI_ceHeI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ceHeII_ceHeII, c_ceHeII_ceHeII, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ceHI_ceHI, c_ceHI_ceHI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_cie_cooling_cieco, c_cie_cooling_cieco, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHeI_ciHeI, c_ciHeI_ciHeI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHeII_ciHeII, c_ciHeII_ciHeII, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHeIS_ciHeIS, c_ciHeIS_ciHeIS, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_ciHI_ciHI, c_ciHI_ciHI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_compton_comp_, c_compton_comp_, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gael, c_gloverabel08_gael, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaH2, c_gloverabel08_gaH2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaHe, c_gloverabel08_gaHe, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaHI, c_gloverabel08_gaHI, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_gaHp, c_gloverabel08_gaHp, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_gloverabel08_h2lte, c_gloverabel08_h2lte, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_h2mcool, c_h2formation_h2mcool, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_h2mheat, c_h2formation_h2mheat, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_ncrd1, c_h2formation_ncrd1, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_ncrd2, c_h2formation_ncrd2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_h2formation_ncrn, c_h2formation_ncrn, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHeII1_reHeII1, c_reHeII1_reHeII1, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHeII2_reHeII2, c_reHeII2_reHeII2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHeIII_reHeIII, c_reHeIII_reHeIII, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->c_reHII_reHII, c_reHII_reHII, sizeof(double)*TSIZE);
 
   // ensure that table data is synchronized between host/device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-    HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-                 cudaError_t cuerr = cudaGetLastError(); )
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-      MPI_Abort(comm, 1);
-    }
-#endif
+  passfail += copyFence();
 
-  // Free temporary arrays
+  // Free temporary arrays and return
   free(c_brem_brem);
   free(c_ceHeI_ceHeI);
   free(c_ceHeII_ceHeII);
@@ -832,23 +805,23 @@ void cvklu_read_cooling_tables(cvklu_data *data, const char *FileLocation,
   free(c_reHeII2_reHeII2);
   free(c_reHeIII_reHeIII);
   free(c_reHII_reHII);
+  return passfail;
 }
 
-void cvklu_read_gamma(cvklu_data *data, const char *FileLocation,
-                     int table_len, MPI_Comm comm)
+int cvklu_read_gamma(cvklu_data *hdata, const char *FileLocation, MPI_Comm comm)
 {
   // determine process rank
-  int myid;
-  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
+  int myid, passfail;
+  if (MPI_Comm_rank(comm, &myid) != MPI_SUCCESS)  return 1;
 
   // Allocate temporary memory on host for file input
-  double *g_gammaH2_1 = (double*) malloc(table_len*sizeof(double));
-  double *g_dgammaH2_1_dT = (double*) malloc(table_len*sizeof(double));
-  double *g_gammaH2_2 = (double*) malloc(table_len*sizeof(double));
-  double *g_dgammaH2_2_dT = (double*) malloc(table_len*sizeof(double));
+  double *g_gammaH2_1 = (double*) malloc(TSIZE*sizeof(double));
+  double *g_dgammaH2_1_dT = (double*) malloc(TSIZE*sizeof(double));
+  double *g_gammaH2_2 = (double*) malloc(TSIZE*sizeof(double));
+  double *g_dgammaH2_2_dT = (double*) malloc(TSIZE*sizeof(double));
 
   // Read the gamma tables to temporaries (root only)
+  passfail = 0;
   if (myid == 0) {
     const char * filedir;
     if (FileLocation != NULL){
@@ -857,55 +830,39 @@ void cvklu_read_gamma(cvklu_data *data, const char *FileLocation,
       filedir = "cvklu_tables.h5";
     }
     hid_t file_id = H5Fopen( filedir , H5F_ACC_RDONLY, H5P_DEFAULT);
-    if (H5LTread_dataset_double(file_id, "/gammaH2_1",     g_gammaH2_1 ) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/dgammaH2_1_dT", g_dgammaH2_1_dT ) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/gammaH2_2",     g_gammaH2_2 ) < 0)
-      MPI_Abort(comm, 1);
-    if (H5LTread_dataset_double(file_id, "/dgammaH2_2_dT", g_dgammaH2_2_dT ) < 0)
-      MPI_Abort(comm, 1);
+    if (H5LTread_dataset_double(file_id, "/gammaH2_1",     g_gammaH2_1 ) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/dgammaH2_1_dT", g_dgammaH2_1_dT ) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/gammaH2_2",     g_gammaH2_2 ) < 0)  passfail += 1;
+    if (H5LTread_dataset_double(file_id, "/dgammaH2_2_dT", g_dgammaH2_2_dT ) < 0)  passfail += 1;
     H5Fclose(file_id);
   }
 
   // broadcast tables to remaining procs
-  if (MPI_Bcast(g_gammaH2_1, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(g_dgammaH2_1_dT, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(g_gammaH2_2, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
-  if (MPI_Bcast(g_dgammaH2_2_dT, table_len, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)
-    MPI_Abort(comm, 1);
+  if (MPI_Bcast(g_gammaH2_1, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(g_dgammaH2_1_dT, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(g_gammaH2_2, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
+  if (MPI_Bcast(g_dgammaH2_2_dT, TSIZE, MPI_DOUBLE, 0, comm) != MPI_SUCCESS)  passfail += 1;
 
   // Copy tables into rate data structure
-  dcopy(data->g_gammaH2_1, g_gammaH2_1, table_len);
-  dcopy(data->g_dgammaH2_1_dT, g_dgammaH2_1_dT, table_len);
-  dcopy(data->g_gammaH2_2, g_gammaH2_2, table_len);
-  dcopy(data->g_dgammaH2_2_dT, g_dgammaH2_2_dT, table_len);
+  passfail += copyHostToDevice(hdata->g_gammaH2_1, g_gammaH2_1, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->g_dgammaH2_1_dT, g_dgammaH2_1_dT, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->g_gammaH2_2, g_gammaH2_2, sizeof(double)*TSIZE);
+  passfail += copyHostToDevice(hdata->g_dgammaH2_2_dT, g_dgammaH2_2_dT, sizeof(double)*TSIZE);
 
   // ensure that table data is synchronized between host/device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-    HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-                 cudaError_t cuerr = cudaGetLastError(); )
-#if defined(RAJA_CUDA) || defined(RAJA_HIP)
-    if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-      std::cerr << ">>> ERROR in cvklu_read_rate_tables: XGetLastError returned %s\n"
-                << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-      MPI_Abort(comm, 1);
-    }
-#endif
+  passfail += copyFence();
 
-  // Free temporary arrays
+  // Free temporary arrays and return
   free(g_gammaH2_1);
   free(g_dgammaH2_1_dT);
   free(g_gammaH2_2);
   free(g_dgammaH2_2_dT);
+  return passfail;
 }
 
 
 
-RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double *y_arr,
+RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *ddata, const double *y_arr,
                                             const long int i, double &Ts, double &dTs_ge)
 {
 
@@ -934,7 +891,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
   // Initiate the "guess" temperature
   double T    = Ts;
   double Tnew = T*1.1;
-  double Tdiff = Tnew - T;
+  //double Tdiff = fabs(Tnew - T);
   double dge_dT;
   //int count = 0;
 
@@ -949,28 +906,28 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
     int bin_id;
     double lb, t1, t2, Tdef;
 
-    lb = log(data->bounds[0]);
-    bin_id = (int) (data->idbin * (log(Ts) - lb));
+    lb = log(ddata->bounds[0]);
+    bin_id = (int) (ddata->idbin * (log(Ts) - lb));
     if (bin_id <= 0) {
       bin_id = 0;
-    } else if (bin_id >= data->nbins) {
-      bin_id = data->nbins - 1;
+    } else if (bin_id >= ddata->nbins) {
+      bin_id = ddata->nbins - 1;
     }
-    t1 = (lb + (bin_id    ) * data->dbin);
-    t2 = (lb + (bin_id + 1) * data->dbin);
+    t1 = (lb + (bin_id    ) * ddata->dbin);
+    t2 = (lb + (bin_id + 1) * ddata->dbin);
     Tdef = (log(Ts) - t1)/(t2 - t1);
 
-    double gammaH2_2 = data->g_gammaH2_2[bin_id] +
-      Tdef * (data->g_gammaH2_2[bin_id+1] - data->g_gammaH2_2[bin_id]);
+    double gammaH2_2 = ddata->g_gammaH2_2[bin_id] +
+      Tdef * (ddata->g_gammaH2_2[bin_id+1] - ddata->g_gammaH2_2[bin_id]);
 
-    double dgammaH2_2_dT = data->g_dgammaH2_2_dT[bin_id] +
-      Tdef * (data->g_dgammaH2_2_dT[bin_id+1] - data->g_dgammaH2_2_dT[bin_id]);
+    double dgammaH2_2_dT = ddata->g_dgammaH2_2_dT[bin_id] +
+      Tdef * (ddata->g_dgammaH2_2_dT[bin_id+1] - ddata->g_dgammaH2_2_dT[bin_id]);
 
-    double gammaH2_1 = data->g_gammaH2_1[bin_id] +
-      Tdef * (data->g_gammaH2_1[bin_id+1] - data->g_gammaH2_1[bin_id]);
+    double gammaH2_1 = ddata->g_gammaH2_1[bin_id] +
+      Tdef * (ddata->g_gammaH2_1[bin_id+1] - ddata->g_gammaH2_1[bin_id]);
 
-    double dgammaH2_1_dT = data->g_dgammaH2_1_dT[bin_id] +
-      Tdef * (data->g_dgammaH2_1_dT[bin_id+1] - data->g_dgammaH2_1_dT[bin_id]);
+    double dgammaH2_1_dT = ddata->g_dgammaH2_1_dT[bin_id] +
+      Tdef * (ddata->g_dgammaH2_1_dT[bin_id+1] - ddata->g_dgammaH2_1_dT[bin_id]);
     ////
 
     double _gammaH2_1_m1 = 1.0 / (gammaH2_1 - 1.0);
@@ -988,7 +945,7 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
     Tnew = T - dge/dge_dT;
     Ts = Tnew;
 
-    Tdiff = fabs(T - Tnew);
+    //Tdiff = fabs(T - Tnew);
     // fprintf(stderr, "T: %0.5g ; Tnew: %0.5g; dge_dT: %.5g, dge: %.5g, ge: %.5g \n", T,Tnew, dge_dT, dge, ge);
     // count += 1;
     // if (count > MAX_T_ITERATION){
@@ -999,10 +956,10 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
 
   Ts = Tnew;
 
-  if (Ts < data->bounds[0]) {
-    Ts = data->bounds[0];
-  } else if (Ts > data->bounds[1]) {
-    Ts = data->bounds[1];
+  if (Ts < ddata->bounds[0]) {
+    Ts = ddata->bounds[0];
+  } else if (Ts > ddata->bounds[1]) {
+    Ts = ddata->bounds[1];
   }
   dTs_ge = 1.0 / dge_dT;
 
@@ -1015,7 +972,8 @@ RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data *data, const double
 int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
                         long int nstrip, void *user_data)
 {
-  cvklu_data *data    = (cvklu_data*) user_data;
+  ReactionNetwork *rxdata = (ReactionNetwork*) user_data;
+  cvklu_data *data = rxdata->DPtr();
 #ifdef USE_DEVICE
   const double *ydata = N_VGetDeviceArrayPointer(y);
   double *ydotdata    = N_VGetDeviceArrayPointer(ydot);
@@ -1029,14 +987,14 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
     long int j = i * NSPECIES;
     const double H2_1 = y_arr[0] = ydata[j]*data->scale[j];
     const double H2_2 = y_arr[1] = ydata[j+1]*data->scale[j+1];
-    const double H_1 = y_arr[2]  = ydata[j+2]*data->scale[j+2];
-    const double H_2 = y_arr[3]  = ydata[j+3]*data->scale[j+3];
+    const double H_1  = y_arr[2] = ydata[j+2]*data->scale[j+2];
+    const double H_2  = y_arr[3] = ydata[j+3]*data->scale[j+3];
     const double H_m0 = y_arr[4] = ydata[j+4]*data->scale[j+4];
     const double He_1 = y_arr[5] = ydata[j+5]*data->scale[j+5];
     const double He_2 = y_arr[6] = ydata[j+6]*data->scale[j+6];
     const double He_3 = y_arr[7] = ydata[j+7]*data->scale[j+7];
-    const double de = y_arr[8]   = ydata[j+8]*data->scale[j+8];
-    const double ge = y_arr[9]   = ydata[j+9]*data->scale[j+9];
+    const double de   = y_arr[8] = ydata[j+8]*data->scale[j+8];
+    const double ge   = y_arr[9] = ydata[j+9]*data->scale[j+9];
 
     // Calculate temperature in this cell
     cvklu_calculate_temperature(data, y_arr, i, data->Ts[i], data->dTs_ge[i]);
@@ -1373,18 +1331,8 @@ int calculate_rhs_cvklu(realtype t, N_Vector y, N_Vector ydot,
 
   });
 
-#ifdef USE_DEVICE
-  // synchronize device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-    std::cerr << ">>> ERROR in calculate_rhs_cvklu: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return(-1);
-  }
-#endif
-
+  // synchronize device memory and return
+  if (copyFence() != 0)  return -1;
   return 0;
 }
 
@@ -1395,7 +1343,8 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
                              void *user_data, N_Vector tmp1,
                              N_Vector tmp2, N_Vector tmp3)
 {
-  cvklu_data *data    = (cvklu_data*) user_data;
+  ReactionNetwork *rxdata = (ReactionNetwork*) user_data;
+  cvklu_data *data = rxdata->DPtr();
 
 #ifdef USE_DEVICE
   // Access vector data and dense matrix structures
@@ -1949,58 +1898,49 @@ int calculate_jacobian_cvklu(realtype t, N_Vector y, N_Vector fy,
 
   });
 
-#ifdef USE_DEVICE
-  // synchronize device memory
-  HIP_OR_CUDA( hipDeviceSynchronize();, cudaDeviceSynchronize(); )
-  HIP_OR_CUDA( hipError_t cuerr = hipGetLastError();,
-               cudaError_t cuerr = cudaGetLastError(); )
-  if (cuerr != HIP_OR_CUDA( hipSuccess, cudaSuccess )) {
-    std::cerr << ">>> ERROR in calculate_jacobian_cvklu: XGetLastError returned %s\n"
-              << HIP_OR_CUDA( hipGetErrorName(cuerr), cudaGetErrorName(cuerr) );
-    return(-1);
-  }
-#endif
-
+  // synchronize device memory and return
+  if (copyFence() != 0)  return -1;
   return 0;
 }
 
 
 
-void setting_up_extra_variables( cvklu_data * data, long int nstrip ){
+void setting_up_extra_variables( ReactionNetwork *data, long int nstrip ){
 
-  double *input = data->scale;
-  double *mdens = data->mdensity;
-  double *imdens = data->inv_mdensity;
-  double *cie_oda = data->cie_optical_depth_approx;
-  double *h2_oda = data->h2_optical_depth_approx;
+  cvklu_data *hdata = data->HPtr();
+  double *sc = hdata->scale;
+  double *mdens = hdata->mdensity;
+  double *imdens = hdata->inv_mdensity;
+  double *cie_oda = hdata->cie_optical_depth_approx;
+  double *h2_oda = hdata->h2_optical_depth_approx;
 
   RAJA::forall<EXECPOLICY>(RAJA::RangeSegment(0,nstrip), [=] RAJA_DEVICE (long int i) {
 
     double mdensity = 0.0;
 
     // species: H2_1
-    mdensity += input[i * NSPECIES] * 2.0;
+    mdensity += sc[i * NSPECIES] * 2.0;
 
     // species: H2_2
-    mdensity += input[i * NSPECIES + 1] * 2.0;
+    mdensity += sc[i * NSPECIES + 1] * 2.0;
 
     // species: H_1
-    mdensity += input[i * NSPECIES + 2] * 1.00794;
+    mdensity += sc[i * NSPECIES + 2] * 1.00794;
 
     // species: H_2
-    mdensity += input[i * NSPECIES + 3] * 1.00794;
+    mdensity += sc[i * NSPECIES + 3] * 1.00794;
 
     // species: H_m0
-    mdensity += input[i * NSPECIES + 4] * 1.00794;
+    mdensity += sc[i * NSPECIES + 4] * 1.00794;
 
     // species: He_1
-    mdensity += input[i * NSPECIES + 5] * 4.002602;
+    mdensity += sc[i * NSPECIES + 5] * 4.002602;
 
     // species: He_2
-    mdensity += input[i * NSPECIES + 6] * 4.002602;
+    mdensity += sc[i * NSPECIES + 6] * 4.002602;
 
     // species: He_3
-    mdensity += input[i * NSPECIES + 7] * 4.002602;
+    mdensity += sc[i * NSPECIES + 7] * 4.002602;
 
     // scale mdensity by Hydrogen mass
     mdensity *= 1.67e-24;

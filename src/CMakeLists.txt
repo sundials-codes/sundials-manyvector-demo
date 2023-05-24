@@ -146,6 +146,13 @@ macro(sundemo_add_executable target)
     endforeach()
   endif()
 
+  # set source properties
+  if (RAJA_BACKEND MATCHES "HIP")
+    foreach(file ${sundemo_add_executable_SOURCES})
+      set_source_files_properties(${file} PROPERTIES LANGUAGE HIP)
+    endforeach()
+  endif()
+
   # create executable target
   add_executable(${target}
     ${sundemo_add_executable_SOURCES})

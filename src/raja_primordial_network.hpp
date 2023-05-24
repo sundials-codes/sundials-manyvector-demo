@@ -42,7 +42,7 @@
 #define NSPECIES 10
 
 
-// desired execution policy for all RAJA loops
+// set RAJA policies
 #ifdef RAJA_SERIAL
 using EXECPOLICY = RAJA::loop_exec;
 using REDUCEPOLICY = RAJA::loop_reduce;
@@ -85,7 +85,7 @@ using XYZ_KERNEL_POL =
 #define EXECPOLICY    RAJA::hip_exec<256>
 #define REDUCEPOLICY  RAJA::hip_reduce
 using XYZ_KERNEL_POL =
-    RAJA::KernelPolicy< RAJA::HipKernel<
+    RAJA::KernelPolicy< RAJA::statement::HipKernel<
                           RAJA::statement::For<2, RAJA::hip_thread_x_loop,
                             RAJA::statement::For<1, RAJA::hip_thread_y_loop,
                               RAJA::statement::For<0, RAJA::hip_thread_z_loop,
@@ -99,8 +99,21 @@ using XYZ_KERNEL_POL =
 #error "Unsupported RAJA backend"
 #endif
 
+// set device memory space utility macros and prototypes
+#if defined(RAJA_CUDA)
+#define devMalloc(ptr, memType, size) cudaMalloc((void**)&ptr, size)
+#elif defined(RAJA_HIP)
+#define devMalloc(ptr, memType, size) hipMalloc((void**)&ptr, size)
+#else
+#define devMalloc(ptr, memType, size) ptr = (memType *) malloc(size)
+#endif
+void devFree(void** ptr);
+int copyHostToDevice(void *devPtr, void *hostPtr, size_t memSize);
+int copyDeviceToHost(void *hostPtr, void *devPtr, size_t memSize);
+int copyFence();
 
 
+// Main reaction network data structure
 typedef struct cvklu_data {
   /* All of the network bins will be the same width */
   double dbin;
@@ -272,22 +285,71 @@ typedef struct cvklu_data {
   // strip length
   long int nstrip;
 
-  const char *dengo_data_file;
 } cvklu_data;
+
+
+// Prototype for cvklu_data deallocation routine
+void cvklu_free_data(cvklu_data*);
+
+
+// Mirrored host/device reaction network class
+class ReactionNetwork {
+
+public:
+
+  // Constructor: allocates both host and device objects of type "cvklu_data".
+  ReactionNetwork(bool valid) :
+    host_(nullptr), device_(nullptr) {
+    if (valid) {
+      host_ = (cvklu_data*) malloc(sizeof(cvklu_data));
+      devMalloc(device_, cvklu_data, sizeof(cvklu_data));
+    }
+  }
+
+  // Destructor: frees host and device arrays.
+  ~ReactionNetwork() {
+    if (host_ != nullptr) {
+      cvklu_free_data(host_);
+      free(host_);
+    }
+    host_ = nullptr;
+    devFree((void **) &device_);
+  }
+
+  // Utility routines to copy host <-> device data.  Note that although these
+  // data structures live on the host-vs-device, their internal arrays are
+  // only ever allocated on the device.
+  int HostToDevice() {
+    return copyHostToDevice(device_, host_, sizeof(cvklu_data));
+  }
+  int DeviceToHost() {
+    return copyDeviceToHost(host_, device_, sizeof(cvklu_data));
+  }
+
+  // Accessor functions to return the host and device data pointers.
+  cvklu_data* HPtr() { return host_; }
+  cvklu_data* DPtr() { return device_; }
+
+private:
+
+  cvklu_data* host_;
+  cvklu_data* device_;
+
+};
 
 
 /* Declare ctype RHS and Jacobian */
 typedef int(*rhs_f)( realtype, N_Vector , N_Vector , void * );
-typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix , void *, N_Vector, N_Vector, N_Vector);
+typedef int(*jac_f)( realtype, N_Vector  , N_Vector , SUNMatrix ,
+                     void *, N_Vector, N_Vector, N_Vector);
 
-cvklu_data *cvklu_setup_data(MPI_Comm, const char *, long int, SUNMemoryHelper, realtype);
-void cvklu_free_data(void*, SUNMemoryHelper);
-void cvklu_read_rate_tables(cvklu_data*, const char *, int, MPI_Comm);
-void cvklu_read_cooling_tables(cvklu_data*, const char *, int, MPI_Comm);
-void cvklu_read_gamma(cvklu_data*, const char *, int, MPI_Comm);
+ReactionNetwork* cvklu_setup_data(MPI_Comm, const char *, long int, realtype);
+int cvklu_read_rate_tables(cvklu_data*, const char *, MPI_Comm);
+int cvklu_read_cooling_tables(cvklu_data*, const char *, MPI_Comm);
+int cvklu_read_gamma(cvklu_data*, const char *, MPI_Comm);
 RAJA_DEVICE int cvklu_calculate_temperature(const cvklu_data*, const double*,
                                             const long int, double &, double &);
-void setting_up_extra_variables(cvklu_data*, long int);
+void setting_up_extra_variables(ReactionNetwork*, long int);
 
 int initialize_sparse_jacobian_cvklu( SUNMatrix J, void *user_data );
 int calculate_jacobian_cvklu( realtype t, N_Vector y, N_Vector fy,
