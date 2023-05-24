@@ -156,7 +156,6 @@ above for linear systems that arise within the modified Newton iteration.
 The following steps describe how to build the demonstration code in a Linux or
 OS X environment.
 
-
 ### Gettting the Code
 
 To obtain the code, clone this repository with Git:
@@ -169,7 +168,7 @@ To obtain the code, clone this repository with Git:
 
 To compile the code you will need:
 
-* [CMake](https://cmake.org) 3.18 or newer
+* [CMake](https://cmake.org) 3.20 or newer
 
 * modern C and C++ compilers
 
@@ -193,7 +192,7 @@ To compile the code you will need:
 * the [MAGMA](https://icl.utk.edu/magma/) dense linear solver library (when
   using a GPU backend)
 
-### Installing Dependencies
+#### Installing Dependencies with Spack
 
 Many of the above dependencies can be installed using the
 [Spack](https://spack.io/) package manager. For information on using Spack see
@@ -205,9 +204,9 @@ with the required dependencies e.g., on a system with Pascal GPUs and CUDA
 11.4.2 installed:
 
 ```bash
-spack env create sundials-demo
+spack env create --with-view ~/views/sundials-demo sundials-demo
 spack env activate sundials-demo
-spack add sundials@6.2.0 +openmp +mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
+spack add sundials@6.2.0 +openmp +mpi +logging-mpi +klu +magma +raja +cuda cuda_arch=60 ^cuda@11.4.2 ^magma@2.6.1 +cuda cuda_arch=60 ^raja@0.13.0 +cuda cuda_arch=60 ^suite-sparse@5.8.1
 spack add hdf5@1.10.7 +hl +mpi
 spack install
 ```
@@ -217,14 +216,35 @@ directory contains environment files leveraging software already available on
 the system. For example, on the OLCF Summit system:
 
 ```bash
-module load gcc/10.2.0
-module load cuda/11.4.2
-module load cmake/3.21.3
+module load gcc/10.2.0 cuda/11.4.2 cmake/3.21.3
 cd spack
 spack env create sundials-demo spack-summit.yaml
 spack env activate sundials-demo
 spack install
 ```
+
+#### Using Docker Containers
+
+It also possible to use the Docker containers from the [GitHub Container Registry](https://github.com/orgs/sundials-codes/packages?repo_name=sundials-manyvector-demo)
+with the necessary dependencies preinstalled for CPU-only testing. Two images
+are provided:
+
+* sundials-demo-spack-latest -- based on the latest Spack release (currently
+  v0.19.0)
+
+* sundials-demo-spack-develop -- based on the Spack develop branch and updated
+  monthly
+
+Pull the image(s) using [Docker](https://www.docker.com/) (or [Podman](https://podman.io)).
+For example, the `run` command below will pull the image and start the container
+and the `exec` command will start a bash shell inside the container.
+```
+docker run -t -d --name sundialsci-demo-spack-latest ghcr.io/sundials-codes/sundials-demo-spack-latest:spack-latest
+docker exec -it sundials-demo-spack-lateset bash
+```
+Then clone this repository with Git and configure/build the code as described
+below. The Spack installed dependencies are available from the `/opt/view`
+directory.
 
 ### Configuration Options
 
@@ -282,18 +302,24 @@ variables may also be set:
 
 In-source builds are not permitted, as such the code should be configured and
 built from a separate build directory e.g.,
-
 ```bash
   cd sundials-manyvector-demo
   mkdir build
   cd build
   cmake ../. \
-    -DCMAKE_INSTALL_PREFIX="my/install/path/sundials-demo" \
+    -DCMAKE_INSTALL_PREFIX="[install-path]" \
     -DRAJA_BACKEND="SERIAL" \
-    -DENABLE_HDF5="ON"
+    -DENABLE_HDF5="ON" \
+    -DHDF5_ROOT="[spack-view-path]" \
+    -DRAJA_ROOT="[spack-view-path]" \
+    -DSUNDIALS_ROOT="[spack-view-path]"
   make
   make install
 ```
+where `[install-path]` is the path to where the binary and test input files
+should be installed and `[spack-view-path]` is the path to the Spack environment
+view, `~/views/sundials-demo` when following the Spack instructions above or
+`/opt/view` when using the Docker containers.
 
 ## Running
 

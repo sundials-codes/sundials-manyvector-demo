@@ -1,0 +1,38 @@
+name: Test - spack@develop
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/sundials-codes/sundials-demo-spack-develop:spack-develop
+      options: --user root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Configure
+        run: |
+          cmake \
+          -B build \
+          -D CMAKE_C_COMPILER=mpicc \
+          -D CMAKE_CXX_COMPILER=mpicxx \
+          -D CMAKE_CXX_STANDARD=14 \
+          -D RAJA_ROOT=/opt/view \
+          -D RAJA_BACKEND=SERIAL \
+          -D SUNDIALS_ROOT=/opt/view \
+          -D ENABLE_HDF5=ON \
+          -D HDF5_ROOT=/opt/view
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build
+      - name: Archive files from failed build
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: build_files
+          path: build
